@@ -19,6 +19,7 @@ import {
   IMPLEMENTED_CLIENT_MESSAGE_TYPES,
   INTERACT_ACTIONS,
   MENU_ADDON_SLOTS,
+  MENU_MAIN_SLOTS,
 } from './messages.js';
 
 const ok = (message) => ({ ok: true, message });
@@ -108,6 +109,9 @@ function validatePurchaseUpgrade(message) {
 function validateSetupSubmit(message) {
   if (!Array.isArray(message.menu)) return fail('invalid_payload', 'menu must be an array');
   if (message.menu.length === 0) return fail('invalid_payload', 'menu must not be empty');
+  if (message.menu.length > MENU_MAIN_SLOTS) {
+    return fail('invalid_payload', `menu must hold at most ${MENU_MAIN_SLOTS} main dishes`);
+  }
 
   for (let i = 0; i < message.menu.length; i += 1) {
     const bad = badMenuSelection(message.menu[i], `menu[${i}]`);

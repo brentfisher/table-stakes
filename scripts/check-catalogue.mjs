@@ -149,6 +149,7 @@ const rejections = [
   ['a client-supplied position', { type: 'player_input', sequence: 1, move: { x: 0, z: 0, sprint: false }, facing: 0, position: { x: 5, y: 0, z: 5 } }, 'invalid_payload'],
   ['an unknown interact action', { type: 'interact', sequence: 1, targetId: 't', action: 'teleport' }, 'invalid_payload'],
   ['too many addons', { type: 'setup_submit', menu: [{ dishId: 'a', price: 1 }], addons: [{ dishId: 'b', price: 1 }, { dishId: 'c', price: 1 }, { dishId: 'd', price: 1 }], staffAssignments: {} }, 'invalid_payload'],
+  ['too many main dishes', { type: 'setup_submit', menu: [{ dishId: 'a', price: 1 }, { dishId: 'b', price: 1 }, { dishId: 'c', price: 1 }, { dishId: 'd', price: 1 }], addons: [], staffAssignments: {} }, 'invalid_payload'],
   ['a duplicated dish across menu slots', { type: 'setup_submit', menu: [{ dishId: 'a', price: 1 }], addons: [{ dishId: 'a', price: 1 }], staffAssignments: {} }, 'invalid_payload'],
 ];
 for (const [label, message, expected] of rejections) {
