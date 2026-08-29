@@ -19,10 +19,18 @@
 // type here in the same commit. `scripts/smoke-milestone0.mjs` asserts this by sending
 // `purchase_upgrade` and requiring a `not_implemented` error back.
 
+// STORY-003 added ONE type, `player_ready`, and its handler in the same commit. PRD §12's
+// four client-to-server examples carry no readiness signal, but §5 "Lobby" (ready up), §12
+// room-flow step 7 ("once both players are ready or timer expires") and §18 setup UI
+// ("opponent-ready status") all require one, and it is not `setup_submit` — that message
+// carries a menu whose validation is STORY-009's, and half-implementing it to steal its
+// readiness bit is exactly the silent inaction Decision 7 forbids.
+
 /** Every message a client may send. An unlisted `type` is rejected as `unknown_type`. */
 export const CLIENT_MESSAGE_TYPES = Object.freeze([
   'join_room',
   'player_input',
+  'player_ready',
   'interact',
   'purchase_upgrade',
   'setup_submit',
@@ -42,12 +50,17 @@ export const SERVER_MESSAGE_TYPES = Object.freeze([
  * one story at a time, alongside the handler. Everything declared but not listed here is
  * answered with `{type: 'error', error: 'not_implemented'}`.
  */
-export const IMPLEMENTED_CLIENT_MESSAGE_TYPES = Object.freeze(['join_room', 'player_input']);
+export const IMPLEMENTED_CLIENT_MESSAGE_TYPES = Object.freeze([
+  'join_room',
+  'player_input',
+  'player_ready',
+]);
 
 /**
  * Error codes the server may return in `{type: 'error', error: <code>}`. STORY-001's router
  * emits the first five; `invalid_payload` is what validation.js returns for a well-typed
- * message with a malformed body.
+ * message with a malformed body. STORY-003 added `match_full`, because a 1v1 match that
+ * silently seats a third socket is worse than one that says no.
  */
 export const ERROR_CODES = Object.freeze([
   'invalid_json',
@@ -56,9 +69,14 @@ export const ERROR_CODES = Object.freeze([
   'not_implemented',
   'room_not_found',
   'invalid_payload',
+  'match_full',
 ]);
 
-/** Match phases, PRD §5 "Match structure". Keys match PHASE_DURATIONS_MS in tuning.js. */
+/**
+ * Match phases, PRD §5 "Match structure", IN ORDER. Keys match PHASE_DURATIONS_MS in
+ * tuning.js, and the order here IS the phase machine's order — `match.js` advances by
+ * stepping this list, so a phase inserted here is a phase the machine runs.
+ */
 export const MATCH_PHASES = Object.freeze([
   'lobby',
   'market_reveal',
@@ -67,6 +85,13 @@ export const MATCH_PHASES = Object.freeze([
   'final_rush',
   'results',
 ]);
+
+/**
+ * Why a match ended, carried on `match_complete.reason`. PRD §12's envelope has no such
+ * field; STORY-003 adds it because "exceeding the reconnect grace ends the match cleanly
+ * with a stated reason" is unimplementable without somewhere to state the reason.
+ */
+export const MATCH_END_REASONS = Object.freeze(['completed', 'player_disconnected']);
 
 /**
  * Lifecycle of an event as it appears in a snapshot's `events[]`. PRD §12's example carries

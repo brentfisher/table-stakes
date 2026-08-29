@@ -9,6 +9,7 @@ import { HudPanel } from '../ui/HudPanel';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
+  const clientRef = useRef<GameClient | null>(null);
   const [status, setStatus] = useState<GameClientStatus | null>(null);
 
   useEffect(() => {
@@ -16,22 +17,27 @@ export function App(): JSX.Element {
     if (!container) return undefined;
 
     const client = new GameClient(container);
+    clientRef.current = client;
     // Status arrives on join and once per snapshot (~10 Hz), not per animation frame.
     client.onStatus = (next) => setStatus({ ...next });
 
     const roomId = new URLSearchParams(window.location.search).get('room') ?? undefined;
     client.start(roomId);
 
-    return () => client.dispose();
+    return () => {
+      clientRef.current = null;
+      client.dispose();
+    };
   }, []);
 
   return (
     <div className="app">
       <div className="scene" ref={sceneRef} />
-      <HudPanel status={status} />
+      <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
       <div className="scope-note">
-        <strong>Milestone 0</strong> — replicated movement only. Customers, orders, menus,
-        events, money and scoring each land in a later story.
+        <strong>Match lifecycle</strong> — the PRD §5 phase clock runs on the server; both
+        owners ready up to leave the lobby. Customers, orders, menus, events, money and scoring
+        each land in a later story.
       </div>
       <div className="help">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}

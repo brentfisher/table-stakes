@@ -79,6 +79,12 @@ export interface PlayerSnapshot {
   /** Last `player_input.sequence` the server integrated, for client reconciliation. */
   lastSequence: number;
   connected: boolean;
+  /**
+   * Ready-up state, PRD §18 setup UI "opponent-ready status". PUBLIC on purpose: §18 says to
+   * show whether the opponent is ready while forbidding their menu and prices, so this flag
+   * is the whole of what one player learns about the other's setup.
+   */
+  ready: boolean;
   /** Set while the owner is mid-action at a station or table. */
   carrying?: string[];
   currentAction?: InteractAction | null;

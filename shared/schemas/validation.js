@@ -51,6 +51,23 @@ function validateJoinRoom(message) {
   if (message.roomId !== undefined && !isNonEmptyString(message.roomId)) {
     return fail('invalid_payload', 'roomId must be a non-empty string when present');
   }
+  // Reconnect token (STORY-003). Whether the token may actually be redeemed — that the named
+  // player exists, is disconnected, and is still inside its grace window — is an authority
+  // question for match.js, not a shape question (Decision 11).
+  if (message.playerId !== undefined && !isNonEmptyString(message.playerId)) {
+    return fail('invalid_payload', 'playerId must be a non-empty string when present');
+  }
+  return ok(message);
+}
+
+/**
+ * PRD §12 room-flow step 7. A bare `{type: 'player_ready'}` means ready; `ready: false`
+ * un-readies. Whether the current phase accepts a readiness change is the match's call.
+ */
+function validatePlayerReady(message) {
+  if (message.ready !== undefined && typeof message.ready !== 'boolean') {
+    return fail('invalid_payload', 'ready must be a boolean when present');
+  }
   return ok(message);
 }
 
@@ -156,6 +173,7 @@ function validateSetupSubmit(message) {
 export const CLIENT_MESSAGE_VALIDATORS = Object.freeze({
   join_room: validateJoinRoom,
   player_input: validatePlayerInput,
+  player_ready: validatePlayerReady,
   interact: validateInteract,
   purchase_upgrade: validatePurchaseUpgrade,
   setup_submit: validateSetupSubmit,
