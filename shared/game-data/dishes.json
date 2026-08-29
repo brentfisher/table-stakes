@@ -1,0 +1,178 @@
+{
+  "_comment": "PRD §7 'Menu configuration' — the MVP dish catalog. Field names follow the §16 `smash_burger` worked example exactly. PRD §13 lists no separate ingredients file, so the single authoritative ingredient list lives here alongside the dishes that reference it; the loader rejects any dish ingredient key that is not declared in `ingredients`. `stationSteps[].station` must name a station that the §14 layout (shared/game-data/restaurant-layout.json) actually has: prep, grill, oven, plating. `baseCost` is the authoritative per-plate cost from the §7 table; `ingredients[].unitCost` is the restock price of one unit and is deliberately not required to sum to `baseCost`, which also carries kitchen overhead.",
+
+  "ingredients": {
+    "bun": { "name": "Brioche Bun", "unitCost": 0.8 },
+    "beef": { "name": "Ground Beef", "unitCost": 2.4 },
+    "chicken": { "name": "Chicken Breast", "unitCost": 1.9 },
+    "steak": { "name": "Sirloin Steak", "unitCost": 7.0 },
+    "cheese": { "name": "Cheese", "unitCost": 0.7 },
+    "lettuce": { "name": "Lettuce", "unitCost": 0.45 },
+    "croutons": { "name": "Croutons", "unitCost": 0.35 },
+    "dressing": { "name": "Dressing", "unitCost": 0.4 },
+    "pasta": { "name": "Dry Pasta", "unitCost": 0.9 },
+    "vegetables": { "name": "Seasonal Vegetables", "unitCost": 0.8 },
+    "olive_oil": { "name": "Olive Oil", "unitCost": 0.3 },
+    "butter": { "name": "Butter", "unitCost": 0.35 },
+    "potatoes": { "name": "Potatoes", "unitCost": 0.6 },
+    "tortilla_chips": { "name": "Tortilla Chips", "unitCost": 0.65 },
+    "salsa": { "name": "Salsa", "unitCost": 0.5 },
+    "coffee_beans": { "name": "Coffee Beans", "unitCost": 0.55 },
+    "cheesecake_base": { "name": "Cheesecake Base", "unitCost": 2.4 },
+    "berries": { "name": "Berries", "unitCost": 0.6 }
+  },
+
+  "dishes": [
+    {
+      "id": "smash_burger",
+      "name": "Smash Burger",
+      "category": "entree",
+      "tags": ["hearty", "fast", "stadium", "casual"],
+      "ingredients": { "bun": 1, "beef": 1, "cheese": 1, "lettuce": 1 },
+      "baseCost": 5,
+      "suggestedPrice": 14,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 2500 },
+        { "station": "grill", "durationMs": 6000 },
+        { "station": "plating", "durationMs": 1500 }
+      ],
+      "baseSatisfaction": 65,
+      "marketAffinity": {
+        "stadium_district": 1.25,
+        "downtown_lunch": 1.05,
+        "uptown_pre_theater": 0.7
+      }
+    },
+    {
+      "id": "caesar_salad",
+      "name": "Caesar Salad",
+      "category": "entree",
+      "tags": ["light", "quick", "office", "vegetarian"],
+      "ingredients": { "lettuce": 2, "cheese": 1, "croutons": 1, "dressing": 1 },
+      "baseCost": 3,
+      "suggestedPrice": 12,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 3000 },
+        { "station": "plating", "durationMs": 1500 }
+      ],
+      "baseSatisfaction": 58,
+      "marketAffinity": {
+        "downtown_lunch": 1.25,
+        "uptown_pre_theater": 0.95,
+        "stadium_district": 0.7
+      }
+    },
+    {
+      "id": "pasta_primavera",
+      "name": "Pasta Primavera",
+      "category": "entree",
+      "tags": ["premium", "theater", "vegetarian"],
+      "ingredients": { "pasta": 1, "vegetables": 2, "cheese": 1, "olive_oil": 1 },
+      "baseCost": 6,
+      "suggestedPrice": 22,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 3000 },
+        { "station": "oven", "durationMs": 6500 },
+        { "station": "plating", "durationMs": 2000 }
+      ],
+      "baseSatisfaction": 74,
+      "marketAffinity": {
+        "uptown_pre_theater": 1.3,
+        "downtown_lunch": 0.95,
+        "stadium_district": 0.65
+      }
+    },
+    {
+      "id": "chicken_sandwich",
+      "name": "Chicken Sandwich",
+      "category": "entree",
+      "tags": ["fast", "casual", "portable"],
+      "ingredients": { "bun": 1, "chicken": 1, "lettuce": 1, "dressing": 1 },
+      "baseCost": 4,
+      "suggestedPrice": 13,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 2000 },
+        { "station": "grill", "durationMs": 4000 },
+        { "station": "plating", "durationMs": 1200 }
+      ],
+      "baseSatisfaction": 60,
+      "marketAffinity": {
+        "downtown_lunch": 1.2,
+        "stadium_district": 1.1,
+        "uptown_pre_theater": 0.75
+      }
+    },
+    {
+      "id": "steak_frites",
+      "name": "Steak Frites",
+      "category": "entree",
+      "tags": ["premium", "date-night", "hearty"],
+      "ingredients": { "steak": 1, "potatoes": 2, "butter": 1, "olive_oil": 1 },
+      "baseCost": 10,
+      "suggestedPrice": 34,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 3000 },
+        { "station": "grill", "durationMs": 12000 },
+        { "station": "plating", "durationMs": 3000 }
+      ],
+      "baseSatisfaction": 88,
+      "marketAffinity": {
+        "uptown_pre_theater": 1.4,
+        "downtown_lunch": 0.7,
+        "stadium_district": 0.6
+      }
+    },
+    {
+      "id": "nachos",
+      "name": "Nachos",
+      "category": "snack",
+      "tags": ["shareable", "stadium", "nightlife", "casual"],
+      "ingredients": { "tortilla_chips": 2, "cheese": 2, "salsa": 1, "vegetables": 1 },
+      "baseCost": 4,
+      "suggestedPrice": 16,
+      "stationSteps": [
+        { "station": "prep", "durationMs": 1500 },
+        { "station": "oven", "durationMs": 4000 },
+        { "station": "plating", "durationMs": 1000 }
+      ],
+      "baseSatisfaction": 62,
+      "marketAffinity": {
+        "stadium_district": 1.4,
+        "downtown_lunch": 0.85,
+        "uptown_pre_theater": 0.65
+      }
+    },
+    {
+      "id": "espresso",
+      "name": "Espresso",
+      "category": "drink",
+      "tags": ["quick", "office", "premium", "coffee"],
+      "ingredients": { "coffee_beans": 1 },
+      "baseCost": 1,
+      "suggestedPrice": 5,
+      "stationSteps": [{ "station": "prep", "durationMs": 2500 }],
+      "baseSatisfaction": 55,
+      "marketAffinity": {
+        "downtown_lunch": 1.3,
+        "uptown_pre_theater": 1.15,
+        "stadium_district": 0.75
+      }
+    },
+    {
+      "id": "cheesecake",
+      "name": "Cheesecake",
+      "category": "dessert",
+      "tags": ["dessert", "premium", "date-night"],
+      "ingredients": { "cheesecake_base": 1, "berries": 1 },
+      "baseCost": 3,
+      "suggestedPrice": 10,
+      "stationSteps": [{ "station": "plating", "durationMs": 1800 }],
+      "baseSatisfaction": 70,
+      "marketAffinity": {
+        "uptown_pre_theater": 1.3,
+        "downtown_lunch": 0.9,
+        "stadium_district": 0.8
+      }
+    }
+  ]
+}

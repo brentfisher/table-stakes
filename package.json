@@ -13,7 +13,8 @@
     "build:harnesses": "npm --prefix harnesses run build",
     "start": "npm --prefix server start",
     "check:three": "node scripts/check-threejs-pin.mjs",
+    "check:data": "node scripts/check-catalogue.mjs",
     "check:milestone0": "node scripts/smoke-milestone0.mjs",
-    "check": "npm run check:three && npm run build:client && npm run build:harnesses"
+    "check": "npm run check:three && npm run check:data && npm run build:client && npm run build:harnesses"
   }
 }

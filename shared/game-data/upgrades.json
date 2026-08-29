@@ -1,0 +1,106 @@
+{
+  "_comment": "PRD §10 'Upgrades'. The five entries the §10 example table prices explicitly (Serving Tray I/II, Faster Grill I, Better Seating, Pantry Shelves) carry those costs and effects verbatim; the rest fill out the §10 category table. `serving_tray_1` and `faster_grill_1` are the ids the §12 `setup_submit` and `purchase_upgrade` examples reference, so they are not renameable. §10 caps MVP at three tiers per category and forbids exponential chains — `tier` is 1 unless the upgrade supersedes a cheaper one, in which case `requires` names it. `effects` is machine-readable: every key is a value a system reads, never prose. Multipliers are 1.0-relative, so a duration multiplier BELOW 1 is faster. Upgrades are purchased in-world at `upgrade_terminal` in the §14 layout, which is what makes spending cash cost time.",
+
+  "upgrades": [
+    {
+      "id": "serving_tray_1",
+      "name": "Serving Tray I",
+      "category": "delivery",
+      "cost": 125,
+      "tier": 1,
+      "description": "The owner carries two plates per run instead of one.",
+      "effects": { "ownerCarryCapacity": 2 }
+    },
+    {
+      "id": "serving_tray_2",
+      "name": "Serving Tray II",
+      "category": "delivery",
+      "cost": 275,
+      "tier": 2,
+      "requires": "serving_tray_1",
+      "description": "The owner carries three plates per run. Strong during group-rush events.",
+      "effects": { "ownerCarryCapacity": 3 }
+    },
+    {
+      "id": "faster_grill_1",
+      "name": "Faster Grill I",
+      "category": "kitchen_speed",
+      "cost": 180,
+      "tier": 1,
+      "description": "Grill cook time -15%.",
+      "effects": { "stationSpeedMultipliers": { "grill": 0.85 } }
+    },
+    {
+      "id": "better_seating_1",
+      "name": "Better Seating",
+      "category": "customer_experience",
+      "cost": 200,
+      "tier": 1,
+      "description": "Seated patience +15%. Gives the server room to recover.",
+      "effects": { "seatedPatienceMultiplier": 1.15 }
+    },
+    {
+      "id": "pantry_shelves_1",
+      "name": "Pantry Shelves",
+      "category": "restocking",
+      "cost": 150,
+      "tier": 1,
+      "description": "Restock travel time -25%.",
+      "effects": { "restockTravelTimeMultiplier": 0.75 }
+    },
+    {
+      "id": "prep_counter_1",
+      "name": "Prep Counter",
+      "category": "prep_throughput",
+      "cost": 175,
+      "tier": 1,
+      "description": "A second prep slot, so prep stops being the single-file bottleneck.",
+      "effects": { "stationConcurrentCapacity": { "prep": 2 } }
+    },
+    {
+      "id": "server_radio_1",
+      "name": "Server Radio",
+      "category": "staff_efficiency",
+      "cost": 200,
+      "tier": 1,
+      "description": "The server picks better targets and wastes fewer trips.",
+      "effects": { "serverTargetingQuality": 1.25 }
+    },
+    {
+      "id": "additional_table_1",
+      "name": "Additional Table",
+      "category": "capacity",
+      "cost": 260,
+      "tier": 1,
+      "description": "One more two-top. More seats, but also more for one server to cover.",
+      "effects": { "additionalTables": 1, "seatsPerAddedTable": 2, "serverLoadMultiplier": 1.15 }
+    },
+    {
+      "id": "street_signage_1",
+      "name": "Street Signage",
+      "category": "reputation",
+      "cost": 220,
+      "tier": 1,
+      "description": "Improves consideration among undecided customers in the district.",
+      "effects": { "undecidedConsiderationBonus": 0.12 }
+    },
+    {
+      "id": "maintenance_plan_1",
+      "name": "Maintenance Plan",
+      "category": "equipment_reliability",
+      "cost": 140,
+      "tier": 1,
+      "description": "Halves the chance a station fails mid-service.",
+      "effects": { "stationFailureChanceMultiplier": 0.5 }
+    },
+    {
+      "id": "complimentary_snacks_1",
+      "name": "Complimentary Snacks",
+      "category": "recovery",
+      "cost": 110,
+      "tier": 1,
+      "description": "A comp recovers more satisfaction and can be offered more often.",
+      "effects": { "recoverySatisfactionBonus": 12, "recoveryCooldownMs": 20000 }
+    }
+  ]
+}
