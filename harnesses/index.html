@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rival Restaurant — Dev Harnesses</title>
+
+    <!--
+      Same PINNED import map as client/index.html. PRD §13: all Three.js modules must use
+      the same pinned version and CDN, or addon compatibility breaks. Verified against
+      shared/constants/tuning.js by `node scripts/check-threejs-pin.mjs`.
+      three-pin: 0.180.0
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="harness-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

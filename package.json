@@ -1,0 +1,19 @@
+{
+  "name": "table-stakes",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Rival Restaurant \u2014 real-time 1v1 competitive restaurant-management game.",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix harnesses install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev:harnesses": "npm --prefix harnesses run dev",
+    "build:client": "npm --prefix client run build",
+    "build:harnesses": "npm --prefix harnesses run build",
+    "start": "npm --prefix server start",
+    "check:three": "node scripts/check-threejs-pin.mjs",
+    "check:milestone0": "node scripts/smoke-milestone0.mjs",
+    "check": "npm run check:three && npm run build:client && npm run build:harnesses"
+  }
+}

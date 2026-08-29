@@ -1,0 +1,39 @@
+{
+  "id": "compact_mvp",
+  "name": "Compact MVP Restaurant",
+  "_comment": "PRD §14 'Restaurant layout'. Compact and highly readable: the owner's travel path must matter, but the space must stay small enough that movement is not a tedious commute. Coordinates are world units on the XZ plane; +Z runs from the street (entry) to the back of house.",
+  "bounds": { "minX": -9, "maxX": 9, "minZ": -12, "maxZ": 12 },
+  "zones": [
+    { "id": "street", "label": "Street / Entry", "min": [-9, -12], "max": [9, -8] },
+    { "id": "dining", "label": "Dining Room", "min": [-9, -8], "max": [9, 1] },
+    { "id": "pass", "label": "Service Pass / Pickup Counter", "min": [-9, 1], "max": [9, 3] },
+    { "id": "kitchen", "label": "Kitchen", "min": [-9, 3], "max": [9, 12] }
+  ],
+  "entities": [
+    { "id": "queue_line", "type": "queue", "position": [-4, 0, -10], "facing": 0 },
+    { "id": "host_stand", "type": "host_stand", "position": [3, 0, -9] },
+
+    { "id": "table_1", "type": "table", "seats": 4, "position": [-6, 0, -5] },
+    { "id": "table_2", "type": "table", "seats": 4, "position": [-2, 0, -5] },
+    { "id": "table_3", "type": "table", "seats": 4, "position": [2, 0, -5] },
+    { "id": "table_4", "type": "table", "seats": 2, "position": [-6, 0, -1] },
+    { "id": "table_5", "type": "table", "seats": 2, "position": [-2, 0, -1] },
+    { "id": "table_6", "type": "table", "seats": 2, "position": [2, 0, -1] },
+
+    { "id": "upgrade_terminal", "type": "upgrade_terminal", "position": [7, 0, -3], "interactionRadius": 1.8 },
+
+    { "id": "service_pass", "type": "service_pass", "position": [0, 0, 2] },
+
+    { "id": "station_prep", "type": "station", "station": "prep", "position": [-6, 0, 5] },
+    { "id": "station_grill", "type": "station", "station": "grill", "position": [-2, 0, 5] },
+    { "id": "station_oven", "type": "station", "station": "oven", "position": [2, 0, 5] },
+    { "id": "station_plating", "type": "station", "station": "plating", "position": [6, 0, 5] },
+
+    { "id": "pantry", "type": "pantry", "position": [-6, 0, 9] },
+    { "id": "dishwashing", "type": "dishwashing", "position": [6, 0, 9] }
+  ],
+  "spawn": {
+    "owner": [0, 0, -3],
+    "customerEntry": [-7, 0, -11]
+  }
+}

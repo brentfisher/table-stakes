@@ -1,0 +1,51 @@
+schema: spec-driven
+
+# Project context shown to AI when creating artifacts.
+context: |
+  Rival Restaurant (repo: table-stakes) — a real-time 1v1 competitive restaurant-management
+  game. Two players run adjacent restaurants competing for one shared pool of customers:
+  a strategic setup phase (menu, prices, inventory, staffing) then a real-time service phase
+  where each player embodies the owner on the restaurant floor.
+  Full spec: PRD_ Rival Restaurant — Competitive Service Manage.pdf (repo root).
+
+  BINDING TECHNICAL CONSTRAINTS (PRD §1, §13, §22) — these are not preferences:
+    - Client: TypeScript, React, Three.js. Server: plain JavaScript, vanilla Express, `ws`.
+    - Three.js loads from a PINNED CDN import map. Never bundled, never a runtime npm
+      dependency. THREE_VERSION in shared/constants/tuning.js is the single source of truth;
+      `npm run check:three` enforces it. @types/three is an allowed devDependency only if
+      pinned to exactly that version.
+    - No Next.js. No monorepo framework (no workspaces/Nx/Turborepo/Lerna). No game engine
+      (Unity, Unreal, Phaser, Babylon, Godot, PlayCanvas).
+    - Client and server live in separate top-level folders; each app is independently runnable.
+    - In-memory storage only for MVP. No database until persistent profiles/history are needed.
+
+  ARCHITECTURAL RULES:
+    - The server is authoritative. The browser never computes money, customer choice, scores,
+      inventory, upgrades or action outcomes. Clients send intent; the server validates,
+      integrates and broadcasts. Every player action routes through action-validator.js.
+    - Simulate at 20 Hz, broadcast at 10 Hz, interpolate on the client. Not rollback netcode.
+    - React owns UI and low-frequency panels; Three.js owns per-frame scene rendering. React
+      must not reconcile Three.js entities as JSX state per tick.
+    - Rules emit state; scene-view code renders state. This is what lets harnesses/ mount the
+      real scene with mocked state and no backend. Breaking it breaks every PRD §15 harness.
+    - Matches are seeded and reproducible; both players get an identical event timeline.
+    - Customer restaurant choice is probabilistic, never argmax, so a small early advantage
+      cannot snowball. Record a decision reason for every choice — the results screen's
+      explanation layer is built on it.
+    - Show players qualitative guidance ("Excellent value", "Premium"), never simulation math.
+
+  CONVENTIONS:
+    - All balance content is JSON under shared/game-data/ — never hardcoded in a system.
+    - Data ids and WebSocket message `type` values are snake_case.
+    - Durations are milliseconds with a `Ms` suffix.
+    - Server files kebab-case; client class modules PascalCase; harnesses `*-harness.ts`.
+    - Base branch is master.
+    - No test framework exists. Verify by runnable scripts (scripts/*.mjs), by the dev
+      harnesses, or by diff review — and say which in acceptance criteria.
+    - Every reused external asset needs license metadata in assets/licenses/.
+
+rules:
+  proposal:
+    - State non-goals explicitly; this PRD's MVP has a long out-of-scope list (§20).
+  tasks:
+    - Every task must be checkable from a diff or by running something. Name real files.

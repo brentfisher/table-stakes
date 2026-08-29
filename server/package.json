@@ -1,0 +1,16 @@
+{
+  "name": "@table-stakes/server",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Authoritative Express + ws game server. Plain JavaScript (PRD §13).",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}
