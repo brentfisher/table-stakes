@@ -167,3 +167,56 @@ export interface OrderSnapshot {
   /** Ms since the dish finished, for the PRD §17 freshness component of order quality. */
   readyAgeMs: number;
 }
+
+/**
+ * `match.eventEffects` — the combined effect of every event active RIGHT NOW, published onto
+ * match state every tick by `server/src/game/systems/event-system.js` (STORY-011).
+ *
+ * Every key is always present with a neutral value (`1` for a multiplier, `{}` for a map, `0`
+ * for a count), including when no event is active, so a consumer reads what it needs
+ * unconditionally and never branches on whether an event is running. The scalar and map keys
+ * are derived from `events.json` itself, so a new effect key in the data appears here with no
+ * code change; the ones the MVP catalogue defines are listed below.
+ *
+ * Multipliers are 1.0-relative (Decision 12): above 1 amplifies, below 1 dampens — including
+ * durations, where below 1 therefore means faster.
+ */
+export interface ActiveEventEffects {
+  /** Ids of the events active this tick, in activation order. Empty when none are. */
+  activeEventIds: string[];
+
+  // --- the §16 vocabulary ---
+  footTrafficMultiplier: number;
+  partySizeMultiplier: number;
+  dishTagDemandMultipliers: Record<string, number>;
+  /** Raw overrides from the active events; the resolved distribution is `segmentWeights`. */
+  segmentWeightOverrides: Record<string, number>;
+  /**
+   * The market's `segmentWeights` with the active overrides applied per Decision 12 — the
+   * override replaces the named segment's weight and the rest is redistributed proportionally.
+   * Sums to 1. Equal to the market's own weights when nothing overrides them.
+   */
+  segmentWeights: Record<string, number>;
+
+  // --- Decision 12 named extensions, as the MVP catalogue defines them ---
+  patienceMultiplier: number;
+  priceSensitivityMultiplier: number;
+  reputationRewardMultiplier: number;
+  trailingBurstMultiplier: number;
+  ingredientCostMultiplier: number;
+  ingredientRestockDurationMultiplier: number;
+  affectedIngredientCount: number;
+  stationSpeedMultipliers: Partial<Record<Station, number>>;
+
+  /** One entry per active event carrying a `specialPartySpawn`. Empty when none do. */
+  specialPartySpawns: Array<{
+    eventId: string;
+    segment: string;
+    partySize: number;
+    budgetMultiplier: number;
+    reputationImpactMultiplier: number;
+  }>;
+
+  /** Derived keys the catalogue may add later. */
+  [key: string]: unknown;
+}

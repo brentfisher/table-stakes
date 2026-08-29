@@ -88,3 +88,59 @@ export const OWNER_SPRINT_COOLDOWN_MS = 5_000;
 
 /** Reconnect grace period. PRD §13 "Server responsibilities": handle reconnect grace. */
 export const RECONNECT_GRACE_MS = 30_000;
+
+// --- events (STORY-011) -------------------------------------------------------------------
+// PRD §9 "Dynamic events". Every number the seeded event deck uses lives here; `events.json`
+// owns what an event DOES, this file owns when and how often one may happen.
+
+/**
+ * PRD §9 "Event cadence": "announced every 30-60 seconds during the service phase". These are
+ * the bounds on the gap between one event's activation and the next, and the gap from the
+ * start of service to the first activation.
+ */
+export const EVENT_MIN_GAP_MS = 30_000;
+export const EVENT_MAX_GAP_MS = 60_000;
+
+/**
+ * An event scheduled this close to the end of the service window is not scheduled at all.
+ * An event that activates two seconds before the doors shut is a notification, not a decision,
+ * and PRD §9's first design rule is that an event must create an actionable decision.
+ */
+export const EVENT_TAIL_MARGIN_MS = 10_000;
+
+/**
+ * PRD §9 design rule: "Do not stack more than two high-impact events at once in MVP." The deck
+ * builder enforces this while placing cards; it is not left to the cadence to make it unlikely.
+ */
+export const EVENT_MAX_CONCURRENT_HIGH_IMPACT = 2;
+
+/**
+ * How far an event's §16 district-level multipliers must move away from 1.0 for it to count as
+ * "high impact". Measured as the largest absolute deviation from neutral across
+ * `footTrafficMultiplier`, `partySizeMultiplier` and `dishTagDemandMultipliers` — the three
+ * §16 keys that distort district DEMAND, which is what §9's stacking rule is about.
+ */
+export const EVENT_HIGH_IMPACT_THRESHOLD = 0.3;
+
+/**
+ * How long an event stays in `match_snapshot.events` with `state: 'ended'` after it finishes.
+ * PRD §9 announcement flow step 5 is "event ends or transitions to the next event", and a
+ * banner that vanishes on the same frame the effect stops never gets read.
+ */
+export const EVENT_ENDED_VISIBLE_MS = 5_000;
+
+/**
+ * PRD §9 announcement flow step 1: "a teaser or forecast appears 10-20 seconds before
+ * activation when appropriate". `warningMs` of 0 in `events.json` means "not appropriate" —
+ * nothing in the district telegraphs a power dip. Any NON-zero `warningMs` must fall in here.
+ */
+export const EVENT_TEASER_LEAD_BOUNDS_MS = Object.freeze({ min: 10_000, max: 20_000 });
+
+/**
+ * PRD §24: "Events should move demand materially enough that players notice: roughly 15-40%
+ * for strong event-dish affinity, not 2-5%." Expressed as MULTIPLIER bounds rather than as
+ * shifts on purpose: `1.15 - 1` is `0.14999999999999991` in IEEE-754, so a shift-based check
+ * rejects an event authored at exactly the documented floor. Same class of trap as
+ * `SEGMENT_WEIGHT_TOLERANCE` in `loader.js`; comparing the multipliers themselves is exact.
+ */
+export const EVENT_DEMAND_SHIFT_BAND = Object.freeze({ min: 1.15, max: 1.4 });

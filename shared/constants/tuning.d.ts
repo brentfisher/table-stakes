@@ -33,3 +33,25 @@ export declare const OWNER_SPRINT_MULTIPLIER: number;
 export declare const OWNER_SPRINT_MAX_MS: number;
 export declare const OWNER_SPRINT_COOLDOWN_MS: number;
 export declare const RECONNECT_GRACE_MS: number;
+
+// --- events (STORY-011) -------------------------------------------------------------------
+
+export declare const EVENT_MIN_GAP_MS: number;
+export declare const EVENT_MAX_GAP_MS: number;
+export declare const EVENT_TAIL_MARGIN_MS: number;
+export declare const EVENT_MAX_CONCURRENT_HIGH_IMPACT: number;
+export declare const EVENT_HIGH_IMPACT_THRESHOLD: number;
+export declare const EVENT_ENDED_VISIBLE_MS: number;
+
+export interface EventTeaserLeadBoundsMs {
+  min: number;
+  max: number;
+}
+export declare const EVENT_TEASER_LEAD_BOUNDS_MS: EventTeaserLeadBoundsMs;
+
+/** PRD §24 magnitude target, as multiplier bounds. See the note in tuning.js. */
+export interface EventDemandShiftBand {
+  min: number;
+  max: number;
+}
+export declare const EVENT_DEMAND_SHIFT_BAND: EventDemandShiftBand;
