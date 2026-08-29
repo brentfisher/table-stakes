@@ -11,13 +11,15 @@
 //
 // THE ONE EXCEPTION, DISCLOSED: `match.js`'s `toSnapshot()` had `customers: []` hardcoded with
 // no other integration point for real data — snapshots are pull-based per viewer, built by a
-// method that lives in match.js. That method now reads `this.customers` (falling back to `[]`
-// when unset, so every match that predates this story is unaffected) instead of the literal
-// empty array. It was changed identically for `restaurants`, `orders` and `events` too, in the
-// same commit, so STORY-005/009/011 need not make the same edit again — see the comment there.
-// match.js still contains zero customer *logic*; it only serializes whatever this system (or a
-// sibling) attaches. This is disclosed here and in the PR because Decision 15 promises "no edit
-// to match.js" and this is a narrow, deliberate exception to that promise, not an oversight.
+// method that lives in match.js. That one field now reads `this.customers ?? []` (so every
+// match that predates this story, or never reaches `service`, is unaffected) instead of the
+// literal empty array. `events`/`restaurants`/`orders` are deliberately left untouched —
+// STORY-005/009/011 are editing match.js and tuning.js in parallel worktrees, so this story
+// only changes the one line it needs, and the sibling stories make the identical narrow change
+// for their own field when they land, rather than colliding on lines none of them use yet.
+// match.js still contains zero customer *logic*; it only serializes whatever this system
+// attaches. This is disclosed here and in the PR because Decision 15 promises "no edit to
+// match.js" and this is a narrow, deliberate exception to that promise, not an oversight.
 //
 // PRIVACY (PRD §6, this story's hardest requirement): a party's hidden profile — budget,
 // patienceSeconds, the four choice weights, preferred/disliked tags — must never reach the

@@ -14,12 +14,16 @@
 // `systems/index.js`) precisely so that adding one is a new file plus a registration line,
 // and never an edit here.
 //
-// THE ONE DISCLOSED EXCEPTION (STORY-004): `toSnapshot()`'s `events`/`restaurants`/`customers`/
-// `orders` arrays now read `this.<name> ?? []` instead of a hardcoded `[]`, because snapshots
-// are pull-based per viewer and this method is the only place they are assembled — there was no
-// other integration point for a system's data to reach the wire. A system attaches its own
-// pre-sanitized array (e.g. `match.customers = [...]`); this file still contains zero gameplay
-// logic, only a generic fallback. See customer-system.js's file header for the full reasoning.
+// THE ONE DISCLOSED EXCEPTION (STORY-004): `toSnapshot()`'s `customers` field now reads
+// `this.customers ?? []` instead of a hardcoded `[]`, because snapshots are pull-based per
+// viewer and this method is the only place they are assembled — there was no other integration
+// point for a system's data to reach the wire. `customer-system.js` attaches its own
+// pre-sanitized array (`match.customers = [...]`); this file still contains zero gameplay
+// logic, only a generic fallback. `events`/`restaurants`/`orders` are deliberately left as `[]`
+// here — STORY-011/009/005 own those and should make the identical narrow change themselves
+// when they land, rather than this story pre-editing lines it does not use, to keep each
+// story's diff to this shared file surgical and rebase-friendly. See customer-system.js's file
+// header for the full reasoning.
 
 import { MATCH_PHASES } from '../../../shared/schemas/messages.js';
 import {
@@ -427,7 +431,7 @@ export class Match {
       eventForecast: this.eventForecast ?? [],
       restaurants: this.restaurants ?? [],
       customers: this.customers ?? [],
-      orders: this.orders ?? [],
+      orders: [],
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
         position: { x: p.position.x, y: p.position.y, z: p.position.z },
