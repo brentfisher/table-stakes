@@ -1,0 +1,76 @@
+{
+  "_comment": "PRD §6 'Customer segments' — the five reusable archetypes. Each entry is the segment's BASE preference profile; a spawned party copies it and receives per-customer jitter, which is why the §6 'Example customer profile' names the archetype with a `segment` key while a definition here names itself with `id`. `office_worker` reproduces the §6 example value for value. `patienceSeconds` is the deliberate seconds-named exception to the repo-wide `Ms` duration convention (conventions.md 'Naming'). The four weights are the customer's utility mix in the §6 restaurant-choice model and sum to 1.0 for every segment. `budget` is the per-guest spend ceiling in dollars; `partySize` is the typical party size before an event's `partySizeMultiplier` is applied.",
+
+  "segments": [
+    {
+      "id": "office_worker",
+      "name": "Office Worker",
+      "primaryPriority": "Speed and predictability",
+      "budget": 18,
+      "patienceSeconds": 55,
+      "preferredTags": ["quick", "light", "coffee"],
+      "dislikedTags": ["slow", "messy"],
+      "partySize": 1,
+      "serviceSpeedWeight": 0.45,
+      "priceWeight": 0.3,
+      "menuFitWeight": 0.15,
+      "reputationWeight": 0.1
+    },
+    {
+      "id": "affluent_couple",
+      "name": "Affluent Couple",
+      "primaryPriority": "Experience and quality",
+      "budget": 55,
+      "patienceSeconds": 90,
+      "preferredTags": ["premium", "date-night", "dessert", "vegetarian"],
+      "dislikedTags": ["messy", "portable"],
+      "partySize": 2,
+      "serviceSpeedWeight": 0.15,
+      "priceWeight": 0.1,
+      "menuFitWeight": 0.45,
+      "reputationWeight": 0.3
+    },
+    {
+      "id": "event_fan",
+      "name": "Event Fan",
+      "primaryPriority": "Portion size and convenience",
+      "budget": 22,
+      "patienceSeconds": 70,
+      "preferredTags": ["shareable", "hearty", "stadium", "casual"],
+      "dislikedTags": ["light", "slow"],
+      "partySize": 4,
+      "serviceSpeedWeight": 0.35,
+      "priceWeight": 0.25,
+      "menuFitWeight": 0.3,
+      "reputationWeight": 0.1
+    },
+    {
+      "id": "tourist",
+      "name": "Tourist",
+      "primaryPriority": "Discoverability and experience",
+      "budget": 30,
+      "patienceSeconds": 80,
+      "preferredTags": ["premium", "shareable", "dessert"],
+      "dislikedTags": ["messy"],
+      "partySize": 2,
+      "serviceSpeedWeight": 0.15,
+      "priceWeight": 0.2,
+      "menuFitWeight": 0.25,
+      "reputationWeight": 0.4
+    },
+    {
+      "id": "neighborhood_regular",
+      "name": "Neighborhood Regular",
+      "primaryPriority": "Reliability and value",
+      "budget": 26,
+      "patienceSeconds": 85,
+      "preferredTags": ["casual", "hearty", "light"],
+      "dislikedTags": ["messy", "slow"],
+      "partySize": 2,
+      "serviceSpeedWeight": 0.25,
+      "priceWeight": 0.3,
+      "menuFitWeight": 0.25,
+      "reputationWeight": 0.2
+    }
+  ]
+}

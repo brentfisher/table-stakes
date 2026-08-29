@@ -1,0 +1,72 @@
+{
+  "_comment": "PRD §6 'Market system' — the three recommended MVP markets. `downtown_lunch` reproduces the §16 'Market definition example' field for field and value for value; the other two follow the same shape. `segmentWeights` keys must be ids in customer-segments.json and MUST sum to 1.0 within SEGMENT_WEIGHT_TOLERANCE (see loader.js); `eventPool` entries must be ids in events.json. `priceSensitivity` > 1 means this district punishes high prices more than average. PRD §6 lists Arts & Nightlife and Neighborhood Weekend as post-MVP; they are deliberately absent.",
+
+  "markets": [
+    {
+      "id": "downtown_lunch",
+      "name": "Downtown Lunch Rush",
+      "daypart": "lunch",
+      "description": "Office towers, transit stops, and a tightly timed weekday crowd.",
+      "segmentWeights": {
+        "office_worker": 0.55,
+        "tourist": 0.1,
+        "neighborhood_regular": 0.2,
+        "affluent_couple": 0.05,
+        "event_fan": 0.1
+      },
+      "priceSensitivity": 1.2,
+      "baseFootTrafficPerMinute": 14,
+      "preferredTags": ["quick", "light", "portable"],
+      "eventPool": [
+        "office_break_starts",
+        "transit_delay",
+        "rainstorm",
+        "food_critic_spotted"
+      ]
+    },
+    {
+      "id": "uptown_pre_theater",
+      "name": "Uptown Pre-Theater",
+      "daypart": "dinner",
+      "description": "Opera houses, galleries and a well-dressed crowd with a curtain to catch.",
+      "segmentWeights": {
+        "office_worker": 0.1,
+        "tourist": 0.2,
+        "neighborhood_regular": 0.15,
+        "affluent_couple": 0.45,
+        "event_fan": 0.1
+      },
+      "priceSensitivity": 0.7,
+      "baseFootTrafficPerMinute": 9,
+      "preferredTags": ["premium", "date-night", "dessert"],
+      "eventPool": [
+        "theater_curtain_call",
+        "food_critic_spotted",
+        "local_influencer_post",
+        "power_fluctuation"
+      ]
+    },
+    {
+      "id": "stadium_district",
+      "name": "Stadium District",
+      "daypart": "evening",
+      "description": "Sports bars, parking lots, and nine innings between one lull and one flood.",
+      "segmentWeights": {
+        "office_worker": 0.1,
+        "tourist": 0.15,
+        "neighborhood_regular": 0.15,
+        "affluent_couple": 0.1,
+        "event_fan": 0.5
+      },
+      "priceSensitivity": 1.05,
+      "baseFootTrafficPerMinute": 18,
+      "preferredTags": ["shareable", "hearty", "stadium"],
+      "eventPool": [
+        "baseball_game_ends",
+        "happy_hour_nearby",
+        "ingredient_shortage",
+        "transit_delay"
+      ]
+    }
+  ]
+}
