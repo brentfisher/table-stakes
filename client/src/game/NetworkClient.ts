@@ -41,14 +41,28 @@ export class NetworkClient {
     this.socket?.send(JSON.stringify(message));
   }
 
-  joinRoom(roomId?: string): void {
-    this.send({ type: 'join_room', ...(roomId ? { roomId } : {}) });
+  /**
+   * `playerId` is the reconnect token from a previous `joined` message. The server honours it
+   * only for a player who dropped and is still inside the reconnect grace window; a fresh
+   * client omits it. Reconnect *UX* — when to retry, what to show meanwhile — is STORY-022.
+   */
+  joinRoom(roomId?: string, playerId?: string): void {
+    this.send({
+      type: 'join_room',
+      ...(roomId ? { roomId } : {}),
+      ...(playerId ? { playerId } : {}),
+    });
   }
 
   /** PRD §12 client-to-server `player_input`. Intent only — never a position. */
   sendInput(move: { x: number; z: number; sprint: boolean }, facing: number): void {
     this.sequence += 1;
     this.send({ type: 'player_input', sequence: this.sequence, move, facing });
+  }
+
+  /** PRD §12 room-flow step 7. Accepted by the server during `lobby` and `setup`. */
+  sendReady(ready = true): void {
+    this.send({ type: 'player_ready', ready });
   }
 
   disconnect(): void {

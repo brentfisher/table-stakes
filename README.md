@@ -87,8 +87,11 @@ scripts and by the dev harnesses.
 
 ```bash
 npm run check:three        # Three.js pin/bundle rules — see below
-npm run check:milestone0   # end-to-end: needs the server running
-npm run check              # pin check + both builds
+npm run check:data         # game-data catalogue integrity and wire-schema shapes
+npm run check:lifecycle    # match phases, the clock, reconnect grace, the system seam
+npm run check:milestone0   # end-to-end over sockets: movement, clamping, replication
+npm run check:phases       # end-to-end over sockets: the whole PRD §5 match lifecycle
+npm run check              # all of the above, plus both builds
 ```
 
 ## The Three.js rule
@@ -114,11 +117,12 @@ broken by accident:
 |---|---|---|
 | `/health` | GET | Service health. |
 | `/api/version` | GET | Build/client compatibility, including the pinned Three.js version. |
-| `/api/markets` | GET | Market definitions (501 until STORY-002). |
+| `/api/markets` | GET | Market definitions, public projection (no `eventPool`). |
 | `/api/rooms` | POST | Create a room. Optional `{ "seed": "...", "phasePreset": "prototype" \| "full" }`. |
 | `/api/rooms` | GET | List room statuses. |
 | `/api/rooms/:roomId` | GET | Room status. |
-| `/api/dev/match` | POST | Development/local match creation. |
+| `/api/phases` | GET | The phase presets and their durations, from `tuning.js`. |
+| `/api/dev/match` | POST | Development/local match creation — seats **one** player, so the whole lifecycle runs without a second human. |
 
 The game session itself runs over WebSockets at `/ws`, not REST polling.
 
@@ -135,16 +139,31 @@ The game session itself runs over WebSockets at `/ws`, not REST polling.
   frame.
 - **Rules emit state; views render state.** This is what lets `harnesses/` mount the real
   `RestaurantScene` with mocked state and no backend.
-- **Matches are seeded and reproducible.** The seed drives match configuration; the same seed
-  produces the same setup. This is the primary debugging affordance until there are tests.
+- **Matches are seeded and reproducible.** The seed drives match configuration — including
+  which market is selected — and the same seed produces the same setup. A system that needs
+  random numbers takes its own named stream with `match.createRngStream('name')`, which is
+  seed-derived but independent of what other systems draw. This is the primary debugging
+  affordance until there are tests.
+- **The server owns the match clock.** The PRD §5 phase machine (`lobby -> market_reveal ->
+  setup -> service -> final_rush -> results`) runs in `server/src/game/match.js`, advanced by
+  the simulation tick. The client renders `matchPhase` and `timeRemainingMs` from the
+  snapshot and never counts down on its own.
+- **Snapshots are built per viewer.** `match_snapshot` is composed once per player: everything
+  public at the top level, that player's own state under `you`. PRD §18 forbids revealing an
+  opponent's menu or prices, so private state has exactly one place to live.
+- **Gameplay systems register against the tick.** Adding one is a new file in
+  `server/src/game/systems/` plus a single line in `systems/index.js` — never an edit to
+  `match.js`. See the seam documentation at the top of `server/src/game/simulation-loop.js`.
 
 ## What is not built yet
 
-Milestone 0 covers scaffolding and replicated movement only. Unimplemented client message
-types are explicitly rejected with `not_implemented` rather than silently ignored.
+The repo covers scaffolding, replicated movement, the shared contracts, and the match
+lifecycle. There is no gameplay content yet: no customers arrive, no menu is submitted, nothing
+is cooked or scored, and `match_complete.results` is an empty object per player. Unimplemented
+client message types are explicitly rejected with `not_implemented` rather than silently
+ignored.
 
-Still to come, each as its own story: shared game data and full wire schemas; the match phase
-clock; customers; orders and the kitchen; inventory; worker AI; owner interactions; the setup
+Still to come, each as its own story: customers; orders and the kitchen; inventory; worker AI; owner interactions; the setup
 phase; the shared-district choice model; events; upgrades; scoring; the results screen; the
 HUD; the visual state language; a bot opponent; four more harnesses; and telemetry.
 

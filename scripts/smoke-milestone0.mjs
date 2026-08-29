@@ -5,14 +5,40 @@
 // Verifies: two clients in one room see each other move; the server — not the client —
 // clamps position to the restaurant bounds; and the same seed reproduces configuration.
 //
-// Usage: node src/index.js &   then   node scripts/smoke-milestone0.mjs
+// UPDATED BY STORY-003, which invalidated the assumption this script was written on: a match
+// no longer sits permanently in `service`. Three consequences, all of which made checks
+// stronger rather than weaker:
+//   * the two clients now ready up, so the match leaves `lobby` and the checks below run
+//     inside a real phase with a real countdown instead of a parked placeholder;
+//   * the determinism check also compares the seeded MARKET selection, which is what
+//     STORY-001's placeholder `marketIndex` draw could not do; and
+//   * the disconnect check now asserts the reconnect-grace behaviour — the dropped player is
+//     HELD in the match as `connected: false`, not removed — which is what STORY-003 promises
+//     and what STORY-022's reconnect UX will build on.
+// The movement and clamp checks are unchanged: `movement-system.js` registers with no phase
+// filter, so an owner walks and is clamped in every phase.
+//
+// It STARTS ITS OWN SERVER on a high port and kills exactly that child again, so it can run
+// unattended from `npm run check`. Set BASE=http://localhost:3000 to run it against a server
+// you started yourself instead, which is how it was always used before.
+//
+// Usage: node scripts/smoke-milestone0.mjs
 
 // Node 18+ ships a global browser-style WebSocket, so this script needs no dependency
 // of its own — it talks to the server exactly the way a browser client does.
 import { RESTAURANT_BOUNDS } from '../shared/constants/tuning.js';
+import { resolveBase, startServer } from './lib/server-process.mjs';
 
-const BASE = process.env.BASE ?? 'http://localhost:3000';
+const target = resolveBase(3180);
+const BASE = target.base;
 const WS = BASE.replace('http', 'ws') + '/ws';
+
+const server = await startServer(target);
+// This script's checks run at the top level rather than inside a main(), so cleanup hangs off
+// `exit` rather than a `finally`. It is the same guarantee — the handler runs on a normal
+// exit, on process.exit(), and after an uncaught rejection — and it kills only our own child,
+// never a process matched by name.
+process.on('exit', () => server.stop());
 
 const results = [];
 const check = (name, pass, detail = '') => {
@@ -54,8 +80,9 @@ const a = await mk('determinism-seed');
 const b = await mk('determinism-seed');
 const ra = await (await fetch(`${BASE}/api/rooms/${a.id}`)).json();
 const rb = await (await fetch(`${BASE}/api/rooms/${b.id}`)).json();
-check('same seed produces distinct rooms with identical seed', ra.seed === rb.seed && ra.id !== rb.id,
-  `${ra.id}/${rb.id} seed=${ra.seed}`);
+check('same seed produces distinct rooms with identical seed and market',
+  ra.seed === rb.seed && ra.id !== rb.id && ra.marketId === rb.marketId && Boolean(ra.marketId),
+  `${ra.id}/${rb.id} seed=${ra.seed} market=${ra.marketId}`);
 
 // --- two clients in one room ----------------------------------------------------
 const room = await mk('shared-room');
@@ -63,6 +90,12 @@ const p1 = await connect(room.id);
 const p2 = await connect(room.id);
 check('two clients joined the same room', p1.roomId === p2.roomId && p1.playerId !== p2.playerId,
   `${p1.playerId} + ${p2.playerId} in ${p1.roomId}`);
+
+// Ready up so the match leaves the lobby (PRD §12 room-flow step 7). Everything below then
+// runs inside `market_reveal`, which the prototype preset gives 15 seconds — far longer than
+// this script needs, and long enough that the reconnect-grace check at the end is real.
+p1.ws.send(JSON.stringify({ type: 'player_ready', ready: true }));
+p2.ws.send(JSON.stringify({ type: 'player_ready', ready: true }));
 
 await sleep(400);
 const seen = p1.snapshots.at(-1)?.players ?? [];
@@ -106,10 +139,19 @@ const rate = p1.snapshots.length - before;
 check('broadcast rate is ~10 Hz', rate >= 8 && rate <= 12, `${rate} snapshots/sec`);
 
 // --- disconnect ------------------------------------------------------------------
+// STORY-003: the dropped player is HELD for the reconnect grace period, so the snapshot must
+// show them still in the match and marked disconnected — not silently gone, and not an ended
+// match. `phase` is asserted too, because a stale `service` here would mean the phase machine
+// never ran.
 p2.ws.close();
 await sleep(400);
-const remaining = p1.snapshots.at(-1).players.filter((p) => p.connected);
-check('disconnect is reflected in the snapshot', remaining.length === 1, `connected=${remaining.length}`);
+const last = p1.snapshots.at(-1);
+const remaining = last.players.filter((p) => p.connected);
+const held = last.players.find((p) => p.playerId === p2.playerId);
+check('disconnect is reflected in the snapshot and the dropped player is held for reconnect',
+  remaining.length === 1 && held !== undefined && held.connected === false &&
+  last.matchPhase === 'market_reveal' && last.timeRemainingMs > 0,
+  `connected=${remaining.length} held=${held?.playerId} phase=${last.matchPhase} timeRemainingMs=${last.timeRemainingMs}`);
 
 p1.ws.close();
 

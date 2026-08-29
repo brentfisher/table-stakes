@@ -7,6 +7,7 @@ import type {
   PlayerSnapshot,
   RestaurantSnapshot,
 } from './game-state';
+import type { PhasePreset } from '../constants/tuning';
 
 // STORY-001 declared `PlayerSnapshot` here. STORY-002 moved the snapshot ENTITY shapes to
 // game-state.d.ts, where the rest of them live, and re-exports them so no existing import
@@ -21,6 +22,7 @@ export type {
 export type ClientMessageType =
   | 'join_room'
   | 'player_input'
+  | 'player_ready'
   | 'interact'
   | 'purchase_upgrade'
   | 'setup_submit';
@@ -38,7 +40,8 @@ export type ErrorCode =
   | 'unknown_type'
   | 'not_implemented'
   | 'room_not_found'
-  | 'invalid_payload';
+  | 'invalid_payload'
+  | 'match_full';
 
 export type MatchPhase =
   | 'lobby'
@@ -49,6 +52,9 @@ export type MatchPhase =
   | 'results';
 
 export type EventState = 'warning' | 'active' | 'ended';
+
+/** Why a match ended. `player_disconnected` means a reconnect grace period expired. */
+export type MatchEndReason = 'completed' | 'player_disconnected';
 
 export type InteractAction =
   | 'cook'
@@ -69,6 +75,7 @@ export declare const SERVER_MESSAGE_TYPES: readonly ServerMessageType[];
 export declare const IMPLEMENTED_CLIENT_MESSAGE_TYPES: readonly ClientMessageType[];
 export declare const ERROR_CODES: readonly ErrorCode[];
 export declare const MATCH_PHASES: readonly MatchPhase[];
+export declare const MATCH_END_REASONS: readonly MatchEndReason[];
 export declare const EVENT_STATES: readonly EventState[];
 export declare const INTERACT_ACTIONS: readonly InteractAction[];
 export declare const DISH_CATEGORIES: readonly DishCategory[];
@@ -82,6 +89,25 @@ export declare const MENU_ADDON_SLOTS: number;
 export interface JoinRoomMessage {
   type: 'join_room';
   roomId?: string;
+  /**
+   * Reconnect token. A client that dropped mid-match sends the `playerId` it was given by
+   * its previous `joined` message to reclaim its seat within `RECONNECT_GRACE_MS`. The MVP
+   * has no authentication, so this is trust-on-first-use and MUST become a signed session
+   * token before any public deployment — see the STORY-003 design note. The server only
+   * honours it when that player is currently DISCONNECTED and still inside its grace window.
+   */
+  playerId?: string;
+}
+
+/**
+ * Ready-up. PRD §5 "Lobby" (ready up), §12 room-flow step 7 ("once both players are ready
+ * or timer expires") and §18 setup UI ("opponent-ready status"). Readiness is public — it is
+ * the one thing about the opponent's setup that §18 says to show.
+ */
+export interface PlayerReadyMessage {
+  type: 'player_ready';
+  /** Defaults to true when omitted; `false` un-readies during `lobby` or `setup`. */
+  ready?: boolean;
 }
 
 /** PRD §12 client-to-server example 1. Intent only — the server integrates and clamps. */
@@ -129,19 +155,54 @@ export interface SetupSubmitMessage {
 export type ClientMessage =
   | JoinRoomMessage
   | PlayerInputMessage
+  | PlayerReadyMessage
   | InteractMessage
   | PurchaseUpgradeMessage
   | SetupSubmitMessage;
 
 // --- server -> client ---------------------------------------------------------------------
 
-/** Sent once on a successful `join_room`. */
+/** Sent once on a successful `join_room`, including a successful reconnect. */
 export interface JoinedMessage {
   type: 'joined';
   roomId: string;
   playerId: string;
   seed: string;
   layoutId: string;
+  /** PRD §12 room-flow step 4: the market is selected from the seed at match creation. */
+  marketId: string;
+  phasePreset: PhasePreset;
+  /** True when this `joined` reclaimed an existing seat rather than taking a new one. */
+  reconnected: boolean;
+}
+
+/**
+ * The PUBLIC half of the selected market, PRD §12 room-flow step 5: "Both clients receive
+ * identical public market data." Both players get byte-identical values.
+ *
+ * `eventPool` is deliberately absent. It is the draw pile STORY-011's seeded event deck
+ * reads from, and publishing it would hand both players the match's event timeline before
+ * the first customer arrives.
+ */
+export interface PublicMarket {
+  id: string;
+  name: string;
+  daypart: string;
+  description: string;
+  segmentWeights: Record<string, number>;
+  priceSensitivity: number;
+  baseFootTrafficPerMinute: number;
+  preferredTags: string[];
+}
+
+/**
+ * The viewer's own private slice of the snapshot. This is the privacy boundary: PRD §18
+ * forbids revealing the opponent's exact menu or prices during setup, so anything a player
+ * alone may see goes here and nowhere else. STORY-009's setup submission belongs in here.
+ */
+export interface SnapshotViewer {
+  playerId: string;
+  ready: boolean;
 }
 
 /** One entry of the snapshot's `events[]`. PRD §12 server-to-client example 1. */
@@ -152,12 +213,23 @@ export interface SnapshotEventEntry {
   endsInMs?: number;
 }
 
-/** PRD §12 server-to-client example 1. Broadcast at BROADCAST_HZ. */
+/**
+ * PRD §12 server-to-client example 1. Broadcast at BROADCAST_HZ, and BUILT PER VIEWER — two
+ * players in one match receive two different objects, identical except for `you`.
+ *
+ * `timeRemainingMs` is null only in `lobby`, which has no deadline. Within any other phase it
+ * decreases monotonically and resets at the transition. The client renders these two fields;
+ * it must never run a phase clock of its own (Milestone 0 Decision 2).
+ */
 export interface MatchSnapshotMessage {
   type: 'match_snapshot';
   serverTime: number;
   matchPhase: MatchPhase;
   timeRemainingMs: number | null;
+  /** The §12 step-5 public market data. Null during `lobby`, set from `market_reveal` on. */
+  market: PublicMarket | null;
+  /** The viewer's own private slice — see SnapshotViewer. */
+  you: SnapshotViewer | null;
   events: SnapshotEventEntry[];
   restaurants: RestaurantSnapshot[];
   customers: CustomerSnapshot[];
@@ -185,11 +257,19 @@ export interface MatchResult {
   abandonedParties: number;
 }
 
-/** PRD §12 server-to-client example 3. `winnerPlayerId` is null on a draw. */
+/**
+ * PRD §12 server-to-client example 3. `winnerPlayerId` is null on a draw — and until
+ * STORY-013 scores a match, always null. `results` follows the §12 example literally: one
+ * key per player in the match, each an empty object until STORY-013 fills it in.
+ */
 export interface MatchCompleteMessage {
   type: 'match_complete';
   winnerPlayerId: string | null;
-  results: Record<string, MatchResult>;
+  results: Record<string, MatchResult | Record<string, never>>;
+  /** STORY-003 addition — see MatchEndReason. */
+  reason: MatchEndReason;
+  /** Set only when `reason` is `player_disconnected`. */
+  disconnectedPlayerId?: string;
 }
 
 export interface ErrorMessage {

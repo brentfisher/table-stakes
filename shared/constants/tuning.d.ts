@@ -3,7 +3,8 @@ export declare const THREE_CDN_BASE: string;
 export declare const SIMULATION_TICK_HZ: number;
 export declare const BROADCAST_HZ: number;
 
-export type PhasePreset = 'full' | 'prototype';
+/** `smoke` is a script-only preset — see the note on PHASE_DURATIONS_MS in tuning.js. */
+export type PhasePreset = 'full' | 'prototype' | 'smoke';
 export type MatchPhase =
   | 'lobby'
   | 'market_reveal'
@@ -16,6 +17,8 @@ export declare const PHASE_DURATIONS_MS: Record<
   PhasePreset,
   Record<MatchPhase, number | null>
 >;
+export declare const PHASE_PRESETS: readonly PhasePreset[];
+export declare const PLAYERS_PER_MATCH: number;
 
 export interface RestaurantBounds {
   minX: number;
