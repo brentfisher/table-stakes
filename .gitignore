@@ -1,6 +1,11 @@
 node_modules/
 dist/
 build/
+# shared/build/ holds committed build-time SOURCE (the Vite plugin that keeps Three.js on the
+# pinned CDN), not build output. The bare `build/` pattern above matches at any depth and
+# silently swallowed it, leaving client/vite.config.ts and harnesses/vite.config.ts importing
+# a file that was never committed — `npm run build:client` fails on a fresh clone without this.
+!shared/build/
 *.log
 .DS_Store
 
