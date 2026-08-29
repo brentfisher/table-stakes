@@ -54,6 +54,10 @@ export const IMPLEMENTED_CLIENT_MESSAGE_TYPES = Object.freeze([
   'join_room',
   'player_input',
   'player_ready',
+  // STORY-009 added `setup_submit` in the same commit as its handler and its validator, per
+  // the note above. Appended, never re-sorted: three stories fan out from the same commit and
+  // an append-only diff to this list rebases cleanly.
+  'setup_submit',
 ]);
 
 /**
@@ -70,6 +74,12 @@ export const ERROR_CODES = Object.freeze([
   'room_not_found',
   'invalid_payload',
   'match_full',
+  // STORY-009. A setup submission can be perfectly well FORMED and still illegal — an
+  // out-of-range price, a dish this kitchen cannot cook, an allocation the player cannot
+  // afford. Decision 11 draws the line between shape and authority, so those must not come
+  // back as `invalid_payload`. The accompanying message carries `reason`, one of
+  // SETUP_REJECTION_REASONS in setup-rules.js.
+  'setup_rejected',
 ]);
 
 /**

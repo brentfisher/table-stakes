@@ -166,6 +166,34 @@ function validateSetupSubmit(message) {
       return fail('invalid_payload', `staffAssignments.${workerId} must be a non-empty string`);
     }
   }
+
+  // --- STORY-009 additions -----------------------------------------------------------------
+  // PRD §7 lists seven things the player configures during setup; §12's example shows four of
+  // them. These carry two of the rest, and are OPTIONAL so the §12 example is still a valid
+  // `setup_submit` byte for byte (scripts/check-catalogue.mjs validates that literal object).
+  // Still SHAPE only: whether the ingredient exists, whether the allocation is affordable and
+  // whether the policy target is on the menu are authority questions for setup-validator.js
+  // (Decision 11).
+  if (message.startingInventory !== undefined && message.startingInventory !== null) {
+    if (!isPlainObject(message.startingInventory)) {
+      return fail('invalid_payload', 'startingInventory must be an object keyed by ingredient id');
+    }
+    for (const [ingredientId, units] of Object.entries(message.startingInventory)) {
+      if (!isFiniteNumber(units)) {
+        return fail('invalid_payload', `startingInventory.${ingredientId} must be a number`);
+      }
+    }
+  }
+  for (const field of ['policyId', 'policyDishId']) {
+    if (
+      message[field] !== undefined &&
+      message[field] !== null &&
+      !isNonEmptyString(message[field])
+    ) {
+      return fail('invalid_payload', `${field} must be a non-empty string or null`);
+    }
+  }
+
   return ok(message);
 }
 

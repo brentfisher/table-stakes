@@ -248,3 +248,76 @@ export const CUSTOMER_SATISFACTION_WEIGHTS = Object.freeze({
 /** Below this 0-100 satisfaction score, a party storms out (LEAVE_ANGRY) instead of calmly
  * paying and reviewing. */
 export const CUSTOMER_ANGRY_SATISFACTION_THRESHOLD = 35;
+
+// ============================================================================================
+// Setup phase — PRD §7. STORY-009.
+// ============================================================================================
+
+/**
+ * Cash each player starts the match with. PRD §7 "Setup phase" lists "Starting cash" among
+ * what the player receives, but the document names no figure anywhere — §10's upgrade table
+ * is the only economy number it gives, and those cost $110-$275.
+ *
+ * 600 is chosen so the opening decision is a real trade-off rather than a formality: it buys
+ * the most expensive MVP upgrade ($275) AND a working ingredient allocation, or a cheap
+ * upgrade and a deep pantry, but not everything. Treat it as a balance dial, not a fact.
+ */
+export const STARTING_CASH = 600;
+
+/**
+ * PRD §7 "Pricing": "Players set a price for each selected menu item within a bounded range."
+ * The range is derived per dish from its own `suggestedPrice` in dishes.json, so a $5 espresso
+ * and a $34 steak get proportionate freedom rather than one shared dollar band.
+ *
+ * 0.6x-1.6x is wide enough that both a loss-leader and a gouge are expressible — the §7
+ * guidance labels have something to warn about — and narrow enough that a $2 steak or a $60
+ * espresso is simply not on the table. `shared/schemas/setup-rules.js` rounds the derived
+ * bounds to whole cents so the client's slider and the server's validator agree exactly.
+ */
+export const MENU_PRICE_BOUNDS = Object.freeze({ minMultiplier: 0.6, maxMultiplier: 1.6 });
+
+/**
+ * Thresholds behind the six PRD §7 qualitative labels. THESE NUMBERS ARE NEVER DISPLAYED:
+ * §7 is explicit that the UI shows guidance, not "exact customer utility math", and
+ * `priceGuidance()` in setup-rules.js returns label strings only — it has no numeric field
+ * for a UI to leak.
+ *
+ * The value axis compares a price to the dish's suggested price, with the deviation scaled by
+ * the market's `priceSensitivity` — so the suggested price always reads "Competitive", and it
+ * is the market that decides how far above it becomes "Likely too expensive for this market".
+ * The margin axis is the per-plate gross margin, (price - baseCost) / price.
+ */
+export const PRICE_GUIDANCE_THRESHOLDS = Object.freeze({
+  excellentValueBelow: 0.9,
+  competitiveBelow: 1.12,
+  premiumBelow: 1.45,
+  lowMarginBelow: 0.5,
+  strongMarginAbove: 0.75,
+});
+
+/**
+ * Ceiling on units of any ONE ingredient in the starting allocation. Cash is the real
+ * constraint (PRD §7 item 3, and the validator's `inventory_over_budget` rule); this only
+ * stops a submission that dumps the entire budget into salt from being technically legal.
+ *
+ * STORY-006 owns the inventory MODEL — depletion, spoilage, restock. Until it lands, the
+ * allocation is a priced bag of units: it is validated, stored on the submission, and read by
+ * nobody. See the note at the top of server/src/game/validators/setup-validator.js.
+ */
+export const STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT = 80;
+
+/**
+ * Thresholds behind the PRD §7 setup briefing's "Broad spending and patience indicators".
+ * BROAD is the operative word: the briefing tells the player that a segment spends
+ * "Comfortably" and waits "Patiently", never that its budget is 55 and its patience is 90
+ * seconds. Same rule as the price guidance — the player gets a read on the market, not the
+ * simulation's parameters. `shared/schemas/setup-rules.js` maps a segment onto these and
+ * returns a label; the numbers stay here.
+ */
+export const BRIEFING_INDICATOR_THRESHOLDS = Object.freeze({
+  spendModestBelow: 20,
+  spendModerateBelow: 28,
+  spendComfortableBelow: 45,
+  patienceHurriedBelow: 60,
+  patienceAverageBelow: 82,
+});

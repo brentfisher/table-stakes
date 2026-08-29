@@ -8,6 +8,7 @@ import type {
   RestaurantSnapshot,
 } from './game-state';
 import type { PhasePreset } from '../constants/tuning';
+import type { AcceptedSetup } from './setup-rules';
 
 // STORY-001 declared `PlayerSnapshot` here. STORY-002 moved the snapshot ENTITY shapes to
 // game-state.d.ts, where the rest of them live, and re-exports them so no existing import
@@ -41,7 +42,9 @@ export type ErrorCode =
   | 'not_implemented'
   | 'room_not_found'
   | 'invalid_payload'
-  | 'match_full';
+  | 'match_full'
+  /** STORY-009: well-formed but illegal setup submission. Carries `reason`. */
+  | 'setup_rejected';
 
 export type MatchPhase =
   | 'lobby'
@@ -150,6 +153,18 @@ export interface SetupSubmitMessage {
   addons: MenuSelection[];
   startingUpgradeId?: string | null;
   staffAssignments: Record<string, string>;
+
+  // --- STORY-009 additions ----------------------------------------------------------------
+  // PRD §7 lists seven things the player configures during setup; §12's example shows four of
+  // them. These carry the rest. All three are OPTIONAL, so the §12 example remains a valid
+  // `setup_submit` byte for byte — design Decision 7's "widen, never rename".
+
+  /** PRD §7 item 3, "Starting inventory allocation": units keyed by ingredient id. */
+  startingInventory?: Record<string, number>;
+  /** PRD §7 item 7, "Optional restaurant policy/perk": an id in policies.json, or null. */
+  policyId?: string | null;
+  /** Required only by a policy whose `requiresMenuDish` is true (House Special). */
+  policyDishId?: string | null;
 }
 
 export type ClientMessage =
@@ -189,6 +204,8 @@ export interface PublicMarket {
   name: string;
   daypart: string;
   description: string;
+  /** PRD §7 "Nearby business/event anchors" — briefing prose, read by no system. */
+  anchors: string[];
   segmentWeights: Record<string, number>;
   priceSensitivity: number;
   baseFootTrafficPerMinute: number;
@@ -203,6 +220,12 @@ export interface PublicMarket {
 export interface SnapshotViewer {
   playerId: string;
   ready: boolean;
+  /**
+   * STORY-009. The viewer's own accepted setup submission, or null before they submit. This
+   * is the field PRD §18's "do not reveal the opponent's exact menu or prices" is about: it
+   * exists ONLY here, and `players[]` carries nothing that could reconstruct it.
+   */
+  setup: AcceptedSetup | null;
 }
 
 /** One entry of the snapshot's `events[]`. PRD §12 server-to-client example 1. */
@@ -279,6 +302,8 @@ export interface ErrorMessage {
   error: ErrorCode;
   receivedType?: string;
   detail?: string;
+  /** Set when `error` is `setup_rejected`: one of SETUP_REJECTION_REASONS in setup-rules. */
+  reason?: string;
 }
 
 export type ServerMessage =

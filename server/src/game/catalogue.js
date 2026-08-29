@@ -45,6 +45,9 @@ export function publicMarket(market) {
     name: market.name,
     daypart: market.daypart,
     description: market.description,
+    // PRD §7's setup briefing lists "Nearby business/event anchors" among what the player
+    // receives. Prose, read by no system — and public, like the rest of the §12 step-5 data.
+    anchors: [...(market.anchors ?? [])],
     segmentWeights: { ...market.segmentWeights },
     priceSensitivity: market.priceSensitivity,
     baseFootTrafficPerMinute: market.baseFootTrafficPerMinute,

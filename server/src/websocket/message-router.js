@@ -1,18 +1,24 @@
 // Dispatches inbound JSON messages on their `type` field. PRD §12: JSON initially, for
 // speed of development and debuggability.
 //
-// SCOPE: `join_room`, `player_input` and (STORY-003) `player_ready` are implemented. Every
-// other declared client message type is rejected with `not_implemented` until its story lands
-// — design Decision 7: an unimplemented type must never be silently ignored.
+// SCOPE: `join_room`, `player_input`, (STORY-003) `player_ready` and (STORY-009)
+// `setup_submit` are implemented. Every other declared client message type is rejected with
+// `not_implemented` until its story lands — design Decision 7: an unimplemented type must
+// never be silently ignored.
 //
-// This router still does its own light coercion rather than calling
-// `shared/schemas/validation.js`. That module is wired in by the story that needs payload-level
-// rejection (`interact`, `setup_submit`); doing it here as a side effect of the phase clock
-// would change how every existing message is rejected without a story asking for it.
+// STORY-003 left a note here saying `shared/schemas/validation.js` would be wired in by the
+// story that needs payload-level rejection, naming `setup_submit`. This is that story, and it
+// is wired in FOR `setup_submit` ONLY. `join_room` and `player_input` keep the light coercion
+// they already had: changing how an existing message is rejected is a behaviour change no
+// story asked for, and `smoke-milestone0.mjs` pins some of it. A setup submission is different
+// — it is a structured payload with ten fields, and hand-rolling its shape check next to a
+// module that already does it is how the two drift apart.
 
 import { CLIENT_MESSAGE_TYPES, IMPLEMENTED_CLIENT_MESSAGE_TYPES } from '../../../shared/schemas/messages.js';
+import { validateClientMessage } from '../../../shared/schemas/validation.js';
 import * as connections from './connection-manager.js';
 import * as matchManager from '../game/match-manager.js';
+import { acceptSetupSubmission } from '../game/validators/setup-validator.js';
 
 export function routeMessage(ws, raw) {
   let message;
@@ -46,6 +52,8 @@ export function routeMessage(ws, raw) {
       return handlePlayerInput(record, message);
     case 'player_ready':
       return handlePlayerReady(record, message);
+    case 'setup_submit':
+      return handleSetupSubmit(ws, record, message);
     default:
       return undefined;
   }
@@ -86,6 +94,52 @@ function handleJoinRoom(ws, record, message) {
   console.log(
     `[ws] ${result.player.playerId} ${result.reconnected ? 'reconnected to' : 'joined'} ` +
       `${room.id} (${room.match.players.size}/${room.match.requiredPlayers} in match, phase=${room.match.phase})`,
+  );
+}
+
+/**
+ * PRD §12 client-to-server example 4, PRD §7 "Setup phase".
+ *
+ * Two gates, in this order and for this reason (Decision 11): `validation.js` answers "is this
+ * a well-formed setup_submit" and a failure is `invalid_payload`; `setup-validator.js` answers
+ * "is this menu legal for this catalogue, this layout and this player's cash" and a failure is
+ * `setup_rejected` with a `reason`. Collapsing them would report a $99 burger as a malformed
+ * message, which tells the player nothing.
+ *
+ * A rejection mutates no match state — see setup-validator.js.
+ */
+function handleSetupSubmit(ws, record, message) {
+  if (!record.roomId) return;
+  const room = matchManager.getRoom(record.roomId);
+  if (!room) {
+    connections.send(ws, { type: 'error', error: 'room_not_found', roomId: record.roomId });
+    return;
+  }
+
+  const shape = validateClientMessage(message);
+  if (!shape.ok) {
+    connections.send(ws, { type: 'error', error: shape.error, detail: shape.detail });
+    console.log(`[ws] ${record.playerId} setup_submit malformed: ${shape.detail}`);
+    return;
+  }
+
+  const result = acceptSetupSubmission(room.match, record.playerId, message);
+  if (!result.ok) {
+    connections.send(ws, {
+      type: 'error',
+      error: 'setup_rejected',
+      reason: result.reason,
+      detail: result.detail,
+    });
+    console.log(`[ws] ${record.playerId} setup_submit rejected: ${result.reason} — ${result.detail}`);
+    return;
+  }
+
+  // The acceptance is not announced with a message of its own: the very next snapshot carries
+  // it under `you.setup`, and readiness under `you.ready`. One authoritative channel.
+  console.log(
+    `[ws] ${record.playerId} setup accepted in ${room.id}: ` +
+      `${result.submission.menu.map((slot) => `${slot.dishId}@${slot.price}`).join(', ')}`,
   );
 }
 

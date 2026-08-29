@@ -35,5 +35,33 @@
   "spawn": {
     "owner": [0, 0, -3],
     "customerEntry": [-7, 0, -11]
+  },
+  "staff": {
+    "_comment": "PRD §7 'Staffing setup' — the initial worker roster and the posts setup_submit's `staffAssignments` may name. §7's first playable version is '1 cook, 1 server, 1 owner-player', so the roster is two hired workers; the owner is the player and is never assigned a post. `posts` is the closed vocabulary of assignable positions: the four kitchen stations (each pointing at the station entity above) plus the three front-of-house posts. `dining_room` is spelled exactly as PRD §12's `setup_submit` example spells it, which is why the post id and the zone id differ. Worker roles come from WORKER_ROLES in shared/schemas/game-state.js; `prep_worker` and `host` are declared there but not rostered for MVP, per §7 ('Optional for MVP; may be abstracted initially').",
+    "posts": [
+      { "id": "prep", "label": "Prep Station", "station": "prep", "entityId": "station_prep" },
+      { "id": "grill", "label": "Grill", "station": "grill", "entityId": "station_grill" },
+      { "id": "oven", "label": "Oven", "station": "oven", "entityId": "station_oven" },
+      { "id": "plating", "label": "Plating Pass", "station": "plating", "entityId": "station_plating" },
+      { "id": "dining_room", "label": "Dining Room", "zoneId": "dining" },
+      { "id": "pass", "label": "Service Pass", "zoneId": "pass", "entityId": "service_pass" },
+      { "id": "host_stand", "label": "Host Stand", "entityId": "host_stand" }
+    ],
+    "roster": [
+      {
+        "id": "cook_1",
+        "name": "Cook",
+        "role": "cook",
+        "description": "Prepares dishes at kitchen stations. Can create a prep backlog.",
+        "posts": ["prep", "grill", "oven", "plating"]
+      },
+      {
+        "id": "server_1",
+        "name": "Server",
+        "role": "server",
+        "description": "Seats, takes orders, delivers food, clears tables. Can be overwhelmed by a large dining room.",
+        "posts": ["dining_room", "pass", "host_stand"]
+      }
+    ]
   }
 }

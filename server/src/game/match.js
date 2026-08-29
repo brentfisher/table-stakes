@@ -183,6 +183,12 @@ export class Match {
       lastSequence: 0,
       connected: true,
       ready: false,
+      /**
+       * STORY-009's accepted `setup_submit`, or null until they submit. PRIVATE — it is only
+       * ever serialized into this player's OWN `you` slice (Decision 16), never into
+       * `players[]`, which is the half of the snapshot the opponent also receives.
+       */
+      setup: null,
       disconnectedAtMs: null,
       input: { x: 0, z: 0, sprint: false },
     };
@@ -420,7 +426,11 @@ export class Match {
       matchPhase: this.phase,
       timeRemainingMs: this.timeRemainingMs,
       market: this.marketRevealed ? publicMarket(this.market) : null,
-      you: viewer ? { playerId: viewer.playerId, ready: viewer.ready } : null,
+      // `setup` is here and NOWHERE else: PRD §18 forbids revealing the opponent's exact menu
+      // or prices during setup, and `you` is the only key that differs per viewer.
+      you: viewer
+        ? { playerId: viewer.playerId, ready: viewer.ready, setup: viewer.setup ?? null }
+        : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already
       // public-shaped array to `match.<name>` during its tick; this method only serializes
       // whatever is there, defaulting to `[]` before any such system has run. That default is
