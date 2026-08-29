@@ -675,10 +675,28 @@ registerSystem(eventSystem);
       [...timelineIds].every((id) => forecast.some((f) => f.eventId === id)),
     `${forecast.length} distinct events: ${forecast.map((f) => `${f.eventId}x${f.occurrences}`).join(' ')}`,
   );
+  // Sorted by id is the mechanism; the PROPERTY is that the order carries no schedule. Swept
+  // across every market and seed: if the forecast were emitted in timeline order this counts
+  // zero disagreements and fails, and it also fails if the sort were dropped.
+  let disagreements = 0;
+  let sweptOrdered = 0;
+  let swept = 0;
+  for (const market of catalogue.markets) {
+    for (const seed of SEEDS) {
+      const timeline = timelineFor(market, seed, 'full');
+      if (timeline.entries.length < 2) continue;
+      const f = buildEventForecast(timeline);
+      const ids = f.map((x) => x.eventId);
+      swept += 1;
+      if (JSON.stringify(ids) === JSON.stringify([...ids].sort())) sweptOrdered += 1;
+      if (ids[0] !== timeline.entries[0].eventId) disagreements += 1;
+    }
+  }
   check(
     'the forecast is ordered by event id, so its ORDER does not leak the schedule either',
-    sortedById && forecast.length > 1,
-    `first forecast entry "${forecast[0]?.eventId}", first to fire "${firstFiring}"`,
+    sortedById && swept > 0 && sweptOrdered === swept && disagreements > 0,
+    `${sweptOrdered}/${swept} forecasts sorted by id; the first listed event differs from the ` +
+      `first to fire in ${disagreements} of them`,
   );
 
   // And the forecast is deterministic and identical for both players, like everything else.
