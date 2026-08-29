@@ -1,0 +1,43 @@
+# Run the Rival Restaurant backend on a machine elsewhere on your network.
+#
+#   docker compose up -d --build
+#
+# Then reach it from any machine on the LAN at http://<that-host>:3000 — the built client is
+# served from the same origin, so the WebSocket connects back to the same host automatically
+# with no client configuration.
+#
+# Override the published port without editing this file:
+#   HOST_PORT=8080 docker compose up -d
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: table-stakes-server:latest
+    container_name: table-stakes-server
+    restart: unless-stopped
+    ports:
+      # host:container — change HOST_PORT if 3000 is taken on that machine.
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # Match state is in-memory for MVP (PRD §13), so there is no volume to persist — a
+    # restart drops every open room by design. Add a volume here only when a story
+    # introduces real persistence.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,80 @@
+/* Plain CSS. PRD §13: avoid introducing a large UI system early. */
+:root {
+  color-scheme: dark;
+  --bg: #14181d;
+  --panel: rgba(20, 24, 29, 0.86);
+  --border: #2c343d;
+  --text: #e8edf2;
+  --muted: #9aa7b4;
+  --ok: #7ac74f;
+  --warn: #d9a74a;
+  --bad: #c75f5f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.app { position: relative; width: 100vw; height: 100vh; }
+.scene { position: absolute; inset: 0; }
+
+.hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 10px 14px;
+  min-width: 232px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.hud h1 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.hud dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+.hud dt { color: var(--muted); }
+.hud dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.status-open { color: var(--ok); }
+.status-connecting { color: var(--warn); }
+.status-closed { color: var(--bad); }
+
+.help {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.help kbd {
+  background: #232b33;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+  font: inherit;
+}
+
+.scope-note {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  max-width: 280px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  pointer-events: none;
+}

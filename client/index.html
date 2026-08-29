@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rival Restaurant</title>
+
+    <!--
+      PRD §13 "Three.js loading": a PINNED import map, never an unversioned "latest" URL.
+      Both `three` and `three/addons/` must resolve to the SAME version on the SAME CDN —
+      mixing versions or CDNs breaks addon compatibility.
+
+      The version here is verified against shared/constants/tuning.js (THREE_VERSION) by
+      `node scripts/check-threejs-pin.mjs`. Change it in tuning.js, then run that script.
+      three-pin: 0.180.0
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+// Server entry point. PRD §13: a vanilla Express JavaScript app that serves the built
+// client and the HTTP API, with `ws` attached to the same HTTP server for game traffic.
+
+import express from 'express';
+import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+import { healthRouter } from './http/health.js';
+import { apiRouter } from './http/routes.js';
+import { attachSocketServer } from './websocket/socket-server.js';
+import { broadcast } from './websocket/connection-manager.js';
+import { startSimulationLoop } from './game/simulation-loop.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT ?? 3000);
+
+const app = express();
+app.use(express.json());
+
+app.use(healthRouter());
+app.use('/api', apiRouter());
+
+// Serve the built client. `npm run build:client` writes here.
+app.use(express.static(join(here, '../public/client-build')));
+
+const httpServer = createServer(app);
+attachSocketServer(httpServer);
+startSimulationLoop({ broadcast });
+
+httpServer.listen(PORT, () => {
+  console.log(`[http] listening on http://localhost:${PORT}`);
+});
+
+export { app, httpServer };

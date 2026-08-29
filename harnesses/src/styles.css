@@ -1,0 +1,53 @@
+:root {
+  color-scheme: dark;
+  --bg: #14181d;
+  --panel: #1a1f25;
+  --border: #2c343d;
+  --text: #e8edf2;
+  --muted: #9aa7b4;
+  --accent: #7fd4ff;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+.harness-shell { display: grid; grid-template-columns: 244px 1fr; height: 100vh; }
+
+.harness-sidebar {
+  padding: 16px 14px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.harness-sidebar h1 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.04em; }
+.harness-sidebar button {
+  display: block; width: 100%; margin: 4px 0; padding: 8px 10px; text-align: left;
+  background: #232b33; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; font: inherit;
+}
+.harness-sidebar button:hover { border-color: var(--accent); }
+.harness-sidebar button.active { border-color: var(--accent); color: var(--accent); }
+.muted { color: var(--muted); font-size: 12px; }
+.harness-description { margin-top: 12px; }
+
+.harness-stage { position: relative; display: grid; grid-template-columns: 1fr 260px; min-width: 0; }
+.harness-viewport { position: relative; min-width: 0; }
+.harness-viewport canvas { display: block; width: 100%; height: 100%; }
+
+.dev-controls {
+  padding: 14px 12px; background: var(--panel);
+  border-left: 1px solid var(--border); overflow-y: auto;
+}
+.dev-controls h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted); }
+.dev-controls .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.dev-controls .row.column { flex-direction: column; align-items: stretch; gap: 2px; }
+.dev-controls .row.column span { color: var(--muted); font-size: 12px; }
+.dev-controls input[type="range"] { width: 100%; }
+.dev-controls button {
+  width: 100%; margin-top: 8px; padding: 7px 10px; background: #232b33; color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: inherit;
+}
+.dev-controls button:hover { border-color: var(--accent); }
