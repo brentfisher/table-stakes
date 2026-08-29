@@ -89,6 +89,7 @@ scripts and by the dev harnesses.
 npm run check:three        # Three.js pin/bundle rules — see below
 npm run check:data         # game-data catalogue integrity and wire-schema shapes
 npm run check:lifecycle    # match phases, the clock, reconnect grace, the system seam
+npm run check:events       # the seeded event deck: one timeline for both players, §9 cadence
 npm run check:milestone0   # end-to-end over sockets: movement, clamping, replication
 npm run check:phases       # end-to-end over sockets: the whole PRD §5 match lifecycle
 npm run check              # all of the above, plus both builds

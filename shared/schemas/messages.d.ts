@@ -231,6 +231,8 @@ export interface MatchSnapshotMessage {
   /** The viewer's own private slice — see SnapshotViewer. */
   you: SnapshotViewer | null;
   events: SnapshotEventEntry[];
+  /** PRD §7 "Initial event forecast, if any" — see SnapshotEventForecastEntry. */
+  eventForecast: SnapshotEventForecastEntry[];
   restaurants: RestaurantSnapshot[];
   customers: CustomerSnapshot[];
   orders: OrderSnapshot[];
@@ -285,3 +287,24 @@ export type ServerMessage =
   | EventAnnounceMessage
   | MatchCompleteMessage
   | ErrorMessage;
+
+/**
+ * One entry of the snapshot's `eventForecast[]` — PRD §7's "Initial event forecast, if any",
+ * built by STORY-011 from the match's seeded timeline and public from `market_reveal` on.
+ *
+ * Carries no time at which anything fires, deliberately. PRD §9 lists "event forecasting in
+ * setup" as a reason to seed the deck, so the player is meant to plan for what this district
+ * can do; handing over the schedule would make setup a lookup instead of a bet. The array is
+ * ordered by `eventId`, NOT by firing order, so the ordering leaks nothing either.
+ */
+export interface SnapshotEventForecastEntry {
+  eventId: string;
+  title: string;
+  description: string;
+  /** How long the event lasts once it fires. Not when it fires. */
+  durationMs: number;
+  /** How many times it appears in this match's timeline. */
+  occurrences: number;
+  /** True when the event has a non-zero `warningMs` and will therefore be teased in advance. */
+  telegraphed: boolean;
+}

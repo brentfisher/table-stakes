@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "description": "Rival Restaurant — real-time 1v1 competitive restaurant-management game.",
+  "description": "Rival Restaurant \u2014 real-time 1v1 competitive restaurant-management game.",
   "scripts": {
     "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix harnesses install",
     "dev:server": "npm --prefix server run dev",
@@ -17,6 +17,7 @@
     "check:lifecycle": "node scripts/check-match-lifecycle.mjs",
     "check:milestone0": "node scripts/smoke-milestone0.mjs",
     "check:phases": "node scripts/smoke-phases.mjs",
-    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
+    "check:events": "node scripts/check-events.mjs",
+    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:events && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
   }
 }
