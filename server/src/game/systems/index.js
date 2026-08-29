@@ -20,10 +20,11 @@
 import { registerSystem } from '../simulation-loop.js';
 import { movementSystem } from './movement-system.js';
 import { eventSystem } from './event-system.js';
+import { customerSystem } from './customer-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
-  // STORY-004: registerSystem(customerSystem);
+  registerSystem(customerSystem);
   // STORY-005: registerSystem(orderSystem);
   registerSystem(eventSystem);
   // STORY-013: registerSystem(scoringSystem);

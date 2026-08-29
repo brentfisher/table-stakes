@@ -144,3 +144,107 @@ export const EVENT_TEASER_LEAD_BOUNDS_MS = Object.freeze({ min: 10_000, max: 20_
  * `SEGMENT_WEIGHT_TOLERANCE` in `loader.js`; comparing the multipliers themselves is exact.
  */
 export const EVENT_DEMAND_SHIFT_BAND = Object.freeze({ min: 1.15, max: 1.4 });
+// ============================================================================================
+// Customer lifecycle — PRD §6, §8, §17. STORY-004.
+// ============================================================================================
+
+/** The named RNG sub-stream (Decision 18) the customer system draws from. */
+export const CUSTOMER_RNG_STREAM = 'customers';
+
+/** Ms spent in each brief "deciding" state before its outcome resolves. Kept short but
+ * non-zero so the state is actually observable in a sampled snapshot, not skipped in one tick. */
+export const CUSTOMER_ENTER_DISTRICT_MS = 400;
+export const CUSTOMER_EVALUATE_RESTAURANTS_MS = 600;
+
+/** Seated but not yet ordering — greeted, handed a menu. */
+export const CUSTOMER_SEATED_GREET_MS = 1_000;
+/** Deciding on and placing an order. STORY-005 may replace this with real menu-browsing time. */
+export const CUSTOMER_ORDERING_MS = 6_000;
+/** STORY-005 will replace this synthetic kitchen wait with the real order-ticket duration once
+ * the kitchen exists; until then it stands in for "food is being prepared". Calibrated (see
+ * scripts/check-customer-lifecycle.mjs's balance run) so a table's average full occupancy —
+ * greet + order + food wait + eating + paying, about 35s — lets six tables turn over enough in
+ * one PRD §5 6-minute service window to land in the §24 "40-90 parties per restaurant" range
+ * without abandonment dominating the outcome. */
+export const CUSTOMER_FOOD_WAIT_MS_RANGE = [8_000, 18_000];
+/** How long a party spends eating once food arrives. */
+export const CUSTOMER_EATING_MS_RANGE = [8_000, 16_000];
+export const CUSTOMER_PAYING_MS = 3_000;
+/** Walking out, after which the party enters REVIEW (Decision 13: one step, not two). */
+export const CUSTOMER_LEAVING_MS = 1_500;
+
+/** How long an exited/reviewed party lingers in match_snapshot.customers before removal, so the
+ * HUD (and this story's own checks) can observe the outcome rather than it vanishing same-tick. */
+export const CUSTOMER_EXIT_LINGER_MS = 2_000;
+
+/** Safety bound on spawns processed in one tick, in case a very large dtMs (a paused tab, a
+ * fast-forwarding script) would otherwise let the Poisson catch-up loop run unbounded. */
+export const CUSTOMER_MAX_SPAWNS_PER_TICK = 200;
+
+/**
+ * PRD §6 "Each customer or party receives a hidden preference profile" — per PARTY, not per
+ * segment. Without jitter, a public `segmentId` plus the client's own `customer-segments.json`
+ * import (Decision 10: the browser gets the same catalogue files) would let the client
+ * reconstruct the exact hidden `budget`/`patienceSeconds` anyway. Applied only to the two
+ * numeric fields that vary meaningfully per party; `preferredTags`/`dislikedTags` and the four
+ * choice weights stay archetype-level until a story gives them a reason to vary individually.
+ */
+export const CUSTOMER_PROFILE_JITTER = 0.15; // +/- 15%
+
+/**
+ * The EVALUATE_RESTAURANTS placeholder (PRD §6 "Restaurant choice model" / §17 steps 3-5),
+ * implemented against a SINGLE restaurant. STORY-010 replaces the function that reads these —
+ * `resolveEvaluateRestaurants` in customer-system.js — with a real two-restaurant probabilistic
+ * comparison. Until then, a flat probability stands in for "a real rival existed and won" so
+ * CHOOSE_RIVAL stays reachable and exercised even with nothing to compare against, and queue
+ * pressure — the one signal that IS real even with one restaurant (§6 "Actual queue length") —
+ * drives LEAVE_DISTRICT.
+ */
+export const CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY = 0.08;
+/** queued parties / total seats, above which a party may decide the wait isn't worth it. */
+export const CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD = 1.5;
+export const CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY = 0.5;
+
+/**
+ * Share of a party's OWN `patienceSeconds` budget (Decision: satisfaction uses the party's own
+ * profile, PRD §8's "against the party's own patience profile") charged against each wait
+ * factor when scoring how good/bad that wait felt. Not the abandonment threshold — patience
+ * hitting zero is what causes ABANDON_QUEUE/CANCEL_ORDER; this is a separate, continuous
+ * satisfaction input.
+ */
+export const CUSTOMER_WAIT_TOLERANCE_SHARE = Object.freeze({
+  seating: 0.4,
+  ordering: 0.25,
+  food: 0.5,
+});
+
+/** Total visit duration is judged against this multiple of the party's raw patience budget,
+ * since a full visit (seating + ordering + food + eating + paying) naturally runs longer than
+ * the wait-only patience allotment. */
+export const CUSTOMER_VISIT_DURATION_TOLERANCE_MULTIPLIER = 2.5;
+
+/**
+ * PRD §8's satisfaction factor list. Every key is declared now so a later story widens an
+ * existing weighted term instead of restructuring the formula — see the seam comment on
+ * `computeSatisfactionFactors` in customer-system.js for which story supplies which factor.
+ * `combineSatisfaction` renormalizes over only the factors that currently return a real (non-
+ * null) value, so the sum below need not equal 1 today; it is written as if it did so the
+ * relative emphasis is legible, and stays exactly this once every factor is wired up.
+ */
+export const CUSTOMER_SATISFACTION_WEIGHTS = Object.freeze({
+  waitToBeSeated: 0.15,
+  waitToOrder: 0.05,
+  waitForFood: 0.2,
+  dishQuality: 0.15,
+  dishPreferenceMatch: 0.1,
+  priceFairness: 0.1,
+  orderAccuracy: 0.05,
+  tableCleanliness: 0.05,
+  eventRelevance: 0.05,
+  recoveryActions: 0.05,
+  visitDurationVsPatience: 0.05,
+});
+
+/** Below this 0-100 satisfaction score, a party storms out (LEAVE_ANGRY) instead of calmly
+ * paying and reviewing. */
+export const CUSTOMER_ANGRY_SATISFACTION_THRESHOLD = 35;
