@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameClient, type GameClientStatus } from '../game/GameClient';
 import { HudPanel } from '../ui/HudPanel';
+import { SetupScreen } from '../ui/SetupScreen';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -34,10 +35,21 @@ export function App(): JSX.Element {
     <div className="app">
       <div className="scene" ref={sceneRef} />
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
+      {/*
+        PRD §18's setup screen is a full-bleed overlay, mounted only during `setup`. It is
+        React UI over a live Three.js canvas — it never reconciles a scene entity, which is
+        what PRD §13 and Milestone 0 Decision 5 ask for.
+      */}
+      {status?.matchPhase === 'setup' ? (
+        <SetupScreen
+          status={status}
+          onSubmit={(payload) => clientRef.current?.submitSetup(payload)}
+        />
+      ) : null}
       <div className="scope-note">
         <strong>Match lifecycle</strong> — the PRD §5 phase clock runs on the server; both
-        owners ready up to leave the lobby. Customers, orders, menus, events, money and scoring
-        each land in a later story.
+        owners ready up to leave the lobby, then build a menu during setup. Customers, orders,
+        events, money and scoring each land in a later story.
       </div>
       <div className="help">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}

@@ -11,6 +11,18 @@ import type {
   MatchPhase,
   PublicMarket,
 } from '../../../shared/schemas/messages';
+import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
+
+/** What the §18 setup screen sends. PRD §12 client-to-server example 4, plus §7's extras. */
+export interface SetupSubmitPayload {
+  menu: Array<{ dishId: string; price: number }>;
+  addons: Array<{ dishId: string; price: number }>;
+  startingUpgradeId: string | null;
+  staffAssignments: Record<string, string>;
+  startingInventory: Record<string, number>;
+  policyId: string | null;
+  policyDishId: string | null;
+}
 
 /**
  * Everything the React HUD renders. `matchPhase` and `timeRemainingMs` are copied straight
@@ -30,6 +42,16 @@ export interface GameClientStatus {
   timeRemainingMs: number | null;
   market: PublicMarket | null;
   ready: boolean;
+  /**
+   * The viewer's OWN accepted setup submission, straight out of `you.setup`. There is no
+   * opponent equivalent and there must never be one: PRD §18 forbids revealing the rival's
+   * menu or prices during setup, and the server simply does not send them (Decision 16).
+   */
+  setup: AcceptedSetup | null;
+  /** PRD §18 "opponent-ready status" — the one public fact about the rival's setup. */
+  opponentReady: boolean;
+  /** The last `setup_rejected` the server sent, cleared on the next accepted submission. */
+  setupRejection: { reason: string; detail: string } | null;
   /** Set once `match_complete` arrives; the match is over. */
   endReason: MatchEndReason | null;
 }
@@ -55,6 +77,9 @@ export class GameClient {
     timeRemainingMs: null,
     market: null,
     ready: false,
+    setup: null,
+    opponentReady: false,
+    setupRejection: null,
     endReason: null,
   };
 
@@ -104,7 +129,8 @@ export class GameClient {
     if (message.type === 'match_snapshot') {
       const players = (message.players ?? []) as PlayerState[];
       this.interpolator.push(players);
-      const you = message.you as { ready?: boolean } | null;
+      const you = message.you as { ready?: boolean; setup?: AcceptedSetup | null } | null;
+      const opponent = players.find((p) => p.playerId !== this.status.playerId);
       this.patchStatus({
         playerCount: players.length,
         serverTime: Number(message.serverTime ?? 0),
@@ -114,6 +140,11 @@ export class GameClient {
           typeof message.timeRemainingMs === 'number' ? message.timeRemainingMs : null,
         market: (message.market ?? null) as PublicMarket | null,
         ready: Boolean(you?.ready),
+        setup: you?.setup ?? null,
+        opponentReady: Boolean((opponent as { ready?: boolean } | undefined)?.ready),
+        // An accepted submission clears the last rejection: the snapshot IS the acceptance
+        // receipt, so there is no second message to wait for.
+        ...(you?.setup ? { setupRejection: null } : {}),
       });
       return;
     }
@@ -122,6 +153,14 @@ export class GameClient {
       return;
     }
     if (message.type === 'error') {
+      if (message.error === 'setup_rejected') {
+        this.patchStatus({
+          setupRejection: {
+            reason: String(message.reason ?? 'unknown'),
+            detail: String(message.detail ?? ''),
+          },
+        });
+      }
       console.warn('[net] server error', message);
     }
   }
@@ -129,6 +168,16 @@ export class GameClient {
   /** PRD §12 room-flow step 7 / §5 "ready up". Accepted by the server in lobby and setup. */
   setReady(ready = true): void {
     this.network.sendReady(ready);
+  }
+
+  /**
+   * PRD §7 / §12 `setup_submit`. Sent as intent like everything else: the client's own checks
+   * are UX, and `setup-validator.js` decides. Acceptance shows up as `you.setup` in the next
+   * snapshot; refusal as a `setup_rejected` error carrying the reason.
+   */
+  submitSetup(payload: SetupSubmitPayload): void {
+    this.patchStatus({ setupRejection: null });
+    this.network.sendSetupSubmit(payload as unknown as Record<string, unknown>);
   }
 
   private handleFrame(dt: number): void {

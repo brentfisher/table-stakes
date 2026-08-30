@@ -65,6 +65,16 @@ export class NetworkClient {
     this.send({ type: 'player_ready', ready });
   }
 
+  /**
+   * PRD §12 client-to-server example 4. Note there is no `sequence`: this is a one-shot phase
+   * submission, not a per-tick intent. The server answers either with the next snapshot
+   * (carrying the accepted menu under `you.setup`) or with an `error` whose `error` is
+   * `setup_rejected` and whose `reason` names which rule was broken.
+   */
+  sendSetupSubmit(payload: Record<string, unknown>): void {
+    this.send({ type: 'setup_submit', ...payload });
+  }
+
   disconnect(): void {
     this.socket?.close();
     this.socket = null;

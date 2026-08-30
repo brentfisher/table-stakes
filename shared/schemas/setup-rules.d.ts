@@ -42,6 +42,7 @@ export interface LayoutWorker {
   id: string;
   name: string;
   role: string;
+  description: string;
   posts: string[];
 }
 
