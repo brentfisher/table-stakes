@@ -18,6 +18,10 @@
 //
 // Run: node scripts/check-setup-phase.mjs
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { resolveBase, startServer } from './lib/server-process.mjs';
 import { Match } from '../server/src/game/match.js';
 import { clearSystems, registerSystem, stepMatch } from '../server/src/game/simulation-loop.js';
@@ -398,6 +402,63 @@ check(
   );
 }
 
+// --- 6b. the §18 screen itself cannot render the simulation's math ---------------------------
+// A static guard on the one file that renders price feedback. `priceGuidance` already has no
+// numeric field to leak, but the component could still reach past it into the catalogue for a
+// segment's budget or a dish's market affinity and put a simulation parameter on screen. The
+// §7 rule is about what the player SEES, so this asserts on the source of what draws it.
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  const raw = readFileSync(join(here, '../client/src/ui/SetupScreen.tsx'), 'utf8');
+  // Comments explain the rule and quote it; only executable source can break it.
+  const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  // Terms with no legitimate use in a UI at all. `segmentWeights` is deliberately NOT here:
+  // PRD §5's market reveal is explicitly a "customer segment forecast", both players receive
+  // it identically, and the screen renders it as a share.
+  const forbidden = [
+    'PRICE_GUIDANCE_THRESHOLDS',
+    'BRIEFING_INDICATOR_THRESHOLDS',
+    'priceSensitivity',
+    'marketAffinity',
+    'baseSatisfaction',
+    'serviceSpeedWeight',
+    'priceWeight',
+    'menuFitWeight',
+    'reputationWeight',
+    'conversion',
+    'projectedWait',
+    'utility',
+  ];
+  const leaked = forbidden.filter((term) => source.includes(term));
+  check(
+    'the §18 setup screen references no utility term, weight, threshold or projected wait',
+    leaked.length === 0,
+    leaked.length === 0 ? `${forbidden.length} forbidden terms, none present` : `USES: ${leaked.join(', ')}`,
+  );
+
+  // `budget` and `patienceSeconds` ARE the numbers §7 says to show only as broad indicators.
+  // They may appear in the type the JSON is cast to — `segmentForecast` needs them to derive
+  // its labels — but every occurrence must be a bare field declaration, never a read.
+  const rawFieldUses = source
+    .split('\n')
+    .filter((line) => /\bbudget\b|\bpatienceSeconds\b/.test(line))
+    .filter((line) => !/^\s*(budget|patienceSeconds): number;\s*$/.test(line));
+  check(
+    'a segment’s budget and patience appear only as a type field, never read or rendered',
+    rawFieldUses.length === 0,
+    rawFieldUses.length === 0
+      ? 'the screen shows spendingIndicator/patienceIndicator labels instead'
+      : `READ AT: ${rawFieldUses.map((l) => l.trim()).join(' | ')}`,
+  );
+
+  check(
+    'the screen renders price feedback only through priceGuidance’s label strings',
+    source.includes('priceGuidance(') && source.includes('GuidanceChips'),
+    'labels arrive pre-computed; the component never sees a score',
+  );
+}
+
 // --- 7. against a live match: acceptance, non-mutation, immutability, privacy ---------------
 function matchInSetup(seed = 'setup-check') {
   const match = new Match({ id: `m_${seed}`, seed, phasePreset: 'prototype' });
@@ -489,13 +550,26 @@ registerSystem(setupSystem);
     fingerprints.every((f) => !theirs.includes(f)) && theirs.includes('"setup":null'),
     fingerprints.filter((f) => theirs.includes(f)).join(', ') || 'not one fingerprint survives',
   );
+  // An ALLOWLIST, not a denylist: `toSnapshot` builds `players[]` from an explicit field list,
+  // and this pins that list. A field added to the player record later cannot leak by being
+  // something nobody thought to forbid — it fails here the moment it reaches the public array.
+  const PUBLIC_PLAYER_FIELDS = ['playerId', 'position', 'facing', 'sprinting', 'connected',
+    'ready', 'lastSequence'];
+  const opponentEntry = match.toSnapshot('p2').players.find((p) => p.playerId === 'p1');
   check(
-    'readiness is the one public fact about the opponent’s setup (PRD §18 opponent-ready)',
-    match.toSnapshot('p2').players.find((p) => p.playerId === 'p1').ready === true &&
-      Object.keys(match.toSnapshot('p2').players[0]).every(
-        (key) => !['menu', 'setup', 'price', 'addons', 'staffAssignments'].includes(key),
-      ),
-    Object.keys(match.toSnapshot('p2').players[0]).join(', '),
+    'the opponent entry carries exactly the public field allowlist, readiness included',
+    opponentEntry.ready === true &&
+      JSON.stringify(Object.keys(opponentEntry).sort()) ===
+        JSON.stringify([...PUBLIC_PLAYER_FIELDS].sort()),
+    Object.keys(opponentEntry).join(', '),
+  );
+  check(
+    'the KEY `setup` appears in a snapshot only under `you`, and only for its owner',
+    // `"setup"` also occurs as the value of `matchPhase`, so match the key form specifically.
+    JSON.stringify({ ...match.toSnapshot('p2'), you: undefined }).includes('"setup":') === false &&
+      match.toSnapshot('p2').you.setup === null &&
+      match.toSnapshot('p1').you.setup !== null,
+    'stripping `you` from p2’s snapshot leaves no trace of anyone’s submission',
   );
 }
 
