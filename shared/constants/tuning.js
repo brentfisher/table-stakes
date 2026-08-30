@@ -335,11 +335,17 @@ export const ORDER_RNG_STREAM = 'orders';
  * ceiling and therefore the bottleneck PRD §8 "Operational bottlenecks" is about: a ticket
  * whose station is full waits in that station's queue instead of being worked.
  *
- * The numbers are measured, not guessed — see the per-station utilisation table
- * `scripts/check-orders.mjs` prints on its §24 balance run. `prep` is the wide one because
- * every dish in the catalogue routes through it and it would otherwise cap the whole kitchen
- * on its own; `plating` is next-widest for the same reason. `grill` and `oven` each serve a
- * subset of the menu, so they queue visibly under a burst without capping a normal service.
+ * The numbers are measured, not guessed — `scripts/check-orders.mjs` prints the per-station
+ * utilisation and peak queue depth on its §24 balance run, and these are the values that put
+ * every market inside §24's "40-90 parties per restaurant" band while still letting a station
+ * back up. `prep` gets the extra pair of hands because every dish in the catalogue routes
+ * through it and at 2 it capped the whole kitchen on its own regardless of menu.
+ *
+ * At these values a full service measures roughly: prep 22-46% busy, plating 19-28%, oven
+ * 6-47%, and grill 22-80% — grill at the top of that range in `stadium_district`, where fans
+ * order burgers and the queue behind it is the bottleneck the player is meant to feel and
+ * answer (a different menu, or the Faster Grill upgrade). Widening grill to 3 removes that
+ * pressure entirely, which is why it is 2.
  *
  * A station named in a layout but absent here falls back to STATION_DEFAULT_CONCURRENCY.
  */

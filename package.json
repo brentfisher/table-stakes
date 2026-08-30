@@ -20,6 +20,7 @@
     "check:phases": "node scripts/smoke-phases.mjs",
     "check:events": "node scripts/check-events.mjs",
     "check:setup": "node scripts/check-setup-phase.mjs",
-    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
+    "check:orders": "node scripts/check-orders.mjs",
+    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run check:orders && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
   }
 }
