@@ -1,8 +1,18 @@
 // The customer party state machine, PRD §8 "Customer state machine" / §17 "Customer acquisition
-// system", implemented for a SINGLE restaurant. STORY-010 introduces the real shared-district,
-// two-restaurant choice model; this story builds everything the choice model needs to plug into
-// — spawning, the hidden per-party profile, the state machine, patience, and satisfaction — and
-// leaves `resolveEvaluateRestaurants` below as the seam it replaces. See that function's comment.
+// system", now running over a SHARED DISTRICT (STORY-010).
+//
+// ============================================================================================
+// THE SHARED DISTRICT (STORY-010). PRD §22: "Both restaurants draw customers from one shared
+// district pool." Parties are spawned by the DISTRICT, not per restaurant: one Poisson arrival
+// process, one pool, and every party evaluates every restaurant in the match before choosing
+// one probabilistically or walking away. See `resolveEvaluateRestaurants` and the block above
+// it for the model itself.
+//
+// A district with one restaurant (a `POST /api/dev/match` match, and every check script that
+// seats a single player) is the degenerate case of the same code: one candidate, no rival to
+// compare against, so `decisionReason` stays null and CHOOSE_RIVAL never fires — which is the
+// honest answer, and a strict improvement on the 8% phantom rival this replaced.
+// ============================================================================================
 //
 // Registers against the simulation loop per Decision 15 (match-lifecycle-and-phase-clock/
 // design.md) — one file, one line in systems/index.js, no edit to match.js's clock/phase logic.
@@ -39,6 +49,12 @@
 import { catalogue } from '../catalogue.js';
 import layout from '../../../../shared/game-data/restaurant-layout.json' with { type: 'json' };
 import { CUSTOMER_STATES, isExitState } from '../../../../shared/schemas/game-state.js';
+import { STATIONS } from '../../../../shared/schemas/messages.js';
+// The event system's own reader for "how much does this event want a dish with these tags",
+// imported rather than reimplemented against `dishTagDemandMultipliers` — order-system.js
+// already takes `neutralEventEffects` from here for the same reason. A field name that moves
+// then breaks a build instead of silently zeroing event affinity.
+import { dishDemandMultiplier } from './event-system.js';
 import {
   CUSTOMER_RNG_STREAM,
   CUSTOMER_ENTER_DISTRICT_MS,
@@ -51,13 +67,26 @@ import {
   CUSTOMER_EXIT_LINGER_MS,
   CUSTOMER_MAX_SPAWNS_PER_TICK,
   CUSTOMER_PROFILE_JITTER,
-  CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY,
-  CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD,
-  CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY,
   CUSTOMER_WAIT_TOLERANCE_SHARE,
   CUSTOMER_VISIT_DURATION_TOLERANCE_MULTIPLIER,
   CUSTOMER_SATISFACTION_WEIGHTS,
   CUSTOMER_ANGRY_SATISFACTION_THRESHOLD,
+  DISTRICT_RNG_STREAM,
+  DISTRICT_CHOICE_TEMPERATURE,
+  DISTRICT_LEAVE_UTILITY,
+  DISTRICT_EVENT_AFFINITY_WEIGHT,
+  DISTRICT_REASON_EPSILON,
+  DISTRICT_QUEUE_WAIT_PER_PARTY_MS,
+  DISTRICT_BACKLOG_WAIT_PER_TICKET_MS,
+  DISTRICT_WAIT_INTOLERABLE_MULTIPLE,
+  DISTRICT_PRICE_VALUE_SLOPE,
+  DISTRICT_MENU_FIT_TAG_STEP,
+  DISTRICT_REPUTATION_START,
+  DISTRICT_REPUTATION_MIN,
+  DISTRICT_REPUTATION_MAX,
+  DISTRICT_REPUTATION_REVIEW_WEIGHT,
+  DISTRICT_REPUTATION_WALKOUT_PENALTY,
+  EVENT_DEMAND_SHIFT_BAND,
 } from '../../../../shared/constants/tuning.js';
 
 const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
@@ -110,24 +139,92 @@ function buildTables() {
   return tables;
 }
 
+/**
+ * One restaurant as the DISTRICT sees it: its own floor, its own queue, its own reputation, and
+ * its own funnel counters. Every restaurant in the match gets one; nothing here is per-player
+ * private — the private half (the menu and its prices) stays where STORY-009 put it, on the
+ * player's own `setup`, and is read through `menuOf()` at evaluation time.
+ *
+ * `tables` is a per-restaurant copy of the layout. Both restaurants share one layout file, so
+ * they share table ids and coordinates; giving each its own Map is what makes "table_1 is taken
+ * at MY restaurant" independent of the rival's floor. (Rendering two restaurants at distinct
+ * district coordinates is a scene story's job, not this one's — the model only needs separate
+ * occupancy.)
+ */
+function buildRestaurantView(playerId) {
+  const tables = buildTables();
+  return {
+    restaurantId: playerId,
+    playerId,
+    tables,
+    totalSeats: [...tables.values()].reduce((sum, t) => sum + t.seats, 0),
+
+    /** PRD §4.2: compounds across the match, capped so it cannot make one early. */
+    reputation: DISTRICT_REPUTATION_START,
+
+    guestsServed: 0,
+    satisfactionSum: 0,
+    abandonedParties: 0,
+
+    /**
+     * This restaurant's own funnel, in §8 vocabulary. `CHOOSE_RIVAL` is the one entry that is
+     * NOT a party state: no party is ever in state CHOOSE_RIVAL, because the district's
+     * `customers[]` array is shared by both viewers and "chose the rival" is viewer-relative —
+     * the party that walked past this restaurant is walking INTO the other one, in
+     * APPROACH_OR_QUEUE. It is counted here, against the restaurant that lost it, which is
+     * exactly the shape STORY-014's results screen needs.
+     */
+    counts: {
+      chosen: 0,
+      [CUSTOMER_STATES.CHOOSE_RIVAL]: 0,
+      [CUSTOMER_STATES.LEAVE_DISTRICT]: 0,
+      [CUSTOMER_STATES.REVIEW]: 0,
+      [CUSTOMER_STATES.ABANDON_QUEUE]: 0,
+      [CUSTOMER_STATES.CANCEL_ORDER]: 0,
+      [CUSTOMER_STATES.LEAVE_ANGRY]: 0,
+    },
+    /** §17 reason -> count, for the parties this restaurant WON and the ones it LOST. */
+    wonByReason: {},
+    lostByReason: {},
+
+    // Memoized menu, invalidated by identity of the player's `setup` object (which setup-system
+    // locks at the setup -> service transition and nothing mutates afterwards).
+    _menuSource: undefined,
+    _menu: [],
+  };
+}
+
 function ensureState(match) {
   if (!match._customerSimState) {
-    const tables = buildTables();
     const queueEntity = layout.entities.find((e) => e.type === 'queue');
+    const restaurants = new Map();
+    for (const playerId of match.players.keys()) {
+      restaurants.set(playerId, buildRestaurantView(playerId));
+    }
     match._customerSimState = {
       rng: match.createRngStream(CUSTOMER_RNG_STREAM),
+      /** Decision 18: the choice draws from its OWN named sub-stream, so changing how a party
+       * chooses cannot shift the arrival sequence a seed produces, and vice versa. */
+      districtRng: match.createRngStream(DISTRICT_RNG_STREAM),
       parties: new Map(),
       nextId: 1,
       msUntilNextArrival: null,
-      tables,
-      totalSeats: [...tables.values()].reduce((sum, t) => sum + t.seats, 0),
+      restaurants,
       queuePosition: queueEntity?.position ?? layout.spawn.customerEntry,
       entryPosition: layout.spawn.customerEntry,
+      /** Every restaurant choice this match made, in order — PRD §17 step 6, "Record decision
+       * reason for analytics and post-match explanation". Published on `match.districtDecisions`
+       * (server-side only; it never enters a snapshot) and NOT cleared at `results`, because
+       * `results` is precisely when STORY-014 reads it. */
+      decisions: [],
       // Every party that ever spawned this match, in spawn order — the reproducibility check's
       // evidence, and the balance figure's raw material.
       spawnLog: [],
-      // Cumulative terminal outcomes, PRD §24's "40-90 parties per restaurant" figure. Read and
-      // logged in onPhaseChange before the match clears this state.
+      // Cumulative terminal outcomes for the DISTRICT as a whole. Per-restaurant funnels live on
+      // each restaurant view's own `counts` — PRD §24's "40-90 parties per restaurant" figure is
+      // read from there now that a district can hold more than one restaurant.
+      // `CHOOSE_RIVAL` stays declared and stays 0 here: it is a per-restaurant funnel outcome,
+      // never a district one (see buildRestaurantView).
       counts: {
         spawned: 0,
         [CUSTOMER_STATES.REVIEW]: 0,
@@ -190,9 +287,9 @@ function randomInRange(rng, [min, max]) {
   return min + rng() * (max - min);
 }
 
-function firstRestaurantId(match) {
-  const [first] = match.players.keys();
-  return first ?? null;
+/** The restaurant a party is queueing at / seated in, or null before it has chosen. */
+function viewOf(state, party) {
+  return party.restaurantId ? (state.restaurants.get(party.restaurantId) ?? null) : null;
 }
 
 // --- spawning --------------------------------------------------------------------------------
@@ -282,54 +379,399 @@ function tickArrivals(match, state, dtMs) {
   }
 }
 
-// --- the EVALUATE_RESTAURANTS seam (STORY-010 replaces this function) -----------------------
+// ============================================================================================
+// THE RESTAURANT CHOICE MODEL — PRD §6 "Restaurant choice model", §17 steps 3-6
+// ============================================================================================
+//
+// A party that has finished EVALUATE_RESTAURANTS scores EVERY restaurant in the district from
+// PUBLIC, OBSERVABLE properties only — the things §6's "Important design rule" says customers
+// must keep reacting to — weights them with the party's OWN hidden §6 profile weights, and then
+// picks probabilistically.
+//
+// The five observables, and where each is read from:
+//
+//   menuFit     the locked menu's dishes' tags against the party's preferred/disliked tags.
+//               A menu board is public; the party's tag list is not.
+//   price       the price the PLAYER set for each dish, on the market-scaled value axis
+//               `priceGuidance()` uses in setup-rules.js, times whether the party can afford it.
+//   wait        PROJECTED WAIT: the live queue at that restaurant, whether a table that fits
+//               this party is free, and how deep the kitchen's busiest station queue is — the
+//               last read through `match.kitchen.queueDepth()`, the same number the snapshot's
+//               orders derive, never from the order system's internals.
+//   reputation  the restaurant's visible reputation, normalised across its capped band.
+//   event       what the active event does to the demand for the tags on this menu, read with
+//               the event system's own `dishDemandMultiplier`.
+//
+// WHY A SOFTMAX AND NOT AN ARGMAX. PRD §23 names early snowballing as a top risk and §6 states
+// the rule directly: "A player should not lose simply because the opponent had a better starting
+// menu." An argmax over these scores gives the whole district to whoever is 0.01 ahead, forever.
+// `p_i ∝ exp(u_i / DISTRICT_CHOICE_TEMPERATURE)` gives a modestly better restaurant a
+// proportionally higher share and never all of it, and the temperature is the single dial that
+// says how much better "better" has to be. It is measured, not asserted — see
+// scripts/check-district-choice.mjs.
+//
+// LEAVING IS AN OPTION IN THE SAME DRAW, not a separate coin flip: `DISTRICT_LEAVE_UTILITY` is
+// the utility of the street, so a district of bad restaurants loses parties to it in proportion
+// to how bad they are (PRD §24: a badly priced menu "should reduce customer conversion, but
+// should not make the restaurant completely empty" — an exponential is never zero).
+//
+// A restaurant whose projected wait exceeds the party's own patience budget is not a candidate
+// at all: that is §8's `restaurant_full`, and it is how "capacity failures can send customers to
+// the competitor" (§4.2) actually happens.
 
-function queuePressure(state) {
-  if (state.totalSeats <= 0) return 0;
+/** Parties queueing at one restaurant right now. §6's "Actual queue length", live. */
+function queueLengthFor(state, restaurantId) {
   let queued = 0;
   for (const party of state.parties.values()) {
-    if (party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE) queued += 1;
+    if (party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE && party.restaurantId === restaurantId) {
+      queued += 1;
+    }
   }
-  return queued / state.totalSeats;
+  return queued;
+}
+
+/** STORY-006's seam, read exactly as defensively as order-system.js reads it: until an inventory
+ * model publishes `match.dishAvailability`, every dish on a locked menu is available. §6 lists
+ * "Dish availability" among the things customers must keep reacting to, and honouring it here
+ * costs one lookup. */
+function isDishAvailable(match, restaurantId, dishId) {
+  const perRestaurant = match.dishAvailability?.[restaurantId];
+  if (!perRestaurant) return true;
+  return perRestaurant[dishId] !== false;
 }
 
 /**
- * PRD §6 "Restaurant choice model" / §17 steps 3-5, implemented against a SINGLE restaurant.
- * STORY-010 replaces this function's body with a real two-restaurant comparison scored from
- * public properties (menu fit, price, projected wait, reputation, capacity, event affinity) and
- * the party's own four weights. Until then:
- *
- *   - a flat probability (CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY) stands in for "a real rival
- *     existed and won", so CHOOSE_RIVAL is reachable and exercised with nothing to compare
- *     against yet;
- *   - queue pressure — the one signal that IS real even with one restaurant (§6 "Actual queue
- *     length") — drives LEAVE_DISTRICT;
- *   - everyone else approaches the one restaurant that exists.
- *
- * `decisionReason` is left null for the placeholder rival pick (there is no real comparison to
- * cite) and set to 'restaurant_full' when capacity pressure is the actual reason, so the
- * §17/STORY-014 explanation layer is not fabricating reasons that later widen.
+ * The priced menu STORY-009's setup submission holds, read from where that story stores it.
+ * Memoized per restaurant on the identity of the `setup` object: `setup-system.js` locks it at
+ * the setup -> service transition and nothing mutates it afterwards (PRD §7 — menus change only
+ * during setup), so this rebuilds only if a check script swaps a whole submission in.
  */
-function resolveEvaluateRestaurants(match, state, party) {
-  const r1 = state.rng();
-  if (r1 < CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY) {
-    exitParty(match, state, party, CUSTOMER_STATES.CHOOSE_RIVAL, null);
-    return;
+function menuOf(match, view) {
+  const setup = match.players.get(view.playerId)?.setup ?? null;
+  if (view._menuSource !== setup) {
+    view._menuSource = setup;
+    const entries = [];
+    const add = (slot, isAddon) => {
+      const dish = catalogue.dishesById[slot.dishId];
+      if (dish) entries.push({ dish, price: slot.price, isAddon });
+    };
+    for (const slot of setup?.menu ?? []) add(slot, false);
+    for (const slot of setup?.addons ?? []) add(slot, true);
+    view._menu = entries;
+  }
+  return view._menu;
+}
+
+function availableMenu(match, view) {
+  return menuOf(match, view).filter((entry) => isDishAvailable(match, view.restaurantId, entry.dish.id));
+}
+
+function countTagMatches(tags, list) {
+  if (!tags || !list || list.length === 0) return 0;
+  let n = 0;
+  for (const tag of tags) if (list.includes(tag)) n += 1;
+  return n;
+}
+
+/** How one dish reads to one party: neutral 0.5, up per preferred tag, down per disliked one. */
+function dishFit(dish, party) {
+  const liked = countTagMatches(dish.tags, party.preferredTags);
+  const disliked = countTagMatches(dish.tags, party.dislikedTags);
+  return clamp(0.5 + DISTRICT_MENU_FIT_TAG_STEP * (liked - disliked), 0, 1);
+}
+
+/**
+ * Perceived value of one dish at the price the player set: the market-scaled deviation from the
+ * dish's suggested price (so `uptown_pre_theater`'s tolerant crowd punishes a mark-up less than
+ * `downtown_lunch`'s), multiplied by whether this party can actually afford it out of its own
+ * hidden per-guest budget.
+ */
+function dishValue(dish, price, party, market) {
+  const deviation = (price / dish.suggestedPrice - 1) * (market?.priceSensitivity ?? 1);
+  const value = clamp(1 - deviation * DISTRICT_PRICE_VALUE_SLOPE, 0, 1);
+  const affordability = price <= party.budget ? 1 : clamp(party.budget / price, 0, 1);
+  return value * affordability;
+}
+
+/**
+ * How wanted this menu is under the district's current conditions, on the same [0,1] axis as
+ * everything else: 0.5 when no event touches it (so with no event active the term is a constant
+ * and cannot bias the choice), up towards 1 as an event amplifies the tags on the menu, down
+ * towards 0 as one suppresses them. The multiplier itself comes from the event system's own
+ * `dishDemandMultiplier`, so the §16 vocabulary is read through its owner.
+ */
+function eventAffinityFor(menu, effects) {
+  if (menu.length === 0) return 0.5;
+  let strongest = 1;
+  for (const entry of menu) {
+    const m = dishDemandMultiplier(effects, entry.dish.tags);
+    if (Math.abs(m - 1) > Math.abs(strongest - 1)) strongest = m;
+  }
+  const span = Math.max(0.01, EVENT_DEMAND_SHIFT_BAND.max - 1);
+  return clamp(0.5 + (strongest - 1) / (2 * span), 0, 1);
+}
+
+/** The deepest station queue at one restaurant, through the kitchen's own facade. Zero when no
+ * kitchen is registered — this system never guesses at a backlog it cannot observe. */
+function kitchenBacklogFor(match, restaurantId) {
+  const kitchen = match.kitchen;
+  if (typeof kitchen?.queueDepth !== 'function') return 0;
+  let deepest = 0;
+  for (const station of STATIONS) {
+    const depth = kitchen.queueDepth(restaurantId, station);
+    if (depth > deepest) deepest = depth;
+  }
+  return deepest;
+}
+
+/**
+ * What a party standing in the street would estimate its wait to be: how long before a table
+ * that fits it frees up, plus how long the visible kitchen backlog will hold up its food.
+ * Public information only — queue length, table occupancy, station queue depth.
+ */
+function projectedWaitMs(match, state, view, partySize) {
+  let freeFittingTables = 0;
+  for (const table of view.tables.values()) {
+    if (!table.occupiedBy && table.seats >= partySize) freeFittingTables += 1;
+  }
+  const queued = queueLengthFor(state, view.restaurantId);
+  const seatWaitMs =
+    freeFittingTables > 0
+      ? 0
+      : Math.ceil((queued + 1) / Math.max(1, view.tables.size)) * DISTRICT_QUEUE_WAIT_PER_PARTY_MS;
+  const kitchenWaitMs = kitchenBacklogFor(match, view.restaurantId) * DISTRICT_BACKLOG_WAIT_PER_TICKET_MS;
+  return seatWaitMs + kitchenWaitMs;
+}
+
+/** The five scored components, and the §17 reason each one justifies when it is the margin. */
+const REASON_BY_COMPONENT = Object.freeze({
+  price: 'better_price',
+  menuFit: 'better_menu_fit',
+  wait: 'shorter_projected_wait',
+  reputation: 'higher_reputation',
+  eventAffinity: 'event_affinity',
+});
+const COMPONENT_KEYS = Object.freeze(Object.keys(REASON_BY_COMPONENT));
+
+/**
+ * Score one restaurant for one party. Returns the raw components, the WEIGHTED contribution of
+ * each (which is what a decision reason is argued from — a component nobody weights cannot be
+ * the reason anybody chose anything), the total utility in [0,1], and whether the projected wait
+ * put this restaurant outside the party's tolerance entirely.
+ */
+function scoreRestaurant(match, state, view, party, effects) {
+  const menu = availableMenu(match, view);
+  const mains = menu.filter((entry) => !entry.isAddon);
+  const priced = mains.length > 0 ? mains : menu;
+
+  const components = {
+    // A party needs ONE dish it wants, not an average of the whole board: adding a dish must
+    // never lower a restaurant's fit. Same reasoning as Decision 22's "strongest matching tag".
+    menuFit: menu.length === 0 ? 0 : Math.max(...menu.map((entry) => dishFit(entry.dish, party))),
+    price:
+      priced.length === 0
+        ? 0
+        : Math.max(...priced.map((entry) => dishValue(entry.dish, entry.price, party, match.market))),
+    wait: 0,
+    reputation: clamp(
+      (view.reputation - DISTRICT_REPUTATION_MIN) / (DISTRICT_REPUTATION_MAX - DISTRICT_REPUTATION_MIN),
+      0,
+      1,
+    ),
+    eventAffinity: eventAffinityFor(menu, effects),
+  };
+
+  const waitMs = projectedWaitMs(match, state, view, party.partySize);
+  const tolerableMs = party.patienceSeconds * 1000 * DISTRICT_WAIT_INTOLERABLE_MULTIPLE;
+  components.wait = clamp(1 - waitMs / Math.max(1, tolerableMs), 0, 1);
+
+  // The party's own §6 weights (they sum to 1), plus event affinity as a district term the
+  // profile does not carry. Renormalised so utility stays on [0,1] whatever the mix.
+  const weights = {
+    menuFit: party.menuFitWeight,
+    price: party.priceWeight,
+    wait: party.serviceSpeedWeight,
+    reputation: party.reputationWeight,
+    eventAffinity: DISTRICT_EVENT_AFFINITY_WEIGHT,
+  };
+  const weightTotal = COMPONENT_KEYS.reduce((sum, key) => sum + weights[key], 0) || 1;
+
+  const contributions = {};
+  let utility = 0;
+  for (const key of COMPONENT_KEYS) {
+    contributions[key] = (weights[key] * components[key]) / weightTotal;
+    utility += contributions[key];
   }
 
-  const pressure = queuePressure(state);
-  if (pressure > CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD) {
-    const r2 = state.rng();
-    if (r2 < CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY) {
-      exitParty(match, state, party, CUSTOMER_STATES.LEAVE_DISTRICT, 'restaurant_full');
-      return;
+  return {
+    restaurantId: view.restaurantId,
+    view,
+    components,
+    contributions,
+    utility,
+    projectedWaitMs: waitMs,
+    /** §8 `restaurant_full`: the wait this party can see is longer than it is willing to wait. */
+    overCapacity: waitMs > tolerableMs,
+  };
+}
+
+/**
+ * PRD §17 step 6. The reason is the component whose WEIGHTED contribution beat the best rival's
+ * by the most — weighted, because a party that does not care about price was not won on price.
+ * Below `DISTRICT_REASON_EPSILON` the two restaurants were effectively tied and the honest
+ * answer is null: roughly half of a symmetric 1v1's picks are coin flips, and labelling those
+ * `better_price` would fabricate exactly the data STORY-014's results screen is built on.
+ */
+function reasonFromContributions(chosen, rival) {
+  let bestReason = null;
+  let bestDiff = 0;
+  for (const key of COMPONENT_KEYS) {
+    const diff = chosen.contributions[key] - rival.contributions[key];
+    if (diff > bestDiff) {
+      bestDiff = diff;
+      bestReason = REASON_BY_COMPONENT[key];
     }
   }
+  return bestDiff >= DISTRICT_REASON_EPSILON ? bestReason : null;
+}
 
-  party.restaurantId = firstRestaurantId(match);
+/** `p_i ∝ exp(u_i / T)`, drawn from the district's own RNG sub-stream. The max is subtracted
+ * before exponentiating purely for numerical stability; it cancels out of the ratios. */
+function softmaxPick(options, rng) {
+  const maxUtility = Math.max(...options.map((o) => o.utility));
+  const weights = options.map((o) => Math.exp((o.utility - maxUtility) / DISTRICT_CHOICE_TEMPERATURE));
+  const total = weights.reduce((sum, w) => sum + w, 0) || 1;
+  let r = rng() * total;
+  for (let i = 0; i < options.length; i += 1) {
+    r -= weights[i];
+    if (r <= 0) return options[i];
+  }
+  return options[options.length - 1];
+}
+
+function bump(map, key) {
+  if (!key) return;
+  map[key] = (map[key] ?? 0) + 1;
+}
+
+/**
+ * PRD §17 step 6, "Record decision reason for analytics and post-match explanation". One record
+ * per party per decision on `state.decisions`, plus the per-restaurant funnel counters STORY-014
+ * reads: the restaurant that won the party, and — for every restaurant that did not — a
+ * CHOOSE_RIVAL against its own funnel with the reason it lost by.
+ */
+function recordDecision(match, state, party, scored, chosen, reason) {
+  state.decisions.push({
+    customerId: party.customerId,
+    segmentId: party.segmentId,
+    partySize: party.partySize,
+    atMs: Math.round(match.elapsedMs),
+    chosenRestaurantId: chosen?.restaurantId ?? null,
+    reason,
+    utilities: Object.fromEntries(scored.map((s) => [s.restaurantId, Number(s.utility.toFixed(4))])),
+    projectedWaitMs: Object.fromEntries(scored.map((s) => [s.restaurantId, Math.round(s.projectedWaitMs)])),
+  });
+
+  for (const s of scored) {
+    if (chosen && s.restaurantId === chosen.restaurantId) {
+      s.view.counts.chosen += 1;
+      bump(s.view.wonByReason, reason);
+    } else if (chosen) {
+      s.view.counts[CUSTOMER_STATES.CHOOSE_RIVAL] += 1;
+      bump(s.view.lostByReason, reason);
+    } else {
+      s.view.counts[CUSTOMER_STATES.LEAVE_DISTRICT] += 1;
+      bump(s.view.lostByReason, reason);
+    }
+  }
+}
+
+function sendToRestaurant(match, state, party, chosen, reason) {
+  party.restaurantId = chosen.restaurantId;
+  party.decisionReason = reason;
   const [qx, qy, qz] = state.queuePosition;
   party.position = { x: qx, y: qy, z: qz };
   transitionTo(match, party, CUSTOMER_STATES.APPROACH_OR_QUEUE);
+}
+
+/**
+ * PRD §17 steps 3-6, for one party, over the whole district. The ONLY function that decides
+ * where a party goes; everything above it produces the numbers it compares.
+ */
+function resolveEvaluateRestaurants(match, state, party) {
+  const effects = getEventEffects(match);
+  const scored = [...state.restaurants.values()].map((view) =>
+    scoreRestaurant(match, state, view, party, effects),
+  );
+
+  // An empty district (no player has a restaurant yet) has nothing to choose between.
+  if (scored.length === 0) {
+    exitParty(match, state, party, CUSTOMER_STATES.LEAVE_DISTRICT, null);
+    return;
+  }
+
+  const candidates = scored.filter((s) => !s.overCapacity);
+  if (candidates.length === 0) {
+    // Every restaurant's visible wait is longer than this party will tolerate. §8's
+    // `restaurant_full`, and the one decision reason a one-restaurant district can still cite.
+    recordDecision(match, state, party, scored, null, 'restaurant_full');
+    exitParty(match, state, party, CUSTOMER_STATES.LEAVE_DISTRICT, 'restaurant_full');
+    return;
+  }
+
+  const picked = softmaxPick(
+    [
+      ...candidates.map((s) => ({ kind: 'restaurant', utility: s.utility, scored: s })),
+      { kind: 'leave', utility: DISTRICT_LEAVE_UTILITY, scored: null },
+    ],
+    state.districtRng,
+  );
+
+  if (picked.kind === 'leave') {
+    // Nobody was full; this party just was not tempted by anything on offer. There is no §17
+    // reason for that — inventing one would be a lie about a comparison that did not decide it.
+    recordDecision(match, state, party, scored, null, null);
+    exitParty(match, state, party, CUSTOMER_STATES.LEAVE_DISTRICT, null);
+    return;
+  }
+
+  const chosen = picked.scored;
+  const others = scored.filter((s) => s !== chosen);
+  let reason = null;
+  if (others.length > 0) {
+    const bestOther = others.reduce((a, b) => (b.utility > a.utility ? b : a));
+    // A rival that was not even a candidate lost this party to its own queue, whatever the
+    // scores said.
+    reason = bestOther.overCapacity ? 'restaurant_full' : reasonFromContributions(chosen, bestOther);
+  }
+
+  recordDecision(match, state, party, scored, chosen, reason);
+  sendToRestaurant(match, state, party, chosen, reason);
+}
+
+// --- reputation, PRD §4.2 / §8 step 8 "Modifies restaurant score/reputation" -----------------
+
+/**
+ * One party's verdict, folded into the restaurant's running reputation as a moving average and
+ * clamped into the §4.2 band. COMPOUNDING is the point — a restaurant that keeps guests happy
+ * keeps rising, and that rising reputation keeps winning it parties — and so is the CAP: the
+ * ceiling is what stops a good first minute from deciding the match, which is §23's "cap runaway
+ * advantages" expressed as a number instead of a hope.
+ */
+function applyReview(view, satisfaction) {
+  const moved = view.reputation + DISTRICT_REPUTATION_REVIEW_WEIGHT * (satisfaction - view.reputation);
+  view.reputation = clamp(moved, DISTRICT_REPUTATION_MIN, DISTRICT_REPUTATION_MAX);
+}
+
+/** A party that gave up before it was served leaves no review, but the queue it walked out of
+ * was visible to the street. Scored as a small fixed knock against the same band. */
+function applyWalkout(view) {
+  view.abandonedParties += 1;
+  view.reputation = clamp(
+    view.reputation - DISTRICT_REPUTATION_WALKOUT_PENALTY,
+    DISTRICT_REPUTATION_MIN,
+    DISTRICT_REPUTATION_MAX,
+  );
 }
 
 // --- seating ----------------------------------------------------------------------------------
@@ -348,8 +790,12 @@ function patienceFraction(party) {
   return clamp(party.patienceMsRemaining / (party.patienceSeconds * 1000), 0, 1);
 }
 
+/** Seats the party at ITS OWN restaurant's floor. Choice-agnostic: this looks only at the
+ * tables of whichever restaurant the party already chose. */
 function tryToSeat(match, state, party) {
-  const table = bestFitTable(state.tables, party.partySize);
+  const view = viewOf(state, party);
+  if (!view) return;
+  const table = bestFitTable(view.tables, party.partySize);
   if (!table) return;
 
   table.occupiedBy = party.customerId;
@@ -361,7 +807,7 @@ function tryToSeat(match, state, party) {
 
 function freeTable(state, party) {
   if (!party.tableId) return;
-  const table = state.tables.get(party.tableId);
+  const table = viewOf(state, party)?.tables.get(party.tableId);
   if (table) table.occupiedBy = null;
   party.tableId = null;
 }
@@ -458,12 +904,27 @@ function transitionTo(match, party, nextState) {
 }
 
 function exitParty(match, state, party, exitState, decisionReason) {
+  const view = viewOf(state, party);
   freeTable(state, party);
   party.state = exitState;
   party.stateEnteredAtMs = match.elapsedMs;
   party.exitAtMs = match.elapsedMs;
   if (decisionReason !== undefined) party.decisionReason = decisionReason;
   state.counts[exitState] += 1;
+  // The same outcome against the funnel of the restaurant it happened AT, if it had chosen one.
+  // LEAVE_DISTRICT before a choice is booked by recordDecision instead, against every restaurant
+  // that failed to attract the party.
+  if (view && exitState !== CUSTOMER_STATES.LEAVE_DISTRICT) {
+    view.counts[exitState] += 1;
+    // PRD §8 step 8 and §4.2: a party that walked out of a queue, cancelled, or stormed off is
+    // reputation the restaurant just lost. A party that ate and reviewed is handled where its
+    // satisfaction is known (advanceParty's LEAVING case).
+    if (exitState === CUSTOMER_STATES.ABANDON_QUEUE || exitState === CUSTOMER_STATES.CANCEL_ORDER) {
+      applyWalkout(view);
+    } else if (exitState === CUSTOMER_STATES.LEAVE_ANGRY) {
+      applyReview(view, party.satisfaction);
+    }
+  }
   const [ex, ey, ez] = state.entryPosition;
   party.position = { x: ex, y: ey, z: ez };
 }
@@ -601,11 +1062,20 @@ function advanceParty(match, state, party, dtMs) {
 
     case CUSTOMER_STATES.LEAVING:
       if (msInState >= CUSTOMER_LEAVING_MS) {
-        // Decision 13: REVIEW/REPUTATION_IMPACT resolves in this one step.
+        // Decision 13: REVIEW/REPUTATION_IMPACT resolves in this one step — and STORY-010 is
+        // what makes the second half of that name real. The party's satisfaction moves its
+        // restaurant's reputation here, and nowhere else on the happy path.
         party.state = CUSTOMER_STATES.REVIEW;
         party.stateEnteredAtMs = match.elapsedMs;
         party.exitAtMs = match.elapsedMs;
         state.counts[CUSTOMER_STATES.REVIEW] += 1;
+        const reviewed = viewOf(state, party);
+        if (reviewed) {
+          reviewed.counts[CUSTOMER_STATES.REVIEW] += 1;
+          reviewed.guestsServed += 1;
+          reviewed.satisfactionSum += party.satisfaction;
+          applyReview(reviewed, party.satisfaction);
+        }
       }
       break;
 
@@ -649,6 +1119,59 @@ function toPublicCustomerSnapshot(party) {
   };
 }
 
+/**
+ * The other half of the privacy boundary, and the reason it is safe for both players to receive
+ * this array identically: it carries ONLY the public, observable properties the choice model
+ * itself scores a restaurant on. The menu and its prices are NOT here — they are the rival's
+ * private setup submission (PRD §18, Decision 16, `you.setup`), read by the model server-side
+ * and never republished — and neither are cash, inventory, the ledger or anything else a later
+ * story owns. Like `toPublicCustomerSnapshot`, an explicit allowlist rather than a spread, so a
+ * field added to the internal restaurant view cannot leak by omission.
+ *
+ * A subset of `RestaurantSnapshot` (shared/schemas/game-state.d.ts), whose remaining fields that
+ * declaration now marks optional with the story that fills each one in.
+ */
+function toPublicRestaurantSnapshot(match, state, view) {
+  return {
+    restaurantId: view.restaurantId,
+    playerId: view.playerId,
+    reputation: Number(view.reputation.toFixed(2)),
+    queueLength: queueLengthFor(state, view.restaurantId),
+    seatsTotal: view.totalSeats,
+    seatsAvailable: [...view.tables.values()].reduce(
+      (sum, table) => sum + (table.occupiedBy ? 0 : table.seats),
+      0,
+    ),
+    /** What the model projected for a party of 2 — the district's readable "how long is the
+     * wait here" signal, not a per-party number. */
+    projectedWaitMs: Math.round(projectedWaitMs(match, state, view, 2)),
+    guestsServed: view.guestsServed,
+    averageSatisfaction:
+      view.guestsServed > 0 ? Math.round(view.satisfactionSum / view.guestsServed) : 0,
+    abandonedParties: view.abandonedParties,
+    tables: [...view.tables.values()].map((table) => ({
+      id: table.id,
+      seats: table.seats,
+      occupiedBy: table.occupiedBy,
+      dirty: false, // a restaurant-state story owns cleanliness; never observed dirty today.
+    })),
+  };
+}
+
+/** A per-restaurant summary of §17 decision reasons, published at `results` for STORY-014. */
+function districtSummary(state) {
+  return [...state.restaurants.values()].map((view) => ({
+    restaurantId: view.restaurantId,
+    reputation: Number(view.reputation.toFixed(2)),
+    guestsServed: view.guestsServed,
+    averageSatisfaction: view.guestsServed > 0 ? Math.round(view.satisfactionSum / view.guestsServed) : 0,
+    abandonedParties: view.abandonedParties,
+    counts: { ...view.counts },
+    wonByReason: { ...view.wonByReason },
+    lostByReason: { ...view.lostByReason },
+  }));
+}
+
 // --- the system --------------------------------------------------------------------------------
 
 export const customerSystem = {
@@ -657,6 +1180,10 @@ export const customerSystem = {
 
   update(match, dtMs) {
     const state = ensureState(match);
+    // A seat that filled after service began (a dev match, a late join) still gets a restaurant.
+    for (const playerId of match.players.keys()) {
+      if (!state.restaurants.has(playerId)) state.restaurants.set(playerId, buildRestaurantView(playerId));
+    }
 
     tickArrivals(match, state, dtMs);
     for (const party of state.parties.values()) advanceParty(match, state, party, dtMs);
@@ -665,22 +1192,45 @@ export const customerSystem = {
     // match.js's toSnapshot() serializes whatever is here verbatim — see the top-of-file note.
     // Only ever assign the sanitized projection, never the internal `state.parties` values.
     match.customers = [...state.parties.values()].map(toPublicCustomerSnapshot);
+    match.restaurants = [...state.restaurants.values()].map((view) =>
+      toPublicRestaurantSnapshot(match, state, view),
+    );
+    // Server-side only: `toSnapshot()` does not carry this key, and must not — it is the whole
+    // decision log, and one restaurant's losses are the other's reasons.
+    match.districtDecisions = state.decisions;
   },
 
   onPhaseChange(match, transition) {
     if (transition.to !== 'results') return;
     if (!match._customerSimState) return; // never ticked — nothing to report or clear.
 
-    const { counts } = match._customerSimState;
+    const state = match._customerSimState;
+    const { counts } = state;
     console.log(
       `[customers] ${match.id} seed=${match.seed} market=${match.market?.id ?? 'none'} ` +
-        `served(REVIEW)=${counts[CUSTOMER_STATES.REVIEW]} of ${counts.spawned} spawned ` +
-        `(rival=${counts[CUSTOMER_STATES.CHOOSE_RIVAL]} left_district=${counts[CUSTOMER_STATES.LEAVE_DISTRICT]} ` +
-        `abandoned_queue=${counts[CUSTOMER_STATES.ABANDON_QUEUE]} cancelled_order=${counts[CUSTOMER_STATES.CANCEL_ORDER]} ` +
+        `district: ${counts.spawned} parties arrived, ${counts[CUSTOMER_STATES.REVIEW]} served, ` +
+        `${counts[CUSTOMER_STATES.LEAVE_DISTRICT]} left without choosing ` +
+        `(abandoned_queue=${counts[CUSTOMER_STATES.ABANDON_QUEUE]} cancelled_order=${counts[CUSTOMER_STATES.CANCEL_ORDER]} ` +
         `left_angry=${counts[CUSTOMER_STATES.LEAVE_ANGRY]})`,
     );
+    for (const view of state.restaurants.values()) {
+      const reasons = Object.entries(view.wonByReason).map(([r, n]) => `${r}=${n}`).join(' ') || 'none';
+      console.log(
+        `[district] ${match.id} ${view.restaurantId} chosen=${view.counts.chosen} ` +
+          `lost_to_rival=${view.counts[CUSTOMER_STATES.CHOOSE_RIVAL]} served=${view.counts[CUSTOMER_STATES.REVIEW]} ` +
+          `reputation=${view.reputation.toFixed(1)} avgSatisfaction=` +
+          `${view.guestsServed > 0 ? Math.round(view.satisfactionSum / view.guestsServed) : 0} ` +
+          `won_by: ${reasons}`,
+      );
+    }
+
+    // PRD §17 step 6 is "post-match explanation", so the decision record must OUTLIVE the
+    // simulation state that produced it. STORY-014 reads these two at `results`.
+    match.districtDecisions = state.decisions;
+    match.districtSummary = districtSummary(state);
 
     match.customers = [];
+    match.restaurants = [];
     match._customerSimState = undefined;
   },
 };
@@ -695,6 +1245,24 @@ export const customerSystem = {
 export const _internal = {
   ensureState,
   getEventEffects,
+  buildRestaurantView,
+  viewOf,
+  menuOf,
+  availableMenu,
+  dishFit,
+  dishValue,
+  eventAffinityFor,
+  kitchenBacklogFor,
+  projectedWaitMs,
+  queueLengthFor,
+  scoreRestaurant,
+  reasonFromContributions,
+  softmaxPick,
+  applyReview,
+  applyWalkout,
+  toPublicRestaurantSnapshot,
+  districtSummary,
+  REASON_BY_COMPONENT,
   orderRequest,
   spawnParty,
   advanceParty,
