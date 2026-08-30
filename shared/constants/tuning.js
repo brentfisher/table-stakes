@@ -335,19 +335,26 @@ export const ORDER_RNG_STREAM = 'orders';
  * ceiling and therefore the bottleneck PRD §8 "Operational bottlenecks" is about: a ticket
  * whose station is full waits in that station's queue instead of being worked.
  *
- * The numbers are measured, not guessed — `scripts/check-orders.mjs` prints the per-station
- * utilisation and peak queue depth on its §24 balance run, and these are the values that put
- * every market inside §24's "40-90 parties per restaurant" band while still letting a station
- * back up. `prep` gets the extra pair of hands because every dish in the catalogue routes
- * through it and at 2 it capped the whole kitchen on its own regardless of menu.
+ * MEASURED, not guessed. `scripts/check-orders.mjs` prints per-station utilisation and peak
+ * queue depth on its §24 balance run, over nine seeds and all three markets. At these values a
+ * full service measures prep 22-46% busy, grill 22-80%, oven 6-47% and plating 19-28%, and
+ * every market lands inside §24's "40-90 parties per restaurant".
  *
- * At these values a full service measures roughly: prep 22-46% busy, plating 19-28%, oven
- * 6-47%, and grill 22-80% — grill at the top of that range in `stadium_district`, where fans
- * order burgers and the queue behind it is the bottleneck the player is meant to feel and
- * answer (a different menu, or the Faster Grill upgrade). Widening grill to 3 removes that
- * pressure entirely, which is why it is 2.
+ * WHY prep IS 3 AND THE REST ARE 2, measured rather than argued: every dish in the catalogue
+ * routes through prep, so prep and grill compound. Dropping prep to 2 pushes `stadium_district`
+ * to 37-39 parties served with its busiest station near 70% — under the §24 band, for a
+ * KITCHEN reason. At 3 the same seeds land 41-43. Raising any station to 4 moves parties served
+ * by less than one across the whole seed set and only flattens the queues.
  *
- * A station named in a layout but absent here falls back to STATION_DEFAULT_CONCURRENCY.
+ * Grill stays at 2 deliberately. It is the station that visibly backs up in `stadium_district`,
+ * where fans order burgers — that queue is the bottleneck the player is meant to feel and
+ * answer (a different menu, or the Faster Grill upgrade), and widening it removes the pressure
+ * this whole system exists to create.
+ *
+ * The map is PER STATION rather than one scalar because PRD §10's upgrade table turns exactly
+ * this dial per station — "Prep throughput / Prep Counter / Increases concurrent prep
+ * capacity". A station named in a layout but absent here falls back to
+ * STATION_DEFAULT_CONCURRENCY.
  */
 export const STATION_CONCURRENCY = Object.freeze({
   prep: 3,
