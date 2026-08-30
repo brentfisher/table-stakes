@@ -55,3 +55,44 @@ export interface EventDemandShiftBand {
   max: number;
 }
 export declare const EVENT_DEMAND_SHIFT_BAND: EventDemandShiftBand;
+// --- Customer lifecycle — STORY-004 ---------------------------------------------------------
+
+export declare const CUSTOMER_RNG_STREAM: string;
+export declare const CUSTOMER_ENTER_DISTRICT_MS: number;
+export declare const CUSTOMER_EVALUATE_RESTAURANTS_MS: number;
+export declare const CUSTOMER_SEATED_GREET_MS: number;
+export declare const CUSTOMER_ORDERING_MS: number;
+export declare const CUSTOMER_FOOD_WAIT_MS_RANGE: readonly [number, number];
+export declare const CUSTOMER_EATING_MS_RANGE: readonly [number, number];
+export declare const CUSTOMER_PAYING_MS: number;
+export declare const CUSTOMER_LEAVING_MS: number;
+export declare const CUSTOMER_EXIT_LINGER_MS: number;
+export declare const CUSTOMER_MAX_SPAWNS_PER_TICK: number;
+export declare const CUSTOMER_PROFILE_JITTER: number;
+export declare const CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY: number;
+export declare const CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD: number;
+export declare const CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY: number;
+
+export interface CustomerWaitToleranceShare {
+  seating: number;
+  ordering: number;
+  food: number;
+}
+export declare const CUSTOMER_WAIT_TOLERANCE_SHARE: CustomerWaitToleranceShare;
+export declare const CUSTOMER_VISIT_DURATION_TOLERANCE_MULTIPLIER: number;
+
+export interface CustomerSatisfactionWeights {
+  waitToBeSeated: number;
+  waitToOrder: number;
+  waitForFood: number;
+  dishQuality: number;
+  dishPreferenceMatch: number;
+  priceFairness: number;
+  orderAccuracy: number;
+  tableCleanliness: number;
+  eventRelevance: number;
+  recoveryActions: number;
+  visitDurationVsPatience: number;
+}
+export declare const CUSTOMER_SATISFACTION_WEIGHTS: CustomerSatisfactionWeights;
+export declare const CUSTOMER_ANGRY_SATISFACTION_THRESHOLD: number;

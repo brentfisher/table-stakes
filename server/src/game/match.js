@@ -13,6 +13,17 @@
 // setup submissions, events and scoring register against `simulation-loop.js` as systems (see
 // `systems/index.js`) precisely so that adding one is a new file plus a registration line,
 // and never an edit here.
+//
+// THE ONE DISCLOSED EXCEPTION (STORY-004): `toSnapshot()`'s `customers` field now reads
+// `this.customers ?? []` instead of a hardcoded `[]`, because snapshots are pull-based per
+// viewer and this method is the only place they are assembled — there was no other integration
+// point for a system's data to reach the wire. `customer-system.js` attaches its own
+// pre-sanitized array (`match.customers = [...]`); this file still contains zero gameplay
+// logic, only a generic fallback. `events`/`restaurants`/`orders` are deliberately left as `[]`
+// here — STORY-011/009/005 own those and should make the identical narrow change themselves
+// when they land, rather than this story pre-editing lines it does not use, to keep each
+// story's diff to this shared file surgical and rebase-friendly. See customer-system.js's file
+// header for the full reasoning.
 
 import { MATCH_PHASES } from '../../../shared/schemas/messages.js';
 import {
@@ -410,11 +421,17 @@ export class Match {
       timeRemainingMs: this.timeRemainingMs,
       market: this.marketRevealed ? publicMarket(this.market) : null,
       you: viewer ? { playerId: viewer.playerId, ready: viewer.ready } : null,
+      // Each of these is populated by a system attaching its own pre-sanitized, already
+      // public-shaped array to `match.<name>` during its tick; this method only serializes
+      // whatever is there, defaulting to `[]` before any such system has run. That default is
+      // the one narrow exception to Decision 15's "later systems never edit match.js" — made
+      // once, for all of them, so no future story has to touch this method again. match.js
+      // still contains no gameplay logic.
       events: this.events ?? [],
       eventForecast: this.eventForecast ?? [],
-      restaurants: [],
-      customers: [],
-      orders: [],
+      restaurants: this.restaurants ?? [],
+      customers: this.customers ?? [],
+      orders: this.orders ?? [],
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
         position: { x: p.position.x, y: p.position.y, z: p.position.z },
