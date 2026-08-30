@@ -72,10 +72,12 @@ const PATIENCE_DECAYING_STATES = new Set([
   CUSTOMER_STATES.WAITING_FOR_FOOD,
 ]);
 
-/** Event effects share the §16 vocabulary (design Decision 12). STORY-011 will set
- * `match.activeEventEffects` to the active event's `effects` object; until then every consumer
- * here reads this neutral default, exactly the "default 1.0" seam the story calls for. This
- * system never reaches into an event system — it only reads this one match-state field. */
+/** Event effects share the §16 vocabulary (design Decision 12). The event system publishes
+ * the active event's effects on `match.eventEffects`, with every key present at a neutral
+ * value at all times, so this can be read unconditionally. The neutral default below still
+ * matters: a match running without the event system registered (several check scripts do
+ * exactly that) has no such field at all. This system never reaches into the event system —
+ * it only reads this one match-state field. */
 const NEUTRAL_EVENT_EFFECTS = Object.freeze({
   footTrafficMultiplier: 1,
   partySizeMultiplier: 1,
@@ -83,7 +85,7 @@ const NEUTRAL_EVENT_EFFECTS = Object.freeze({
 });
 
 function getEventEffects(match) {
-  return match.activeEventEffects ?? NEUTRAL_EVENT_EFFECTS;
+  return match.eventEffects ?? NEUTRAL_EVENT_EFFECTS;
 }
 
 // --- lazily-initialized, per-match simulation state -----------------------------------------
@@ -692,6 +694,7 @@ export const customerSystem = {
  */
 export const _internal = {
   ensureState,
+  getEventEffects,
   orderRequest,
   spawnParty,
   advanceParty,
