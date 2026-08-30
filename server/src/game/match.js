@@ -431,7 +431,7 @@ export class Match {
       eventForecast: this.eventForecast ?? [],
       restaurants: this.restaurants ?? [],
       customers: this.customers ?? [],
-      orders: [],
+      orders: this.orders ?? [],
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
         position: { x: p.position.x, y: p.position.y, z: p.position.z },
