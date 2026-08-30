@@ -1,0 +1,27 @@
+{
+  "_comment": "PRD §7 'Initial policies/perks'. §7 lists five and then says: 'For MVP, either omit policies or include only two to reduce balance complexity.' These are the two — House Special and Friendly Staff — reproduced with §7's own effect prose and intended strategy. Express Service, Lean Operations and Premium Experience are deliberately absent; adding them is a balance change, not a data entry. `effects` is machine-readable in the same style as upgrades.json: every key is a value a system reads, multipliers are 1.0-relative. `requiresMenuDish` marks a policy whose effect names a dish — House Special is 'ONE TAGGED DISH gets increased appeal', so the submission must say which, and setup-validator.js rejects a target that is not on the submitted menu. Nothing consumes `effects` yet: the customer-choice and satisfaction systems that will are STORY-004 and STORY-012.",
+
+  "policies": [
+    {
+      "id": "house_special",
+      "name": "House Special",
+      "description": "One dish on your menu is the house special: higher appeal and higher satisfaction.",
+      "intendedStrategy": "Market specialization",
+      "requiresMenuDish": true,
+      "effects": {
+        "specialDishAppealMultiplier": 1.2,
+        "specialDishSatisfactionBonus": 8
+      }
+    },
+    {
+      "id": "friendly_staff",
+      "name": "Friendly Staff",
+      "description": "Satisfaction decays more slowly while guests are waiting.",
+      "intendedStrategy": "Consistency and recovery",
+      "requiresMenuDish": false,
+      "effects": {
+        "waitSatisfactionDecayMultiplier": 0.7
+      }
+    }
+  ]
+}

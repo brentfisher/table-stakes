@@ -12,6 +12,7 @@
 // its PR why it goes where it goes.
 //
 //   movement   — owner avatars (STORY-001/003)
+//   setup      — STORY-009  (before customers: it is what guarantees a menu exists)
 //   customers  — STORY-004
 //   orders     — STORY-005  (after customers: an order exists because a party ordered)
 //   events     — STORY-011
@@ -21,9 +22,14 @@ import { registerSystem } from '../simulation-loop.js';
 import { movementSystem } from './movement-system.js';
 import { eventSystem } from './event-system.js';
 import { customerSystem } from './customer-system.js';
+import { setupSystem } from './setup-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
+  // `setup` runs before the gameplay systems: its whole job happens at the setup -> service
+  // transition, and it is what guarantees every restaurant HAS a locked, legal menu by the
+  // time customers, orders and scoring first tick.
+  registerSystem(setupSystem);
   registerSystem(customerSystem);
   // STORY-005: registerSystem(orderSystem);
   registerSystem(eventSystem);

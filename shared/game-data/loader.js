@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DISH_CATEGORIES, STATIONS } from '../schemas/messages.js';
+import { WORKER_ROLES } from '../schemas/game-state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -38,7 +39,14 @@ export class CatalogueError extends Error {
 
 const SNAKE_CASE = /^[a-z][a-z0-9_]*$/;
 
-/** Reads and JSON-parses the five catalogue files plus the §14 layout. Throws on bad JSON. */
+/**
+ * Reads and JSON-parses the catalogue files plus the §14 layout. Throws on bad JSON.
+ *
+ * STORY-009 added `policies.json` — PRD §7 "Initial policies/perks". It is content, so it
+ * belongs here with the rest of the content and gets the same startup integrity check
+ * (Decision 9); the alternative was a policy list inlined in a system, which conventions.md
+ * forbids.
+ */
 export function readCatalogueFiles(dir = HERE) {
   const read = (file) => {
     const path = join(dir, file);
@@ -54,6 +62,7 @@ export function readCatalogueFiles(dir = HERE) {
     segments: read('customer-segments.json'),
     events: read('events.json'),
     upgrades: read('upgrades.json'),
+    policies: read('policies.json'),
     layout: read('restaurant-layout.json'),
   };
 }
@@ -73,6 +82,7 @@ export function validateCatalogue(raw) {
   const segments = raw.segments?.segments;
   const events = raw.events?.events;
   const upgrades = raw.upgrades?.upgrades;
+  const policies = raw.policies?.policies;
 
   if (!Array.isArray(dishes)) err('dishes.json: `dishes` must be an array');
   if (!ingredients || typeof ingredients !== 'object') {
@@ -82,6 +92,7 @@ export function validateCatalogue(raw) {
   if (!Array.isArray(segments)) err('customer-segments.json: `segments` must be an array');
   if (!Array.isArray(events)) err('events.json: `events` must be an array');
   if (!Array.isArray(upgrades)) err('upgrades.json: `upgrades` must be an array');
+  if (!Array.isArray(policies)) err('policies.json: `policies` must be an array');
   if (errors.length > 0) return errors;
 
   // --- id hygiene ---------------------------------------------------------------------
@@ -107,6 +118,7 @@ export function validateCatalogue(raw) {
   const segmentIds = idsOf('customer-segments.json', segments);
   const eventIds = idsOf('events.json', events);
   const upgradeIds = idsOf('upgrades.json', upgrades);
+  idsOf('policies.json', policies);
 
   const ingredientIds = new Set(Object.keys(ingredients));
   for (const id of ingredientIds) {
@@ -217,6 +229,12 @@ export function validateCatalogue(raw) {
       err(`${at}: baseFootTrafficPerMinute must be a positive number`);
     }
     if (!Array.isArray(market.preferredTags)) err(`${at}: preferredTags must be an array`);
+    // PRD §7's setup briefing lists "Nearby business/event anchors". Prose, but required —
+    // a district with no anchors gives the player nothing to read the market against.
+    if (!Array.isArray(market.anchors) || market.anchors.length === 0 ||
+      !market.anchors.every((a) => typeof a === 'string' && a.length > 0)) {
+      err(`${at}: anchors must be a non-empty array of strings (PRD §7 setup briefing)`);
+    }
 
     // Unknown segment id in segmentWeights, and the §16 sum-to-1.0 rule.
     if (!market.segmentWeights || typeof market.segmentWeights !== 'object') {
@@ -338,6 +356,80 @@ export function validateCatalogue(raw) {
     }
   }
 
+  // --- policies, PRD §7 "Initial policies/perks" ------------------------------------------
+  // §7: "For MVP, either omit policies or include only two to reduce balance complexity."
+  // Two is the ceiling, not a target — zero is equally legal and the loader accepts it.
+  if (policies.length > 2) {
+    err(
+      `policies.json: ${policies.length} policies — PRD §7 caps MVP at two ` +
+        '("either omit policies or include only two to reduce balance complexity")',
+    );
+  }
+  for (const policy of policies) {
+    const at = `policies.json[${policy.id}]`;
+    if (typeof policy.name !== 'string' || policy.name.length === 0) {
+      err(`${at}: name must be a non-empty string`);
+    }
+    if (typeof policy.requiresMenuDish !== 'boolean') {
+      err(`${at}: requiresMenuDish must be a boolean — it decides whether a submission must name a target dish`);
+    }
+    if (!policy.effects || typeof policy.effects !== 'object' || Array.isArray(policy.effects)) {
+      err(`${at}: effects must be a machine-readable object`);
+    } else if (Object.keys(policy.effects).length === 0) {
+      err(`${at}: effects must not be empty — a policy with no machine-readable effect is prose`);
+    }
+  }
+
+  // --- the §7 staffing roster, which lives on the §14 layout --------------------------------
+  // `staffAssignments` in setup_submit names a worker and a post; both vocabularies are here,
+  // so a typo in either is a startup failure rather than a rejected submission at match time.
+  const staff = raw.layout?.staff;
+  if (!staff || typeof staff !== 'object') {
+    err('restaurant-layout.json: `staff` must declare the PRD §7 worker roster and its posts');
+  } else {
+    const postIds = new Set();
+    for (const post of staff.posts ?? []) {
+      if (typeof post?.id !== 'string' || !SNAKE_CASE.test(post.id)) {
+        err(`restaurant-layout.json staff.posts: post id "${post?.id}" is not snake_case`);
+        continue;
+      }
+      if (postIds.has(post.id)) err(`restaurant-layout.json staff.posts: duplicate post "${post.id}"`);
+      postIds.add(post.id);
+      if (post.station !== undefined && !layoutStations.has(post.station)) {
+        err(`restaurant-layout.json staff.posts[${post.id}]: station "${post.station}" is not in this layout`);
+      }
+      if (post.entityId !== undefined &&
+        !(raw.layout.entities ?? []).some((e) => e.id === post.entityId)) {
+        err(`restaurant-layout.json staff.posts[${post.id}]: unknown entity "${post.entityId}"`);
+      }
+    }
+    if (postIds.size === 0) err('restaurant-layout.json staff.posts must be a non-empty array');
+
+    const workerIds = new Set();
+    for (const worker of staff.roster ?? []) {
+      const at = `restaurant-layout.json staff.roster[${worker?.id}]`;
+      if (typeof worker?.id !== 'string' || !SNAKE_CASE.test(worker.id)) {
+        err(`${at}: worker id is not snake_case`);
+        continue;
+      }
+      if (workerIds.has(worker.id)) err(`${at}: duplicate worker id`);
+      workerIds.add(worker.id);
+      if (!WORKER_ROLES.includes(worker.role)) {
+        err(`${at}: role "${worker.role}" is not one of ${WORKER_ROLES.join(', ')}`);
+      }
+      if (!Array.isArray(worker.posts) || worker.posts.length === 0) {
+        err(`${at}: posts must be a non-empty array of post ids this worker may take`);
+        continue;
+      }
+      for (const postId of worker.posts) {
+        if (!postIds.has(postId)) err(`${at}: unknown post "${postId}"`);
+      }
+    }
+    if (workerIds.size === 0) {
+      err('restaurant-layout.json staff.roster must be a non-empty array — PRD §7 starts every player with a cook and a server');
+    }
+  }
+
   return errors;
 }
 
@@ -359,6 +451,7 @@ export function loadCatalogue(dir = HERE) {
     segments: raw.segments.segments,
     events: raw.events.events,
     upgrades: raw.upgrades.upgrades,
+    policies: raw.policies.policies,
     layout: raw.layout,
 
     dishesById: indexById(raw.dishes.dishes),
@@ -366,6 +459,7 @@ export function loadCatalogue(dir = HERE) {
     segmentsById: indexById(raw.segments.segments),
     eventsById: indexById(raw.events.events),
     upgradesById: indexById(raw.upgrades.upgrades),
+    policiesById: indexById(raw.policies.policies),
   };
 }
 

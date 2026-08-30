@@ -36,6 +36,8 @@ export interface Market {
   name: string;
   daypart: string;
   description: string;
+  /** PRD §7 "Nearby business/event anchors" — briefing prose, read by no system. */
+  anchors: string[];
   /** Keyed by segment id. Sums to 1.0 within SEGMENT_WEIGHT_TOLERANCE. */
   segmentWeights: Record<string, number>;
   priceSensitivity: number;
@@ -110,6 +112,41 @@ export interface Upgrade {
   effects: Record<string, unknown>;
 }
 
+/**
+ * PRD §7 "Initial policies/perks". §7 caps MVP at two, and the loader enforces that ceiling.
+ * `requiresMenuDish` marks a policy whose effect names one dish (House Special), so the
+ * submission must carry a `policyDishId` that is actually on the submitted menu.
+ */
+export interface Policy {
+  id: string;
+  name: string;
+  description: string;
+  intendedStrategy: string;
+  requiresMenuDish: boolean;
+  effects: Record<string, unknown>;
+}
+
+/** PRD §7 "Staffing setup" — one assignable position in the restaurant. */
+export interface StaffPost {
+  id: string;
+  label: string;
+  /** Set when the post IS a kitchen station in this layout. */
+  station?: Station;
+  /** The layout entity or zone the post sits at, for the scene and the setup UI. */
+  entityId?: string;
+  zoneId?: string;
+}
+
+/** One hired worker. The owner-player is not rostered — they are the player. */
+export interface RosterWorker {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  /** Post ids this worker may be assigned to in `setup_submit.staffAssignments`. */
+  posts: string[];
+}
+
 export interface RestaurantLayout {
   id: string;
   name: string;
@@ -117,6 +154,8 @@ export interface RestaurantLayout {
   zones: Array<{ id: string; label: string; min: [number, number]; max: [number, number] }>;
   entities: Array<Record<string, unknown>>;
   spawn: Record<string, [number, number, number]>;
+  /** STORY-009: the PRD §7 roster and the closed vocabulary of posts it may be assigned to. */
+  staff: { posts: StaffPost[]; roster: RosterWorker[] };
 }
 
 export interface RawCatalogue {
@@ -125,6 +164,7 @@ export interface RawCatalogue {
   segments: { segments: CustomerSegment[] };
   events: { events: GameEvent[] };
   upgrades: { upgrades: Upgrade[] };
+  policies: { policies: Policy[] };
   layout: RestaurantLayout;
 }
 
@@ -135,6 +175,7 @@ export interface Catalogue {
   segments: CustomerSegment[];
   events: GameEvent[];
   upgrades: Upgrade[];
+  policies: Policy[];
   layout: RestaurantLayout;
 
   dishesById: Readonly<Record<string, Dish>>;
@@ -142,6 +183,7 @@ export interface Catalogue {
   segmentsById: Readonly<Record<string, CustomerSegment>>;
   eventsById: Readonly<Record<string, GameEvent>>;
   upgradesById: Readonly<Record<string, Upgrade>>;
+  policiesById: Readonly<Record<string, Policy>>;
 }
 
 /** See loader.js — the tolerance exists because 0.55+0.10+0.20+0.05+0.10 !== 1 in float. */

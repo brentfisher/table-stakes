@@ -94,3 +94,153 @@ body {
   color: var(--muted);
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------------------------------
+   PRD §18 "Setup UI" — the four regions plus the top bar, as plain CSS grid. PRD §13 and
+   conventions.md "Code Style": no large UI system, no CSS-in-JS, no component library.
+
+   The screen is a full-bleed overlay above the Three.js canvas rather than a sibling of it:
+   during setup the restaurant is a backdrop, not something the player is driving. It sets
+   `pointer-events: auto` because `.hud` above it is click-through.
+   ------------------------------------------------------------------------------------------ */
+
+.setup {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  grid-template-columns: minmax(240px, 1fr) minmax(360px, 2fr) minmax(260px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top    top    top"
+    "left   center right"
+    "bottom bottom bottom";
+  background: rgba(12, 15, 19, 0.94);
+  pointer-events: auto;
+}
+
+.setup-region {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.setup-top { grid-area: top; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.setup-left { grid-area: left; }
+.setup-center { grid-area: center; }
+.setup-right { grid-area: right; }
+.setup-bottom { grid-area: bottom; display: flex; gap: 20px; flex-wrap: wrap; max-height: 30vh; }
+
+.setup h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.setup h3 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.setup h3:first-child { margin-top: 0; }
+.setup p { margin: 0 0 8px; }
+.setup ul { margin: 0 0 8px; padding-left: 16px; }
+.setup .muted { color: var(--muted); }
+.setup .num { font-variant-numeric: tabular-nums; }
+
+.setup-clock { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.setup-title { font-size: 15px; font-weight: 600; }
+.setup-top .spacer { flex: 1; }
+
+.setup-badge {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+}
+.setup-badge.is-ready { color: var(--ok); border-color: var(--ok); }
+
+.setup-forecast { display: grid; gap: 6px; }
+.setup-forecast li { list-style: none; }
+.setup-forecast .row { display: flex; justify-content: space-between; gap: 8px; }
+
+.setup-dish {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 7px 9px;
+  text-align: left;
+  background: #1b2128;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.setup-dish:hover:not(:disabled) { border-color: #48545f; }
+.setup-dish.is-selected { border-color: var(--ok); background: #1d261d; }
+.setup-dish:disabled { opacity: 0.45; cursor: not-allowed; }
+.setup-dish .name { font-weight: 600; }
+.setup-dish .tags { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+
+.setup-slot { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.setup-slot:last-child { border-bottom: none; }
+.setup-slot .head { display: flex; justify-content: space-between; gap: 8px; }
+.setup-slot input[type='range'] { width: 100%; margin: 4px 0 2px; accent-color: var(--ok); }
+
+/* PRD §7: qualitative guidance, never the underlying utility math. These chips render the
+   six §7 label strings and nothing else — there is no number to render. */
+.setup-guidance { display: flex; gap: 6px; flex-wrap: wrap; }
+.setup-chip { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
+.setup-chip.value-good { color: var(--ok); border-color: #3f6b31; }
+.setup-chip.value-fair { color: var(--text); }
+.setup-chip.value-high { color: var(--warn); border-color: #6b5a2f; }
+.setup-chip.value-bad { color: var(--bad); border-color: #6b3535; }
+
+.setup-field { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin-bottom: 5px; }
+.setup select,
+.setup input[type='number'] {
+  padding: 4px 6px;
+  background: #1b2128;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+}
+.setup input[type='number'] { width: 68px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.setup-option {
+  display: block;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  background: #1b2128;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.setup-option.is-selected { border-color: var(--ok); }
+.setup-option input { margin-right: 6px; accent-color: var(--ok); }
+.setup-option.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.setup-option .why { display: block; color: var(--muted); font-size: 12px; }
+
+.setup-submit {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: #2c4a26;
+  border: 1px solid #3f6b31;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.setup-submit:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
+.setup-error { margin: 8px 0 0; color: var(--bad); }
+.setup-ok { margin: 8px 0 0; color: var(--ok); }
+
+.setup-column { flex: 1 1 220px; min-width: 200px; }

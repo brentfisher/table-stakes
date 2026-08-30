@@ -1,5 +1,5 @@
 {
-  "_comment": "PRD §6 'Market system' — the three recommended MVP markets. `downtown_lunch` reproduces the §16 'Market definition example' field for field and value for value; the other two follow the same shape. `segmentWeights` keys must be ids in customer-segments.json and MUST sum to 1.0 within SEGMENT_WEIGHT_TOLERANCE (see loader.js); `eventPool` entries must be ids in events.json. `priceSensitivity` > 1 means this district punishes high prices more than average. PRD §6 lists Arts & Nightlife and Neighborhood Weekend as post-MVP; they are deliberately absent.",
+  "_comment": "PRD §6 'Market system' — the three recommended MVP markets. `downtown_lunch` reproduces the §16 'Market definition example' field for field and value for value; the other two follow the same shape. `segmentWeights` keys must be ids in customer-segments.json and MUST sum to 1.0 within SEGMENT_WEIGHT_TOLERANCE (see loader.js); `eventPool` entries must be ids in events.json. `anchors` is the PRD §7 setup briefing's 'Nearby business/event anchors' — prose for the player, read by no system. `priceSensitivity` > 1 means this district punishes high prices more than average. PRD §6 lists Arts & Nightlife and Neighborhood Weekend as post-MVP; they are deliberately absent.",
 
   "markets": [
     {
@@ -7,6 +7,7 @@
       "name": "Downtown Lunch Rush",
       "daypart": "lunch",
       "description": "Office towers, transit stops, and a tightly timed weekday crowd.",
+      "anchors": ["Federal Plaza office towers", "Transit interchange", "Convention centre"],
       "segmentWeights": {
         "office_worker": 0.55,
         "tourist": 0.1,
@@ -29,6 +30,7 @@
       "name": "Uptown Pre-Theater",
       "daypart": "dinner",
       "description": "Opera houses, galleries and a well-dressed crowd with a curtain to catch.",
+      "anchors": ["Grand Opera House", "Municipal gallery", "Boutique hotel row"],
       "segmentWeights": {
         "office_worker": 0.1,
         "tourist": 0.2,
@@ -51,6 +53,7 @@
       "name": "Stadium District",
       "daypart": "evening",
       "description": "Sports bars, parking lots, and nine innings between one lull and one flood.",
+      "anchors": ["Ballpark north gate", "Overflow parking lots", "Sports bar strip"],
       "segmentWeights": {
         "office_worker": 0.1,
         "tourist": 0.15,

@@ -96,3 +96,34 @@ export interface CustomerSatisfactionWeights {
 }
 export declare const CUSTOMER_SATISFACTION_WEIGHTS: CustomerSatisfactionWeights;
 export declare const CUSTOMER_ANGRY_SATISFACTION_THRESHOLD: number;
+// --- setup phase, PRD §7 (STORY-009) --------------------------------------------------
+
+export declare const STARTING_CASH: number;
+
+export interface MenuPriceBounds {
+  minMultiplier: number;
+  maxMultiplier: number;
+}
+export declare const MENU_PRICE_BOUNDS: MenuPriceBounds;
+
+/** Thresholds behind the §7 labels. Never rendered — see the note in tuning.js. */
+export interface PriceGuidanceThresholds {
+  excellentValueBelow: number;
+  competitiveBelow: number;
+  premiumBelow: number;
+  lowMarginBelow: number;
+  strongMarginAbove: number;
+}
+export declare const PRICE_GUIDANCE_THRESHOLDS: PriceGuidanceThresholds;
+
+export declare const STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT: number;
+
+/** Thresholds behind the §7 briefing's broad indicators. Never rendered — see tuning.js. */
+export interface BriefingIndicatorThresholds {
+  spendModestBelow: number;
+  spendModerateBelow: number;
+  spendComfortableBelow: number;
+  patienceHurriedBelow: number;
+  patienceAverageBelow: number;
+}
+export declare const BRIEFING_INDICATOR_THRESHOLDS: BriefingIndicatorThresholds;
