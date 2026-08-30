@@ -62,7 +62,6 @@ export declare const CUSTOMER_ENTER_DISTRICT_MS: number;
 export declare const CUSTOMER_EVALUATE_RESTAURANTS_MS: number;
 export declare const CUSTOMER_SEATED_GREET_MS: number;
 export declare const CUSTOMER_ORDERING_MS: number;
-export declare const CUSTOMER_FOOD_WAIT_MS_RANGE: readonly [number, number];
 export declare const CUSTOMER_EATING_MS_RANGE: readonly [number, number];
 export declare const CUSTOMER_PAYING_MS: number;
 export declare const CUSTOMER_LEAVING_MS: number;

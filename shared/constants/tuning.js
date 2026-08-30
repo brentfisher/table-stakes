@@ -160,13 +160,10 @@ export const CUSTOMER_EVALUATE_RESTAURANTS_MS = 600;
 export const CUSTOMER_SEATED_GREET_MS = 1_000;
 /** Deciding on and placing an order. STORY-005 may replace this with real menu-browsing time. */
 export const CUSTOMER_ORDERING_MS = 6_000;
-/** STORY-005 will replace this synthetic kitchen wait with the real order-ticket duration once
- * the kitchen exists; until then it stands in for "food is being prepared". Calibrated (see
- * scripts/check-customer-lifecycle.mjs's balance run) so a table's average full occupancy —
- * greet + order + food wait + eating + paying, about 35s — lets six tables turn over enough in
- * one PRD §5 6-minute service window to land in the §24 "40-90 parties per restaurant" range
- * without abandonment dominating the outcome. */
-export const CUSTOMER_FOOD_WAIT_MS_RANGE = [8_000, 18_000];
+/* CUSTOMER_FOOD_WAIT_MS_RANGE IS GONE (STORY-005). It was a synthetic kitchen wait standing in
+ * until a kitchen existed. One does now: how long a party waits for food is the sum of its
+ * dishes' `stationSteps` durations from dishes.json plus whatever those tickets spent queueing
+ * behind other tickets, and it is not a tunable number any more. Nothing replaces it here. */
 /** How long a party spends eating once food arrives. */
 export const CUSTOMER_EATING_MS_RANGE = [8_000, 16_000];
 export const CUSTOMER_PAYING_MS = 3_000;

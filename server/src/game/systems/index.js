@@ -22,6 +22,7 @@ import { registerSystem } from '../simulation-loop.js';
 import { movementSystem } from './movement-system.js';
 import { eventSystem } from './event-system.js';
 import { customerSystem } from './customer-system.js';
+import { orderSystem } from './order-system.js';
 import { setupSystem } from './setup-system.js';
 
 export function registerAllSystems() {
@@ -31,7 +32,10 @@ export function registerAllSystems() {
   // time customers, orders and scoring first tick.
   registerSystem(setupSystem);
   registerSystem(customerSystem);
-  // STORY-005: registerSystem(orderSystem);
+  // `orders` runs after `customers` because an order only exists because a party ordered: the
+  // customer system hands the kitchen a new order during its own update, and the kitchen picks
+  // it up in the same tick rather than a tick later.
+  registerSystem(orderSystem);
   registerSystem(eventSystem);
   // STORY-013: registerSystem(scoringSystem);
 }
