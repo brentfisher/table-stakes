@@ -68,9 +68,6 @@ export declare const CUSTOMER_LEAVING_MS: number;
 export declare const CUSTOMER_EXIT_LINGER_MS: number;
 export declare const CUSTOMER_MAX_SPAWNS_PER_TICK: number;
 export declare const CUSTOMER_PROFILE_JITTER: number;
-export declare const CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY: number;
-export declare const CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD: number;
-export declare const CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY: number;
 
 export interface CustomerWaitToleranceShare {
   seating: number;
@@ -153,3 +150,19 @@ export declare const ORDER_QUALITY_WEIGHTS: OrderQualityWeights;
 export declare const ORDER_PREFERENCE_TAG_STEP: number;
 export declare const ORDER_PRICE_FAIRNESS_SLOPE: number;
 export declare const ORDER_SNAPSHOT_LINGER_MS: number;
+
+export declare const DISTRICT_RNG_STREAM: string;
+export declare const DISTRICT_CHOICE_TEMPERATURE: number;
+export declare const DISTRICT_LEAVE_UTILITY: number;
+export declare const DISTRICT_EVENT_AFFINITY_WEIGHT: number;
+export declare const DISTRICT_REASON_EPSILON: number;
+export declare const DISTRICT_QUEUE_WAIT_PER_PARTY_MS: number;
+export declare const DISTRICT_BACKLOG_WAIT_PER_TICKET_MS: number;
+export declare const DISTRICT_WAIT_INTOLERABLE_MULTIPLE: number;
+export declare const DISTRICT_PRICE_VALUE_SLOPE: number;
+export declare const DISTRICT_MENU_FIT_TAG_STEP: number;
+export declare const DISTRICT_REPUTATION_START: number;
+export declare const DISTRICT_REPUTATION_MIN: number;
+export declare const DISTRICT_REPUTATION_MAX: number;
+export declare const DISTRICT_REPUTATION_REVIEW_WEIGHT: number;
+export declare const DISTRICT_REPUTATION_WALKOUT_PENALTY: number;
