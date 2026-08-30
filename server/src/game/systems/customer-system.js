@@ -13,10 +13,9 @@
 // no other integration point for real data — snapshots are pull-based per viewer, built by a
 // method that lives in match.js. That one field now reads `this.customers ?? []` (so every
 // match that predates this story, or never reaches `service`, is unaffected) instead of the
-// literal empty array. `events`/`restaurants`/`orders` are deliberately left untouched —
-// STORY-005/009/011 are editing match.js and tuning.js in parallel worktrees, so this story
-// only changes the one line it needs, and the sibling stories make the identical narrow change
-// for their own field when they land, rather than colliding on lines none of them use yet.
+// literal empty array. `toSnapshot()` has since been generalised so that every entity array it
+// carries defaults the same way, which is why STORY-005's orders needed no further edit there
+// at all — the kitchen simply attaches `match.orders` and it serializes.
 // match.js still contains zero customer *logic*; it only serializes whatever this system
 // attaches. This is disclosed here and in the PR because Decision 15 promises "no edit to
 // match.js" and this is a narrow, deliberate exception to that promise, not an oversight.
