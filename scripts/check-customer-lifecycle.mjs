@@ -22,6 +22,8 @@ import {
   stepMatch,
 } from '../server/src/game/simulation-loop.js';
 import { customerSystem, _internal } from '../server/src/game/systems/customer-system.js';
+import { orderSystem } from '../server/src/game/systems/order-system.js';
+import { setupSystem } from '../server/src/game/systems/setup-system.js';
 import { CUSTOMER_STATES, CUSTOMER_STATE_LIST, isExitState } from '../shared/schemas/game-state.js';
 import {
   CUSTOMER_ANGRY_SATISFACTION_THRESHOLD,
@@ -68,8 +70,17 @@ function runUntilPhase(match, phase, maxSteps = 20_000) {
 console.log('Customer lifecycle check\n');
 
 // --- 0. registration --------------------------------------------------------------------
+// STORY-005: `orderSystem` is registered here too, in the same order `systems/index.js` uses.
+// It is not optional scaffolding for this script — `WAITING_FOR_FOOD` no longer ends after an
+// invented duration, it ends when the kitchen plates the party's order, so a customer
+// lifecycle without a kitchen is a lifecycle that never gets past waiting for food. Checking
+// the lifecycle against the real kitchen is checking the shipped behaviour.
 clearSystems();
+// `setup` first, exactly as systems/index.js registers it: it is what guarantees every player
+// has a locked, legal menu by the time the kitchen needs one to build an order from.
+registerSystem(setupSystem);
 registerSystem(customerSystem);
+registerSystem(orderSystem);
 
 // --- 1. spawning: segment assignment, party size, hidden profile init ---------------------
 {
@@ -186,6 +197,9 @@ registerSystem(customerSystem);
         // let it resolve naturally via advanceParty below, then correct if it went the wrong way
       }
       _internal.advanceParty(match, state, party, TICK_MS);
+      // The kitchen has to run for the party to ever receive food: this loop drives
+      // `advanceParty` directly rather than through the loop, so it must drive the kitchen too.
+      orderSystem.update(match, TICK_MS);
       match.elapsedMs += TICK_MS;
       seen.add(party.state);
       if (party.state === CUSTOMER_STATES.CHOOSE_RIVAL || party.state === CUSTOMER_STATES.LEAVE_DISTRICT) {
@@ -301,7 +315,6 @@ function freshParty(match, state) {
   const seatedOk = party.state === CUSTOMER_STATES.SEATED && party.tableId !== null;
 
   party.state = CUSTOMER_STATES.WAITING_FOR_FOOD;
-  party.foodWaitTargetMs = 999_999;
   party.patienceMsRemaining = 0;
   _internal.advanceParty(match, state, party, TICK_MS);
   check(
@@ -324,6 +337,9 @@ function freshParty(match, state) {
   party.patienceAtFoodDeliveredFrac = 0;
   party.patienceMsRemaining = 0;
   party.spawnedAtMs = match.elapsedMs - party.patienceSeconds * 1000 * 10;
+  // STORY-005: the four kitchen-supplied factors are real now, so "maximally bad" has to
+  // include them — a stale, wrong, unwanted, overpriced order.
+  party.orderOutcome = { dishQuality: 0, dishPreferenceMatch: 0, orderAccuracy: 0, priceFairness: 0 };
   party.state = CUSTOMER_STATES.EATING;
   party.eatingTargetMs = 0;
   _internal.advanceParty(match, state, party, TICK_MS);
@@ -344,6 +360,7 @@ function freshParty(match, state) {
   party.patienceAtOrderPlacedFrac = 1;
   party.patienceAtFoodDeliveredFrac = 1;
   party.patienceMsRemaining = party.patienceSeconds * 1000;
+  party.orderOutcome = { dishQuality: 1, dishPreferenceMatch: 1, orderAccuracy: 1, priceFairness: 1 };
   party.state = CUSTOMER_STATES.EATING;
   party.eatingTargetMs = 0;
   _internal.advanceParty(match, state, party, TICK_MS);
@@ -358,12 +375,12 @@ function freshParty(match, state) {
 {
   const allBad = _internal.combineSatisfaction({
     waitToBeSeated: 0, waitToOrder: 0, waitForFood: 0, visitDurationVsPatience: 0,
-    dishQuality: null, dishPreferenceMatch: null, priceFairness: null, orderAccuracy: null,
+    dishQuality: 0, dishPreferenceMatch: 0, priceFairness: 0, orderAccuracy: 0,
     tableCleanliness: null, eventRelevance: null, recoveryActions: null,
   });
   const allGood = _internal.combineSatisfaction({
     waitToBeSeated: 1, waitToOrder: 1, waitForFood: 1, visitDurationVsPatience: 1,
-    dishQuality: null, dishPreferenceMatch: null, priceFairness: null, orderAccuracy: null,
+    dishQuality: 1, dishPreferenceMatch: 1, priceFairness: 1, orderAccuracy: 1,
     tableCleanliness: null, eventRelevance: null, recoveryActions: null,
   });
   check(

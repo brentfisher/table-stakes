@@ -13,13 +13,22 @@
 // no other integration point for real data — snapshots are pull-based per viewer, built by a
 // method that lives in match.js. That one field now reads `this.customers ?? []` (so every
 // match that predates this story, or never reaches `service`, is unaffected) instead of the
-// literal empty array. `events`/`restaurants`/`orders` are deliberately left untouched —
-// STORY-005/009/011 are editing match.js and tuning.js in parallel worktrees, so this story
-// only changes the one line it needs, and the sibling stories make the identical narrow change
-// for their own field when they land, rather than colliding on lines none of them use yet.
+// literal empty array. `toSnapshot()` has since been generalised so that every entity array it
+// carries defaults the same way, which is why STORY-005's orders needed no further edit there
+// at all — the kitchen simply attaches `match.orders` and it serializes.
 // match.js still contains zero customer *logic*; it only serializes whatever this system
 // attaches. This is disclosed here and in the PR because Decision 15 promises "no edit to
 // match.js" and this is a narrow, deliberate exception to that promise, not an oversight.
+//
+// THE KITCHEN SEAM (STORY-005). `WAITING_FOR_FOOD` used to end after an INVENTED duration
+// drawn from `CUSTOMER_FOOD_WAIT_MS_RANGE`, documented as standing in until a kitchen existed.
+// It now ends when the kitchen actually plates the party's order. The two systems talk through
+// one object on the match, `match.kitchen`, published by `order-system.js`; neither reads the
+// other's internals. This system PUSHES an order (an explicit field list, never the internal
+// party object) and POLLS for its delivery by order id — an id that was already a public field
+// on `CustomerSnapshot`. If no kitchen is registered, nothing invents a duration: the party
+// waits, its patience runs out, and it leaves via CANCEL_ORDER, which is the honest outcome for
+// a restaurant with no kitchen.
 //
 // PRIVACY (PRD §6, this story's hardest requirement): a party's hidden profile — budget,
 // patienceSeconds, the four choice weights, preferred/disliked tags — must never reach the
@@ -36,7 +45,6 @@ import {
   CUSTOMER_EVALUATE_RESTAURANTS_MS,
   CUSTOMER_SEATED_GREET_MS,
   CUSTOMER_ORDERING_MS,
-  CUSTOMER_FOOD_WAIT_MS_RANGE,
   CUSTOMER_EATING_MS_RANGE,
   CUSTOMER_PAYING_MS,
   CUSTOMER_LEAVING_MS,
@@ -64,10 +72,12 @@ const PATIENCE_DECAYING_STATES = new Set([
   CUSTOMER_STATES.WAITING_FOR_FOOD,
 ]);
 
-/** Event effects share the §16 vocabulary (design Decision 12). STORY-011 will set
- * `match.activeEventEffects` to the active event's `effects` object; until then every consumer
- * here reads this neutral default, exactly the "default 1.0" seam the story calls for. This
- * system never reaches into an event system — it only reads this one match-state field. */
+/** Event effects share the §16 vocabulary (design Decision 12). The event system publishes
+ * the active event's effects on `match.eventEffects`, with every key present at a neutral
+ * value at all times, so this can be read unconditionally. The neutral default below still
+ * matters: a match running without the event system registered (several check scripts do
+ * exactly that) has no such field at all. This system never reaches into the event system —
+ * it only reads this one match-state field. */
 const NEUTRAL_EVENT_EFFECTS = Object.freeze({
   footTrafficMultiplier: 1,
   partySizeMultiplier: 1,
@@ -75,7 +85,7 @@ const NEUTRAL_EVENT_EFFECTS = Object.freeze({
 });
 
 function getEventEffects(match) {
-  return match.activeEventEffects ?? NEUTRAL_EVENT_EFFECTS;
+  return match.eventEffects ?? NEUTRAL_EVENT_EFFECTS;
 }
 
 // --- lazily-initialized, per-match simulation state -----------------------------------------
@@ -235,8 +245,11 @@ function spawnParty(match, state, effects) {
     patienceAtSeatedFrac: null,
     patienceAtOrderPlacedFrac: null,
     patienceAtFoodDeliveredFrac: null,
-    foodWaitTargetMs: null,
     eatingTargetMs: null,
+
+    // What the kitchen said about the order when it landed: the PRD §8 satisfaction factors
+    // `computeSatisfactionFactors` could not compute before a kitchen existed. Null until then.
+    orderOutcome: null,
   };
 
   state.parties.set(customerId, party);
@@ -361,8 +374,8 @@ function freeTable(state, party) {
  *
  *   - waitToBeSeated, waitToOrder, waitForFood, visitDurationVsPatience: REAL, computed from
  *     this story's own patience/clock bookkeeping.
- *   - dishQuality, dishPreferenceMatch, orderAccuracy: STORY-005 (orders exist).
- *   - priceFairness: STORY-009 (a menu with real prices exists).
+ *   - dishQuality, dishPreferenceMatch, orderAccuracy, priceFairness: REAL as of STORY-005 —
+ *     scored by the kitchen when the order is delivered and carried on `party.orderOutcome`.
  *   - tableCleanliness: a restaurant-state story (dirty tables are tracked).
  *   - eventRelevance: STORY-011 (a real active event to be relevant to).
  *   - recoveryActions: STORY-008 (the owner can act on a table).
@@ -404,14 +417,19 @@ function computeSatisfactionFactors(match, party) {
     1,
   );
 
+  // STORY-005: the kitchen scores the order it delivered and hands back these four factors,
+  // so they stop being null the moment an order actually reaches a table. A party that never
+  // received food has no `orderOutcome`, and they correctly stay null for it.
+  const outcome = party.orderOutcome;
+
   return {
     waitToBeSeated,
     waitToOrder,
     waitForFood,
-    dishQuality: null,
-    dishPreferenceMatch: null,
-    priceFairness: null,
-    orderAccuracy: null,
+    dishQuality: outcome?.dishQuality ?? null,
+    dishPreferenceMatch: outcome?.dishPreferenceMatch ?? null,
+    priceFairness: outcome?.priceFairness ?? null,
+    orderAccuracy: outcome?.orderAccuracy ?? null,
     tableCleanliness: null,
     eventRelevance: null,
     recoveryActions: null,
@@ -455,10 +473,37 @@ function finishEating(match, state, party) {
   party.satisfaction = combineSatisfaction(factors);
 
   if (party.satisfaction < CUSTOMER_ANGRY_SATISFACTION_THRESHOLD) {
+    // Stormed out with the plates on the table. No money moves; the kitchen records the
+    // forgone revenue for PRD §11's penalty side.
+    match.kitchen?.abandonOrder(party.orderId, 'left_angry');
     exitParty(match, state, party, CUSTOMER_STATES.LEAVE_ANGRY);
   } else {
+    // PRD §17 step 7, "Eats and pays". Revenue moves HERE and only here, computed server-side
+    // by the kitchen at the price the player set in setup (Decision 2).
+    match.kitchen?.settleOrder(party.orderId);
     transitionTo(match, party, CUSTOMER_STATES.PAYING);
   }
+}
+
+/**
+ * The explicit field list this system hands the kitchen when a party orders. Deliberately not
+ * the internal party object: everything the kitchen needs to weight a dish and score a wait is
+ * named here, and nothing else crosses. It carries hidden §6 profile values — that is fine and
+ * intended, both systems are server-side — but it means adding a field to a party never
+ * silently widens what the kitchen sees.
+ */
+function orderRequest(party) {
+  return {
+    customerId: party.customerId,
+    restaurantId: party.restaurantId,
+    tableId: party.tableId,
+    segmentId: party.segmentId,
+    partySize: party.partySize,
+    preferredTags: party.preferredTags,
+    dislikedTags: party.dislikedTags,
+    budget: party.budget,
+    patienceMs: party.patienceSeconds * 1000,
+  };
 }
 
 function advanceParty(match, state, party, dtMs) {
@@ -503,23 +548,43 @@ function advanceParty(match, state, party, dtMs) {
         break;
       }
       if (msInState >= CUSTOMER_ORDERING_MS) {
+        // No kitchen registered: nothing is invented here. The party keeps holding its menu
+        // and the patience check above is what eventually resolves it.
+        if (!match.kitchen) break;
+        const placed = match.kitchen.placeOrder(orderRequest(party));
+        if (!placed.ok) {
+          // Nothing on the menu can be served (STORY-006's shortage case). PRD §8 CANCEL_ORDER.
+          exitParty(match, state, party, CUSTOMER_STATES.CANCEL_ORDER);
+          break;
+        }
+        party.orderId = placed.orderId;
         party.patienceAtOrderPlacedFrac = patienceFraction(party);
-        party.foodWaitTargetMs = randomInRange(state.rng, CUSTOMER_FOOD_WAIT_MS_RANGE);
         transitionTo(match, party, CUSTOMER_STATES.WAITING_FOR_FOOD);
       }
       break;
 
-    case CUSTOMER_STATES.WAITING_FOR_FOOD:
+    case CUSTOMER_STATES.WAITING_FOR_FOOD: {
       if (party.patienceMsRemaining <= 0) {
+        match.kitchen?.cancelOrder(party.orderId, 'customer_patience_expired');
         exitParty(match, state, party, CUSTOMER_STATES.CANCEL_ORDER);
         break;
       }
-      if (msInState >= party.foodWaitTargetMs) {
+      // THE REAL KITCHEN WAIT. How long this takes is the sum of the dish's `stationSteps`
+      // durations plus however long its tickets spent queueing behind other tickets — it is
+      // not a number this system knows, guesses, or draws.
+      const delivery = match.kitchen?.pollDelivery(party.orderId) ?? null;
+      if (delivery?.cancelled) {
+        exitParty(match, state, party, CUSTOMER_STATES.CANCEL_ORDER);
+        break;
+      }
+      if (delivery?.delivered) {
+        party.orderOutcome = delivery.satisfaction;
         party.patienceAtFoodDeliveredFrac = patienceFraction(party);
         party.eatingTargetMs = randomInRange(state.rng, CUSTOMER_EATING_MS_RANGE);
         transitionTo(match, party, CUSTOMER_STATES.EATING);
       }
       break;
+    }
 
     case CUSTOMER_STATES.EATING:
       if (msInState >= party.eatingTargetMs) finishEating(match, state, party);
@@ -629,6 +694,8 @@ export const customerSystem = {
  */
 export const _internal = {
   ensureState,
+  getEventEffects,
+  orderRequest,
   spawnParty,
   advanceParty,
   resolveEvaluateRestaurants,

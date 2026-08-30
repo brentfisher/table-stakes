@@ -26,6 +26,7 @@ import {
   eventImpactScore,
   EVENT_RNG_STREAM,
 } from '../server/src/game/systems/event-system.js';
+import { _internal as customerInternal } from '../server/src/game/systems/customer-system.js';
 import { createRng } from '../server/src/game/rng.js';
 import { STATIONS } from '../shared/schemas/messages.js';
 import {
@@ -720,6 +721,50 @@ registerSystem(eventSystem);
     'high impact is scored from the §16 demand keys, splitting the catalogue rather than tagging it',
     highs.length > 0 && highs.length < scored.length,
     scored.map((s) => `${s.id}=${s.score.toFixed(2)}${s.high ? '*' : ''}`).join(' '),
+  );
+}
+
+
+// --- integration: the effects the deck publishes must actually reach a consumer -------------
+// This exists because they did not. `event-system.js` publishes `match.eventEffects`; the
+// customer system read `match.activeEventEffects`, a field nothing ever set, and silently fell
+// back to neutral. Every one of STORY-011's own checks still passed — they verified the deck in
+// isolation and never that a consumer saw it — so events moved district demand by exactly 0%
+// while §9 and §24 require 15-40%.
+//
+// These assertions therefore go THROUGH the consumer's own reader rather than reading
+// `match.eventEffects` directly. Reading the field here would restate what the deck already
+// asserts and pass no matter which field the consumer looks at — a check that cannot fail is
+// worse than none, because it reads as coverage.
+{
+  clearSystems();
+  registerSystem(eventSystem);
+
+  const { match } = runMatch('effects-reach-consumers', 'prototype');
+  check(
+    'the deck leaves no second, unread effects field behind',
+    match.eventEffects !== undefined && match.activeEventEffects === undefined,
+    `eventEffects=${match.eventEffects ? 'set' : 'MISSING'} activeEventEffects=${match.activeEventEffects === undefined ? 'absent (correct)' : 'SET — a second field nothing publishes'}`,
+  );
+
+  let sawNonNeutral = false;
+  let peak = 1;
+  runMatch('effects-move-demand', 'prototype', (m) => {
+    // Exactly how customer-system.js obtains effects — not a re-read of the raw field.
+    const fx = customerInternal.getEventEffects(m);
+    if (typeof fx?.footTrafficMultiplier !== 'number') return;
+    peak = Math.max(peak, fx.footTrafficMultiplier);
+    if (fx.footTrafficMultiplier !== 1) sawNonNeutral = true;
+  });
+  check(
+    "the customer system's own reader sees demand move, not a neutral constant",
+    sawNonNeutral,
+    `peak footTrafficMultiplier through getEventEffects() = ${peak.toFixed(2)}`,
+  );
+  check(
+    'the shift that reaches the consumer lands in the PRD §24 15-40% band',
+    peak - 1 >= (EVENT_DEMAND_SHIFT_BAND.min - 1) - 1e-9,
+    `peak shift ${(100 * (peak - 1)).toFixed(0)}% vs band ${(100 * (EVENT_DEMAND_SHIFT_BAND.min - 1)).toFixed(0)}-${(100 * (EVENT_DEMAND_SHIFT_BAND.max - 1)).toFixed(0)}%`,
   );
 }
 

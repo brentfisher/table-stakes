@@ -153,14 +153,36 @@ export interface CustomerSnapshot {
   decisionReason: DecisionReason | null;
 }
 
-/** `match_snapshot.orders[]` — one ticket, PRD §17 "Order system". */
+/**
+ * `match_snapshot.orders[]` — ONE TICKET, PRD §17 "Order system". A party's order decomposes
+ * into one ticket per dish, so several entries can share an `orderId`; `ticketId` is what is
+ * unique. Every field is server-computed (Decision 2) and pre-sanitized by
+ * `order-system.js`'s `toPublicOrderSnapshot`, which is an allowlist, not a spread.
+ *
+ * STATION QUEUE DEPTH IS DERIVED FROM THIS ARRAY rather than published as its own number, so
+ * the two can never disagree:
+ *
+ *     orders.filter((o) => o.station === station && o.state === 'queued').length
+ */
 export interface OrderSnapshot {
+  /** The party's order. Shared by every ticket the party's order decomposed into. */
   orderId: string;
+  /** STORY-005. Unique per ticket — `orderId` is not, once a party orders more than one dish. */
+  ticketId: string;
   restaurantId: string;
   customerId: string;
+  /** STORY-005. The table this ticket is destined for; null if the party has no table. */
+  tableId: string | null;
   dishId: string;
+  /** The price the player set for this dish during setup. Revenue is computed from it, on the
+   * server, and never from anything the client sends. */
   price: number;
   state: OrderState;
+  /**
+   * STORY-005. The station this ticket is being worked at (`in_progress`) or waiting for
+   * (`queued`), and null once it is off the line — ready, delivered or cancelled.
+   */
+  station: Station | null;
   /** Index into the dish's `stationSteps`; -1 before the first step starts. */
   currentStepIndex: number;
   remainingMs: number;
