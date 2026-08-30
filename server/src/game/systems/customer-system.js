@@ -377,14 +377,24 @@ function computeSatisfactionFactors(match, party) {
 
   const waitToBeSeated = party.patienceAtSeatedFrac ?? patienceFraction(party);
 
+  // Each later wait factor is the incremental cost of THAT phase (a delta against its own
+  // tolerance share) scaled by how much patience was left going in. The scaling is not
+  // decorative: without it, a party that arrived at a phase with patience ALREADY at zero and
+  // then spent zero further ms in it (patience clamps at 0, it cannot go negative) produces a
+  // delta of exactly 0 — "no further decay" — which the raw clamp reads as a PERFECT score, the
+  // same value it gives a party who breezed through with patience to spare. Multiplying by the
+  // prior fraction forces that case toward 0, since there was no patience budget left to judge
+  // the phase against.
   const waitToOrder =
     party.patienceAtOrderPlacedFrac !== null && party.patienceAtSeatedFrac !== null
-      ? clamp(1 - (party.patienceAtSeatedFrac - party.patienceAtOrderPlacedFrac) / share.ordering, 0, 1)
+      ? clamp(1 - (party.patienceAtSeatedFrac - party.patienceAtOrderPlacedFrac) / share.ordering, 0, 1) *
+        party.patienceAtSeatedFrac
       : null;
 
   const waitForFood =
     party.patienceAtFoodDeliveredFrac !== null && party.patienceAtOrderPlacedFrac !== null
-      ? clamp(1 - (party.patienceAtOrderPlacedFrac - party.patienceAtFoodDeliveredFrac) / share.food, 0, 1)
+      ? clamp(1 - (party.patienceAtOrderPlacedFrac - party.patienceAtFoodDeliveredFrac) / share.food, 0, 1) *
+        party.patienceAtOrderPlacedFrac
       : null;
 
   const visitDurationMs = match.elapsedMs - party.spawnedAtMs;

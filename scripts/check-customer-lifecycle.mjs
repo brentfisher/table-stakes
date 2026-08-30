@@ -406,12 +406,24 @@ function freshParty(match, state) {
 {
   const match = makeMatch({ id: 'm_privacy', seed: 'privacy' });
   runUntilPhase(match, 'service');
-  quiet(() => {
-    for (let i = 0; i < 40; i += 1) stepMatch(match, TICK_MS);
-  });
+  const state = _internal.ensureState(match);
+  // Spawn deterministically rather than waiting on the Poisson arrival process within a short
+  // tick window — that was flaky (a low-traffic market could legitimately produce zero arrivals
+  // in a few seconds), and this check does not need real arrival timing, only real parties.
+  for (let i = 0; i < 5; i += 1) freshParty(match, state);
+  customerSystem.update(match, 0); // refresh match.customers from state.parties, dtMs=0
 
   const snapshot = match.toSnapshot('p1');
-  const wire = JSON.stringify(snapshot);
+  check(
+    'match_snapshot.customers has at least one party, so this privacy check is not vacuous',
+    Array.isArray(snapshot.customers) && snapshot.customers.length > 0,
+    `${snapshot.customers?.length ?? 0} customers`,
+  );
+
+  // Scoped to snapshot.customers specifically, not the whole snapshot: `market.preferredTags`
+  // is a DELIBERATELY public field (publicMarket() in catalogue.js) and would otherwise read as
+  // a false-positive "leak" of the customer profile's identically-named private field.
+  const wire = JSON.stringify(snapshot.customers);
   const forbiddenKeys = [
     'budget', 'preferredTags', 'dislikedTags',
     'serviceSpeedWeight', 'priceWeight', 'menuFitWeight', 'reputationWeight',
@@ -419,12 +431,7 @@ function freshParty(match, state) {
   ];
   const leaked = forbiddenKeys.filter((key) => wire.includes(`"${key}"`));
   check(
-    'match_snapshot.customers has at least one party, so this privacy check is not vacuous',
-    Array.isArray(snapshot.customers) && snapshot.customers.length > 0,
-    `${snapshot.customers?.length ?? 0} customers`,
-  );
-  check(
-    'JSON.stringify(match_snapshot) contains none of the hidden-profile fields',
+    'JSON.stringify(match_snapshot.customers) contains none of the hidden-profile fields',
     leaked.length === 0,
     leaked.length === 0 ? 'clean' : `leaked: ${leaked.join(', ')}`,
   );
