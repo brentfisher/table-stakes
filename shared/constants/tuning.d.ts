@@ -127,3 +127,30 @@ export interface BriefingIndicatorThresholds {
   patienceAverageBelow: number;
 }
 export declare const BRIEFING_INDICATOR_THRESHOLDS: BriefingIndicatorThresholds;
+// --- order system and kitchen production, PRD §17 (STORY-005) -------------------------
+
+import type { Station } from '../schemas/messages';
+
+export declare const ORDER_RNG_STREAM: string;
+export declare const STATION_CONCURRENCY: Readonly<Partial<Record<Station, number>>>;
+export declare const STATION_DEFAULT_CONCURRENCY: number;
+export declare const ORDER_ADDON_PROBABILITY: number;
+export declare const ORDER_PREFERRED_TAG_BONUS: number;
+export declare const ORDER_DISLIKED_TAG_PENALTY: number;
+export declare const ORDER_PRICE_ELASTICITY: number;
+export declare const ORDER_OVER_BUDGET_WEIGHT: number;
+export declare const ORDER_PASS_HANDOFF_MS: number;
+export declare const ORDER_FRESHNESS_GRACE_MS: number;
+export declare const ORDER_FRESHNESS_WINDOW_MS: number;
+export declare const ORDER_FRESHNESS_FLOOR: number;
+
+export interface OrderQualityWeights {
+  correctness: number;
+  freshness: number;
+  preferenceFit: number;
+  serviceTiming: number;
+}
+export declare const ORDER_QUALITY_WEIGHTS: OrderQualityWeights;
+export declare const ORDER_PREFERENCE_TAG_STEP: number;
+export declare const ORDER_PRICE_FAIRNESS_SLOPE: number;
+export declare const ORDER_SNAPSHOT_LINGER_MS: number;

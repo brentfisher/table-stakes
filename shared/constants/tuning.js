@@ -321,3 +321,98 @@ export const BRIEFING_INDICATOR_THRESHOLDS = Object.freeze({
   patienceHurriedBelow: 60,
   patienceAverageBelow: 82,
 });
+
+// ============================================================================================
+// Order system and kitchen production — PRD §17 "Order system" / "Order quality". STORY-005.
+// ============================================================================================
+//
+// Everything here is a WHEN/HOW-MUCH dial. WHAT a dish costs to make — which stations it
+// routes through and how long each step takes — lives in `shared/game-data/dishes.json`
+// (`stationSteps[].station`, `stationSteps[].durationMs`) and is never duplicated here.
+
+/** The named RNG sub-stream (Decision 18) the order system draws from. */
+export const ORDER_RNG_STREAM = 'orders';
+
+/**
+ * How many tickets one station may work AT THE SAME TIME. This is the kitchen's throughput
+ * ceiling and therefore the bottleneck PRD §8 "Operational bottlenecks" is about: a ticket
+ * whose station is full waits in that station's queue instead of being worked.
+ *
+ * The numbers are measured, not guessed — see the per-station utilisation table
+ * `scripts/check-orders.mjs` prints on its §24 balance run. `prep` is the wide one because
+ * every dish in the catalogue routes through it and it would otherwise cap the whole kitchen
+ * on its own; `plating` is next-widest for the same reason. `grill` and `oven` each serve a
+ * subset of the menu, so they queue visibly under a burst without capping a normal service.
+ *
+ * A station named in a layout but absent here falls back to STATION_DEFAULT_CONCURRENCY.
+ */
+export const STATION_CONCURRENCY = Object.freeze({
+  prep: 3,
+  grill: 2,
+  oven: 2,
+  plating: 2,
+});
+export const STATION_DEFAULT_CONCURRENCY = 1;
+
+/**
+ * PRD §17 order step 2, "Generates an order based on segment preferences, menu availability,
+ * price, and event context". One main per guest; an add-on is a per-guest coin flip at this
+ * probability, so a two-add-on menu shows up in the kitchen without doubling its load.
+ */
+export const ORDER_ADDON_PROBABILITY = 0.35;
+
+/** Dish-choice weighting. A preferred tag multiplies the dish's weight up by this much per
+ * matching tag; a disliked tag multiplies it down by this factor per matching tag. */
+export const ORDER_PREFERRED_TAG_BONUS = 0.6;
+export const ORDER_DISLIKED_TAG_PENALTY = 0.45;
+
+/**
+ * How sharply price suppresses a dish's chance of being ordered. Applied to the same
+ * market-scaled value axis `priceGuidance()` uses in setup-rules.js — a dish at its suggested
+ * price is neutral, and the market's `priceSensitivity` decides how much a mark-up hurts.
+ */
+export const ORDER_PRICE_ELASTICITY = 1.5;
+
+/** A dish priced above the party's own hidden per-guest budget keeps only this share of its
+ * weight — heavily discouraged, never impossible, so a party is never left unable to order. */
+export const ORDER_OVER_BUDGET_WEIGHT = 0.05;
+
+/**
+ * The abstracted hand-off at the service pass: how long a completed order sits before it
+ * reaches the table. STORY-007 (worker AI) and STORY-008 (the owner carrying plates) replace
+ * this constant with a real runner who has to walk; until then it is the one place the
+ * kitchen admits that nobody is actually carrying the plate.
+ */
+export const ORDER_PASS_HANDOFF_MS = 1_500;
+
+/**
+ * PRD §17 order quality, "Freshness: time since completion". A plated dish holds full marks
+ * for the grace period, then decays linearly to the floor across the rest of the window. The
+ * clock starts when THAT dish finished plating, so an order whose steak is still on the grill
+ * is already losing marks on the espresso that finished first.
+ */
+export const ORDER_FRESHNESS_GRACE_MS = 4_000;
+export const ORDER_FRESHNESS_WINDOW_MS = 30_000;
+export const ORDER_FRESHNESS_FLOOR = 0.2;
+
+/**
+ * PRD §17 "Order quality should be a combination of". Only the factors the MVP can honestly
+ * compute are weighted: "Preparation quality" and "Ingredient quality or upgrades" are named
+ * in §17 as later versions and are deliberately absent rather than stubbed at 1.0.
+ */
+export const ORDER_QUALITY_WEIGHTS = Object.freeze({
+  correctness: 0.3,
+  freshness: 0.3,
+  preferenceFit: 0.2,
+  serviceTiming: 0.2,
+});
+
+/** How far one matching preferred/disliked tag moves a dish's preference fit off neutral. */
+export const ORDER_PREFERENCE_TAG_STEP = 0.25;
+
+/** How steeply price fairness falls away above a dish's market-scaled suggested price. */
+export const ORDER_PRICE_FAIRNESS_SLOPE = 1.5;
+
+/** How long a delivered or cancelled order stays in `match_snapshot.orders` before removal,
+ * so the HUD can show the outcome instead of the ticket vanishing on the same frame. */
+export const ORDER_SNAPSHOT_LINGER_MS = 2_000;
