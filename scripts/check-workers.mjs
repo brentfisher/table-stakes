@@ -478,9 +478,11 @@ function cookProbe(id, staff) {
   const inv = match._inventorySimState.restaurants.get('p1');
 
   check(
-    'INVENTORY_AUTO_RESTOCK is off — the abstracted restocker no longer walks for anybody',
-    INVENTORY_AUTO_RESTOCK === false,
-    'STORY-006 shipped it true and named flipping it as this story’s cleanup (Decision 40)',
+    'STORY-006’s abstracted restocker stands down where a cook is rostered — per restaurant, ' +
+      'not by a global switch (Decision 40)',
+    INVENTORY_AUTO_RESTOCK === true && match.brigade.ownsRestocking('p1') === true,
+    'the flag stays true so a match with no worker system still restocks; the brigade is what ' +
+      'silences it',
   );
 
   const binBefore = 3;
@@ -858,11 +860,20 @@ function plantReadyOrder(match, { customerId, tableId }) {
   runUntilPhase(noBrigade, 'service');
   step(noBrigade, 1);
   const abstractOrder = plantReadyOrder(noBrigade, { customerId: 'party_probe_food', tableId: 'table_1' });
+  const abstractInv = noBrigade._inventorySimState.restaurants.get('p1');
+  abstractInv.bins.get('prep').lettuce = 1; // under the threshold, and nobody has legs
   step(noBrigade, Math.ceil(ORDER_PASS_HANDOFF_MS / TICK_MS) + 4);
   check(
     'with no worker system registered every abstraction still runs — the seam is defensive, not a fork',
     noBrigade.brigade === undefined && abstractOrder.state === 'delivered',
     'match.brigade undefined; the plate reached the table on ORDER_PASS_HANDOFF_MS as before',
+  );
+  check(
+    'including the restocker: a kitchen with no cook is refilled by STORY-006’s stand-in, ' +
+      'which is what keeps check-inventory measuring the stock model and not this story',
+    noBrigade.pantry.restocksInFlight('p1').some((j) => j.ingredientId === 'lettuce') ||
+      abstractInv.bins.get('prep').lettuce > 1,
+    `prep lettuce 1u -> a trip started with nobody to walk it`,
   );
 
   clearSystems();

@@ -722,6 +722,13 @@ function createBrigadeFacade(state) {
       return hasRole(restaurantId, 'server');
     },
 
+    /** §17 cook rule 4. STORY-006's abstracted restocker stands down for a restaurant that has a
+     * cook to do the walking — and only for that restaurant, so a match with one brigaded
+     * kitchen and one bare one still behaves correctly on both sides. */
+    ownsRestocking(restaurantId) {
+      return hasRole(restaurantId, 'cook');
+    },
+
     /** PRD §17's owner differential, exposed as one number so STORY-008 reads it from here rather
      * than importing tuning separately and drifting. */
     ownerSpeedAdvantage() {

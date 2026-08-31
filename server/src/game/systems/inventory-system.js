@@ -405,12 +405,18 @@ function advanceRestocks(inventory, dtMs) {
 
 /**
  * THE ABSTRACTED RESTOCKER (see tuning.js's INVENTORY_AUTO_RESTOCK). Picks the emptiest bin that
- * is at or below the threshold and starts a move. STORY-007/008 replace this trigger with a body
- * that has to walk; the job it starts, its duration and everything downstream stay exactly as
- * they are.
+ * is at or below the threshold and starts a move. The job it starts, its duration and everything
+ * downstream are the same whoever decided to walk.
+ *
+ * STORY-007 replaced the TRIGGER, and did it the way this file's other stand-ins are replaced —
+ * defensively, per restaurant, through a facade the worker system publishes. A kitchen with a
+ * cook in it restocks because the cook walked (§17 cook rule 4); a match with no worker system
+ * registered still restocks, exactly as STORY-006 shipped it, which is what lets
+ * `check-inventory.mjs` go on measuring the stock model on its own.
  */
 function autoRestock(match, state, inventory) {
   if (!INVENTORY_AUTO_RESTOCK) return;
+  if (match.brigade?.ownsRestocking(inventory.restaurantId)) return;
   if (inventory.jobs.length >= INVENTORY_MAX_CONCURRENT_RESTOCKS) return;
 
   let best = null;

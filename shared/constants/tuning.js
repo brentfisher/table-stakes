@@ -608,8 +608,9 @@ export const INVENTORY_RESTOCK_MS_PER_UNIT = 150;
 export const INVENTORY_MAX_CONCURRENT_RESTOCKS = 1;
 
 /**
- * THE ABSTRACTED RESTOCKER — STORY-006's stand-in for a body, and FLIPPED OFF by STORY-007,
- * which supplied the body.
+ * THE ABSTRACTED RESTOCKER — STORY-006's stand-in for a body, RETIRED BY STORY-007 the way this
+ * repo retires a stand-in: not with a global switch, but per restaurant, behind the facade the
+ * worker system publishes.
  *
  * It was the same admission `ORDER_PASS_HANDOFF_MS` made about the plate runner: the JOB model
  * (a timed pantry -> bin move, at `pantryFacade.requestRestock()`) is real and permanent, but
@@ -620,16 +621,16 @@ export const INVENTORY_MAX_CONCURRENT_RESTOCKS = 1;
  * The cook now does the walking (PRD §17 cook rule 4, "if no order exists, perform low-priority
  * prep/restock"), at the same `INVENTORY_RESTOCK_THRESHOLD_UNITS` the abstraction used, so the
  * balance movement STORY-007 reports is attributable to a body having to get there rather than
- * to a retuned trigger. It is left as a flag rather than deleted for exactly one reason: with it
- * true and no worker system registered, `scripts/check-inventory.mjs`'s probes could measure the
- * stock model in isolation, and a story that needs that isolation again should be able to get it
- * without reinstating deleted code. Nothing in the shipped server sets it back to true.
+ * to a retuned trigger. `brigade.ownsRestocking()` is what stands the abstraction down, and it
+ * answers per restaurant — the same shape as `ownsDelivery`, `ownsSeating` and `ownsPayment`,
+ * which retired the plate-runner, greet and payment abstractions in the same change.
  *
- * WHEN TRUE, the inventory system requests a refill for any bin at or under the threshold, with
- * perfect knowledge and no travel to the pantry. WHEN FALSE (today), a bin is refilled only
- * because a cook or an owner walked to the back.
+ * The flag itself stays TRUE, and stays a flag, because a match with no worker system registered
+ * must still restock: that is what `check-inventory.mjs` measures the stock model against, and a
+ * dev harness or a future story that wants the model without a brigade gets it for free. Turning
+ * it false stops the kitchen dead in exactly those cases and is not how the body was fitted.
  */
-export const INVENTORY_AUTO_RESTOCK = false;
+export const INVENTORY_AUTO_RESTOCK = true;
 
 /**
  * PRD §7 item 3, "Starting inventory allocation". A player who submits no allocation still opens
