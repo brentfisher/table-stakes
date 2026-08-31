@@ -511,11 +511,21 @@ function dishValue(dish, price, party, market) {
  */
 function eventAffinityFor(menu, effects) {
   if (menu.length === 0) return 0.5;
-  let strongest = 1;
+  // The STRONGEST AMPLIFIER, falling back to the strongest dampener only when nothing on the
+  // menu is amplified at all — the same reasoning as menu fit's max: a party needs one dish the
+  // district currently wants, and holding an out-of-favour dish beside a wanted one does not
+  // make the restaurant less attractive. (Ranking by raw distance from 1 would let a 0.6 dish
+  // outweigh a 1.35 one. Unreachable with today's catalogue, where every
+  // `dishTagDemandMultipliers` value is >= 1 — which is exactly why it is written down here
+  // rather than left to be discovered by the first event that dampens demand.)
+  let strongestAmplifier = 1;
+  let strongestDampener = 1;
   for (const entry of menu) {
     const m = dishDemandMultiplier(effects, entry.dish.tags);
-    if (Math.abs(m - 1) > Math.abs(strongest - 1)) strongest = m;
+    if (m > strongestAmplifier) strongestAmplifier = m;
+    if (m < strongestDampener) strongestDampener = m;
   }
+  const strongest = strongestAmplifier > 1 ? strongestAmplifier : strongestDampener;
   const span = Math.max(0.01, EVENT_DEMAND_SHIFT_BAND.max - 1);
   return clamp(0.5 + (strongest - 1) / (2 * span), 0, 1);
 }
@@ -1135,8 +1145,13 @@ function toPublicCustomerSnapshot(party) {
 
 /**
  * The other half of the privacy boundary, and the reason it is safe for both players to receive
- * this array identically: it carries ONLY the public, observable properties the choice model
- * itself scores a restaurant on. The menu and its prices are NOT here — they are the rival's
+ * this array identically: everything here is genuinely public. Most of it is what the choice
+ * model itself scores — reputation, queue length, capacity, projected wait. `guestsServed`,
+ * `averageSatisfaction` and `abandonedParties` are NOT model inputs: they are the §4.4 district
+ * overview's service record, which §5's results phase compares anyway and which a player cannot
+ * read about their own restaurant from anywhere else. They are published deliberately, and
+ * named here so that nothing mistakes them for observables the model reads. The menu and its
+ * prices are NOT here — they are the rival's
  * private setup submission (PRD §18, Decision 16, `you.setup`), read by the model server-side
  * and never republished — and neither are cash, inventory, the ledger or anything else a later
  * story owns. Like `toPublicCustomerSnapshot`, an explicit allowlist rather than a spread, so a
@@ -1209,9 +1224,14 @@ export const customerSystem = {
     match.restaurants = [...state.restaurants.values()].map((view) =>
       toPublicRestaurantSnapshot(match, state, view),
     );
-    // Server-side only: `toSnapshot()` does not carry this key, and must not — it is the whole
-    // decision log, and one restaurant's losses are the other's reasons.
+    // Server-side only: `toSnapshot()` carries neither key, and must not — this is the whole
+    // decision log, and one restaurant's losses are the other's reasons. Both are republished
+    // every tick rather than only at the `results` transition, because a match that ENDS on a
+    // disconnect never transitions: `#endMatch` sets `phase = 'results'` directly, so
+    // `advanceClock` returns no transition and `onPhaseChange` never fires. STORY-014 gets the
+    // same record either way.
     match.districtDecisions = state.decisions;
+    match.districtSummary = districtSummary(state);
   },
 
   onPhaseChange(match, transition) {
