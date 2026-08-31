@@ -608,17 +608,28 @@ export const INVENTORY_RESTOCK_MS_PER_UNIT = 150;
 export const INVENTORY_MAX_CONCURRENT_RESTOCKS = 1;
 
 /**
- * THE ABSTRACTED RESTOCKER, and the one place this story admits nobody is actually walking.
+ * THE ABSTRACTED RESTOCKER — STORY-006's stand-in for a body, and FLIPPED OFF by STORY-007,
+ * which supplied the body.
  *
- * Exactly the same admission `ORDER_PASS_HANDOFF_MS` makes about the plate runner: the JOB model
+ * It was the same admission `ORDER_PASS_HANDOFF_MS` made about the plate runner: the JOB model
  * (a timed pantry -> bin move, at `pantryFacade.requestRestock()`) is real and permanent, but
- * until STORY-007 gives the prep worker legs and STORY-008 gives the owner an `interact` action,
- * something has to decide WHEN to walk or the kitchen simply stops after one bin. When true, the
- * inventory system requests a refill for any bin at or under the threshold. STORY-007/008 replace
- * this TRIGGER — not the job, not the duration, not the shortage state — with a body that has to
- * get there.
+ * until something had legs, something had to decide WHEN to walk or the kitchen simply stopped
+ * after one bin. STORY-006's own PR named flipping or deleting this as STORY-007/008's cleanup,
+ * and Decision 40 records it.
+ *
+ * The cook now does the walking (PRD §17 cook rule 4, "if no order exists, perform low-priority
+ * prep/restock"), at the same `INVENTORY_RESTOCK_THRESHOLD_UNITS` the abstraction used, so the
+ * balance movement STORY-007 reports is attributable to a body having to get there rather than
+ * to a retuned trigger. It is left as a flag rather than deleted for exactly one reason: with it
+ * true and no worker system registered, `scripts/check-inventory.mjs`'s probes could measure the
+ * stock model in isolation, and a story that needs that isolation again should be able to get it
+ * without reinstating deleted code. Nothing in the shipped server sets it back to true.
+ *
+ * WHEN TRUE, the inventory system requests a refill for any bin at or under the threshold, with
+ * perfect knowledge and no travel to the pantry. WHEN FALSE (today), a bin is refilled only
+ * because a cook or an owner walked to the back.
  */
-export const INVENTORY_AUTO_RESTOCK = true;
+export const INVENTORY_AUTO_RESTOCK = false;
 
 /**
  * PRD §7 item 3, "Starting inventory allocation". A player who submits no allocation still opens
@@ -635,3 +646,97 @@ export const STARTING_INVENTORY_DEFAULT_CASH_SHARE = 0.6;
  * a shallower pantry rather than an illegal submission.
  */
 export const STARTING_INVENTORY_DEFAULT_SERVINGS = 45;
+
+// ============================================================================================
+// Worker AI — PRD §7 "Staffing setup", §17 "Worker AI system", §24. STORY-007.
+// ============================================================================================
+//
+// PRD §17 gives the cook and the server ORDERED priority lists and says the rules must be
+// "simple, explainable". Nothing here is a weight in a scoring function: these are the speeds
+// and the durations the rules cost, and the rules themselves are an ordered `if` chain in
+// `server/src/game/systems/worker-system.js`. Adding a weight here would be the first step to
+// replacing an explainable list with a heuristic that merely behaves like one.
+
+/** The named RNG sub-stream (Decision 18) the worker system draws from. Used only for
+ * `WORKER_TASK_JITTER` — the rules themselves are deterministic. */
+export const WORKER_RNG_STREAM = 'workers';
+
+/**
+ * PRD §17: "The owner-player should outperform workers in speed/flexibility but should not make
+ * workers irrelevant." THE differential, as one named number, and the constant STORY-008 reads
+ * when it gives the owner the same actions.
+ *
+ * It covers BOTH halves of "speed": the owner walks this much faster (`WORKER_MOVE_SPEED` is
+ * `OWNER_MOVE_SPEED` divided by it) and performs the same task in this much less time (an owner
+ * action costs `WORKER_TASK_DURATIONS_MS[kind] / OWNER_TASK_SPEED_ADVANTAGE`). The owner's sprint
+ * (`OWNER_SPRINT_MULTIPLIER`) sits on top of it, so a sprinting owner is ~2.5x a worker's pace
+ * in bursts.
+ *
+ * FLEXIBILITY is structural, not a number: a worker is scoped to the post `staffAssignments`
+ * gave it and follows one fixed §17 list, while the owner may act anywhere in the restaurant, in
+ * any order, and can pre-empt themselves at will. That is deliberately not expressed here —
+ * turning it into a multiplier would be exactly the "scoring heuristic" §17 rules out.
+ *
+ * 1.5 rather than something larger: at 2x or more a single owner out-produces both workers put
+ * together and the automation stops mattering, which is the failure §17 names in the same breath.
+ */
+export const OWNER_TASK_SPEED_ADVANTAGE = 1.5;
+
+/** Worker walking pace, world units/second. Derived from the owner's, never set independently:
+ * the differential above is the thing being tuned, and two free numbers would let it drift. */
+export const WORKER_MOVE_SPEED = OWNER_MOVE_SPEED / OWNER_TASK_SPEED_ADVANTAGE;
+
+/** How close a worker must get to its destination to start working. Small enough that travel
+ * across the room is real, large enough that a worker never jitters around a target. */
+export const WORKER_ARRIVAL_EPSILON = 0.35;
+
+/**
+ * How long each §17 task takes ONCE THE WORKER IS THERE, before travel. Travel is not in these
+ * numbers — it is integrated per tick from `WORKER_MOVE_SPEED` and the actual distance, which is
+ * what makes "a server across the room is genuinely slower to deliver" true rather than asserted.
+ *
+ * `tend_station` is the cook loading one ticket onto its station: the STATION then cooks it for
+ * the `stationSteps` duration from dishes.json, concurrently, exactly as before. The cook's cost
+ * is the loading, not the cooking — see the worker system's header for why.
+ *
+ * A restock has no entry here on purpose: its duration is whatever `pantry.requestRestock()`
+ * returns (STORY-006's `INVENTORY_RESTOCK_TRAVEL_MS` + per-unit handling), so there is exactly
+ * one definition of what a pantry trip costs.
+ */
+export const WORKER_TASK_DURATIONS_MS = Object.freeze({
+  seat_party: 1_200,
+  take_order: 1_500,
+  deliver_order: 1_200,
+  clear_table: 2_000,
+  collect_payment: 1_500,
+  tend_station: 800,
+});
+
+/** Per-task variation, drawn from `WORKER_RNG_STREAM`. Workers are people, not clockwork; the
+ * §17 rules stay deterministic and only how long a hand takes wobbles. Seed-derived, so a match
+ * still replays exactly. Applied to the durations above and never to travel. */
+export const WORKER_TASK_JITTER = 0.12;
+
+/**
+ * PRD §17 cook rule 1, "Continue current task if near completion", as a number: a cook whose
+ * current task has this much or less of its work left is never pre-empted, however urgent the
+ * ticket that just landed. Above it, a strictly more urgent ticket takes the hands.
+ */
+export const WORKER_TASK_NEAR_COMPLETION_FRACTION = 0.25;
+
+/**
+ * PRD §17 cook rules 2 and 3 are separate lines, so rule 2 must leave something for rule 3 to
+ * decide. Rule 2 ranks queued tickets by how long they have waited at the station, in buckets
+ * this wide; rule 3 then picks, among the equally-urgent tickets in the top bucket, the one whose
+ * ORDER has the least patience left. Tickets queued within this window are "as urgent as each
+ * other", which is what a person would say looking at the rail.
+ */
+export const WORKER_TICKET_URGENCY_BUCKET_MS = 2_000;
+
+/**
+ * A bin at or under this level is worth a pantry trip when the cook has nothing to cook (§17 cook
+ * rule 4). Deliberately the SAME threshold STORY-006's abstracted restocker used, so flipping
+ * `INVENTORY_AUTO_RESTOCK` off changed WHO walks and not WHEN — the balance movement reported in
+ * STORY-007's PR is therefore attributable to the body, not to a retuned trigger.
+ */
+export const WORKER_RESTOCK_THRESHOLD_UNITS = INVENTORY_RESTOCK_THRESHOLD_UNITS;

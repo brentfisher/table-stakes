@@ -43,6 +43,26 @@ export type DecisionReason =
 
 export type WorkerRole = 'cook' | 'server' | 'prep_worker' | 'host';
 
+/**
+ * STORY-007. The jobs a worker can be doing, PRD §17's two priority lists as a closed
+ * vocabulary — the cook's `tend_station`/`restock` and the server's five floor duties. The
+ * client renders one task icon per kind (§14 "Workers display current jobs").
+ */
+export type WorkerTaskKind =
+  | 'tend_station'
+  | 'restock'
+  | 'deliver_order'
+  | 'seat_party'
+  | 'take_order'
+  | 'clear_table'
+  | 'collect_payment';
+
+/**
+ * STORY-007. Why a worker is standing still ASKING FOR HELP rather than merely idle — PRD §17
+ * cook rule 5, "If blocked, emit a visible 'needs help' signal".
+ */
+export type WorkerHelpReason = 'blocked_on_ingredients';
+
 export type BottleneckKind =
   | 'kitchen_backlog'
   | 'ingredient_shortage'
@@ -177,8 +197,44 @@ export interface RestaurantSnapshot {
   /** STORY-005's kitchen publishes ticket state through `orders[]`; a per-station view is a
    * later story's. */
   stations?: StationSnapshot[];
-  /** STORY-007 (worker AI). */
-  workers?: Array<{ workerId: string; role: WorkerRole; position: Vec3; busy: boolean }>;
+  /**
+   * STORY-007 (worker AI). PRD §14's "Worker role icon" and "Workers display current jobs":
+   * everything the client needs to draw a body, a role and a task icon, and nothing else.
+   *
+   * THREE STATES, NOT TWO. `busy` alone cannot express the §17 rule 5 signal, so:
+   *   task !== null                    working — render the task icon for `task.kind`
+   *   task === null && !needsHelp      idle — standing at its post
+   *   needsHelp !== null               BLOCKED and asking for the owner. Distinct from idle on
+   *                                    purpose: STORY-015 ranks it as an alert and STORY-016
+   *                                    gives it the §14 orange/red bottleneck language, and
+   *                                    neither can do that against "not busy".
+   *
+   * Public, like the rest of `restaurants[]`: PRD §14 wants the rival's floor legible, and a
+   * worker's post, position and current job are all things a customer in the door can see. No
+   * dish id, price, menu or stock level appears here.
+   */
+  workers?: Array<{
+    workerId: string;
+    role: WorkerRole;
+    /** The post `staffAssignments` gave this worker — a `layout.staff.posts[].id`. */
+    post: string;
+    position: Vec3;
+    busy: boolean;
+    task: {
+      kind: WorkerTaskKind;
+      /** `travel` — walking to it; `work` — hands on it. Travel is real time, not a fixed cost. */
+      phase: 'travel' | 'work';
+      /** The order, party, table or ticket being worked, for the client's task icon. */
+      targetId: string | null;
+      station: Station | null;
+      remainingMs: number;
+    } | null;
+    needsHelp: {
+      reason: WorkerHelpReason;
+      station: Station | null;
+      ingredientId: string | null;
+    } | null;
+  }>;
   /** STORY-015 (HUD bottlenecks). */
   activeBottlenecks?: BottleneckKind[];
 }
