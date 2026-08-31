@@ -680,7 +680,7 @@ export const WORKER_RNG_STREAM = 'workers';
  * 1.5 rather than something larger: at 2x or more a single owner out-produces both workers put
  * together and the automation stops mattering, which is the failure §17 names in the same breath.
  */
-export const OWNER_TASK_SPEED_ADVANTAGE = 1.5;
+export const OWNER_TASK_SPEED_ADVANTAGE = 1.25;
 
 /** Worker walking pace, world units/second. Derived from the owner's, never set independently:
  * the differential above is the thing being tuned, and two free numbers would let it drift. */
@@ -703,13 +703,26 @@ export const WORKER_ARRIVAL_EPSILON = 0.35;
  * returns (STORY-006's `INVENTORY_RESTOCK_TRAVEL_MS` + per-unit handling), so there is exactly
  * one definition of what a pantry trip costs.
  */
+/*
+ * MEASURED, not guessed. `scripts/check-workers.mjs` prints, over nine seeded full matches, the
+ * §24 routine-work share and the parties each restaurant served. Two things came out of that
+ * sweep and are recorded here so the next person does not repeat it:
+ *
+ *   - THE §24 SHARE BARELY MOVES WITH THESE NUMBERS. Raising every duration by 40% moved the
+ *     pooled share by less than one point (77.0% -> 77.3%) while costing 3-5 parties served per
+ *     restaurant. The funnel self-regulates: slower hands mean fewer parties get in, so the work
+ *     that goes undone falls almost exactly as fast as the work that gets done. The share is a
+ *     property of the SHAPE of the §17 lists, not of how fast a pair of hands is.
+ *   - THROUGHPUT DOES MOVE. So these are set at the fast end of what still reads as a person
+ *     doing a job, because the only thing tuning them buys is parties served.
+ */
 export const WORKER_TASK_DURATIONS_MS = Object.freeze({
-  seat_party: 1_200,
-  take_order: 1_500,
-  deliver_order: 1_200,
-  clear_table: 2_000,
-  collect_payment: 1_500,
-  tend_station: 800,
+  seat_party: 600,
+  take_order: 800,
+  deliver_order: 700,
+  clear_table: 1_000,
+  collect_payment: 700,
+  tend_station: 500,
 });
 
 /** Per-task variation, drawn from `WORKER_RNG_STREAM`. Workers are people, not clockwork; the

@@ -546,6 +546,41 @@ function createPantryFacade(match, state) {
       return (find(restaurantId)?.shortages ?? []).map((s) => ({ ...s }));
     },
 
+    /**
+     * STORY-007's shopping list: every (station, ingredient) bin this menu uses, with what is in
+     * it, what is left in the reserve, and whether a trip for it is already under way. The cook's
+     * §17 rule 4 reads this and picks the emptiest — the THRESHOLD is the worker's business, not
+     * this system's, so nothing is filtered out here.
+     */
+    binShortfalls(restaurantId) {
+      const inventory = find(restaurantId);
+      if (!inventory) return [];
+      const out = [];
+      for (const { station, ingredients } of inventory.requirements) {
+        for (const { ingredientId, perServing } of ingredients) {
+          out.push({
+            station,
+            ingredientId,
+            perServing,
+            binLevel: binLevel(inventory, station, ingredientId),
+            pantryUnits: inventory.pantry[ingredientId] ?? 0,
+            restocking: inventory.jobs.some(
+              (j) => j.station === station && j.ingredientId === ingredientId,
+            ),
+          });
+        }
+      }
+      return out;
+    },
+
+    /** Whether this restaurant's carrying hands are free — `INVENTORY_MAX_CONCURRENT_RESTOCKS`
+     * asked as a question. A cook that is blocked on stock it cannot go and get because the one
+     * pair of hands is already committed elsewhere is PRD §17 rule 5's "needs help". */
+    restockSlotFree(restaurantId) {
+      const inventory = find(restaurantId);
+      return inventory ? inventory.jobs.length < INVENTORY_MAX_CONCURRENT_RESTOCKS : false;
+    },
+
     /** In-flight pantry -> bin moves for one restaurant. */
     restocksInFlight(restaurantId) {
       return (find(restaurantId)?.jobs ?? []).map((job) => ({ ...job }));
