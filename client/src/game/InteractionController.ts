@@ -65,7 +65,12 @@ export interface InteractionSnapshotInput {
   orders: OrderSnapshot[];
   customers: CustomerSnapshot[];
   carrying: string[];
+  /** `action-validator.js` rejects every interact outside service/final_rush (`wrong_phase`) —
+   * mirrored here so the prompt never offers an action the server is certain to refuse. */
+  matchPhase: string | null;
 }
+
+const INTERACT_PHASES = new Set(['service', 'final_rush']);
 
 const distanceXZ = (a: Vec3, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
 
@@ -75,6 +80,7 @@ export class InteractionController {
   private orders: OrderSnapshot[] = [];
   private customers: CustomerSnapshot[] = [];
   private carrying: string[] = [];
+  private matchPhase: string | null = null;
 
   setSnapshot(input: InteractionSnapshotInput): void {
     this.restaurantId = input.restaurantId;
@@ -82,6 +88,7 @@ export class InteractionController {
     this.orders = input.orders;
     this.customers = input.customers;
     this.carrying = input.carrying;
+    this.matchPhase = input.matchPhase;
   }
 
   /** The owner's own position/facing, sampled the same way the render loop samples it —
@@ -89,6 +96,7 @@ export class InteractionController {
    * (`StateInterpolator`'s ~110ms) is invisible at prompt-refresh cadence. */
   resolve(ownerPosition: Vec3): InteractionPrompt | null {
     if (!this.restaurantId) return null;
+    if (!this.matchPhase || !INTERACT_PHASES.has(this.matchPhase)) return null;
     const candidates = [
       this.deliverCandidate(ownerPosition),
       this.handleComplaintCandidate(ownerPosition),

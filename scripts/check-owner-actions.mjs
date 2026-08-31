@@ -342,6 +342,52 @@ function cookProbe(id) {
   );
 }
 
+// The AC names `plate` as its own end-to-end success case, not just cook's rejection twin. Every
+// probe dish's last step is `plating`, and with only `cook_1` staffed at `prep`, the plating
+// station auto-dispatches (`dispatchQueues`'s `match.brigade?.ownsStation` guard is false there) —
+// so a ticket that reaches it starts immediately and never sits `queued` on its own. Drop
+// `concurrency` to 0 just long enough to force a real queued ticket at plating, then restore it
+// and let the owner's own `plate` interact start it, exactly the branch `station_full`/`cook`
+// exercises above, on the one station `cook` is forbidden from touching.
+{
+  const match = cookProbe('m_plate');
+  const restaurant = kitchenRestaurant(match, 'p1');
+  const plating = restaurant.stations.get('plating');
+  const originalConcurrency = plating.concurrency;
+  plating.concurrency = 0;
+
+  const placed = match.kitchen.placeOrder(request({ customerId: 'party_probe_plate' }));
+  const order = restaurant.orders.get(placed.orderId);
+  const ticket = order.tickets[0];
+
+  let reachedPlatingQueue = false;
+  for (let i = 0; i < 2000 && !reachedPlatingQueue; i += 1) {
+    step(match, 1);
+    reachedPlatingQueue = ticket.station === 'plating' && ticket.state === 'queued';
+  }
+  check(
+    'setup: the ticket reaches a real plating queue before `plate` is tested',
+    reachedPlatingQueue,
+    `ticket ended ${ticket.state} at ${ticket.station}`,
+  );
+
+  plating.concurrency = originalConcurrency;
+  standAt(match, 'p1', 'station_plating');
+  const result = interact(match, 'p1', 'station_plating', 'plate');
+  check(
+    'a valid `plate` starts the queued ticket at the plating station',
+    result.ok === true && ticket.state === 'in_progress',
+    `ticket now ${ticket.state}, result=${JSON.stringify(result)}`,
+  );
+
+  const remainingQueued = plating.queue.length;
+  check(
+    'the ticket left the plating queue — the real dispatch, not a cosmetic flag',
+    remainingQueued === 0,
+    `queue depth ${remainingQueued}`,
+  );
+}
+
 // =============================================================================================
 // 3. pickup -> carry -> deliver, the two-touch "carry a plate to a table"
 // =============================================================================================

@@ -122,7 +122,7 @@ function resolveAction(match, restaurantId, player, targetId, action) {
     case 'deliver':
       return resolveDeliver(match, restaurantId, player, targetId);
     case 'drop_carry':
-      return resolveDropCarry(match, player, targetId);
+      return resolveDropCarry(match, player);
     case 'restock':
       return resolveRestock(match, restaurantId, player, targetId);
     case 'seat':

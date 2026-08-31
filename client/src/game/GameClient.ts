@@ -173,6 +173,7 @@ export class GameClient {
         orders: (message.orders ?? []) as OrderSnapshot[],
         customers: (message.customers ?? []) as CustomerSnapshot[],
         carrying: self?.carrying ?? [],
+        matchPhase: (message.matchPhase ?? null) as string | null,
       });
       this.patchStatus({
         playerCount: players.length,
