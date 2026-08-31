@@ -188,19 +188,16 @@ export const CUSTOMER_MAX_SPAWNS_PER_TICK = 200;
  */
 export const CUSTOMER_PROFILE_JITTER = 0.15; // +/- 15%
 
-/**
- * The EVALUATE_RESTAURANTS placeholder (PRD §6 "Restaurant choice model" / §17 steps 3-5),
- * implemented against a SINGLE restaurant. STORY-010 replaces the function that reads these —
- * `resolveEvaluateRestaurants` in customer-system.js — with a real two-restaurant probabilistic
- * comparison. Until then, a flat probability stands in for "a real rival existed and won" so
- * CHOOSE_RIVAL stays reachable and exercised even with nothing to compare against, and queue
- * pressure — the one signal that IS real even with one restaurant (§6 "Actual queue length") —
- * drives LEAVE_DISTRICT.
- */
-export const CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY = 0.08;
-/** queued parties / total seats, above which a party may decide the wait isn't worth it. */
-export const CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD = 1.5;
-export const CUSTOMER_QUEUE_PRESSURE_LEAVE_PROBABILITY = 0.5;
+/* THE EVALUATE_RESTAURANTS PLACEHOLDER IS GONE (STORY-010).
+ *
+ * `CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY` was a flat 8% chance that "a rival existed and won",
+ * standing in for a comparison there was nothing to make. There is a real district now: both
+ * restaurants are scored from public observables and the party picks probabilistically between
+ * them. `CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD`/`_PROBABILITY` go with it — a party now
+ * leaves the district when no restaurant's PROJECTED WAIT fits inside its own patience budget,
+ * which is the same signal (§6 "Actual queue length") expressed against the party's own profile
+ * instead of a flat coin flip against a district-wide ratio. Everything the replacement reads
+ * lives in the DISTRICT block at the bottom of this file. */
 
 /**
  * Share of a party's OWN `patienceSeconds` budget (Decision: satisfaction uses the party's own
@@ -426,3 +423,128 @@ export const ORDER_PRICE_FAIRNESS_SLOPE = 1.5;
 /** How long a delivered or cancelled order stays in `match_snapshot.orders` before removal,
  * so the HUD can show the outcome instead of the ticket vanishing on the same frame. */
 export const ORDER_SNAPSHOT_LINGER_MS = 2_000;
+
+// ============================================================================================
+// Shared district and restaurant choice — PRD §4.2, §6, §17, §23. STORY-010.
+// ============================================================================================
+//
+// Both restaurants draw from ONE customer population (§22 acceptance criterion). A party that
+// enters the district scores every restaurant from public, observable properties, weights those
+// scores with its OWN §6 profile weights, and then picks PROBABILISTICALLY. Every number that
+// decides how sharp that pick is, or how far reputation may run, is here.
+
+/** The named RNG sub-stream (Decision 18) the district choice draws from. Separate from
+ * `CUSTOMER_RNG_STREAM` so that changing how a choice is made does not shift the ARRIVAL
+ * sequence a seed produces — the two properties stay independently reproducible. */
+export const DISTRICT_RNG_STREAM = 'district_choice';
+
+/**
+ * THE ANTI-SNOWBALL DIAL (PRD §23 "Early snowballing", §6 "Important design rule").
+ *
+ * Choice is a softmax over utilities in [0,1]: `p_i ∝ exp(u_i / T)`. T is the temperature, and
+ * it alone decides how much a score edge is worth:
+ *
+ *     edge 0.02  ->  55/45      edge 0.05  ->  60/40
+ *     edge 0.10  ->  70/30      edge 0.20  ->  84/16
+ *
+ * MEASURED, not guessed: `scripts/check-district-choice.mjs` reports the realised split for a
+ * deliberately small score edge over many seeds and asserts it lands in a BAND — a lower T
+ * (argmax-like) and a higher T (coin-flip) both fail it. 0.12 is the value that makes a
+ * modestly better restaurant clearly preferred without ever sweeping the district.
+ */
+export const DISTRICT_CHOICE_TEMPERATURE = 0.12;
+
+/**
+ * The utility of walking away, scored on the same [0,1] axis as a restaurant, so LEAVE_DISTRICT
+ * competes in the same softmax rather than being a separate coin flip. A restaurant that scores
+ * below this is worse than nothing and mostly loses the party to the street; one that scores
+ * above it mostly keeps them. PRD §24: "A badly priced menu should reduce customer conversion,
+ * but should not make the restaurant completely empty" — a softmax term is never zero, so it
+ * cannot.
+ */
+export const DISTRICT_LEAVE_UTILITY = 0.6;
+
+/**
+ * Weight given to event affinity, ADDED to the party's own four §6 weights (which sum to 1) and
+ * renormalised. It is not one of the four because §6's profile does not contain it: the party's
+ * appetite for what an event is pushing is a district condition, not a personality trait.
+ */
+export const DISTRICT_EVENT_AFFINITY_WEIGHT = 0.15;
+
+/** How far a single component's WEIGHTED contribution must beat the rival's before the choice
+ * is allowed to claim a §17 reason. Below it the two restaurants were effectively tied on
+ * everything and `decisionReason` stays null — the same honesty the placeholder had. Fabricated
+ * reasons would poison STORY-014's results screen, which is built entirely on this field. */
+export const DISTRICT_REASON_EPSILON = 0.02;
+
+// --- projected wait, PRD §6 "Actual queue length" / "Actual service speed" -------------------
+//
+// What a customer standing in the street can actually estimate: how many parties are already in
+// the line, whether a table is free, and how backed up the kitchen looks. The kitchen half is
+// read through `match.kitchen.queueDepth()` — the same number `match_snapshot.orders` derives —
+// never from the order system's internals.
+
+/**
+ * How long one occupied table takes to come free again — one TABLE TURN. This is what a party
+ * facing a full dining room is actually waiting for, and it is derived from this file's own
+ * state durations rather than picked: greet 1s + ordering 6s + a kitchen wait in the 15-25s
+ * range for a typical order + eating 8-16s + paying 3s + leaving 1.5s. A party sees a queue of
+ * five in front of six tables and reads it as one turn; a party of four sees the same queue in
+ * front of the THREE tables big enough for it and reads it as two.
+ */
+export const DISTRICT_TABLE_TURN_MS = 45_000;
+/** Ms of wait attributed to each ticket already queued at a kitchen station. Roughly one
+ * station step (dishes.json steps run 4-12s), because a queued ticket is one step of somebody
+ * else's food between this party and its own. */
+export const DISTRICT_BACKLOG_WAIT_PER_TICKET_MS = 6_000;
+/** A projected wait at or above this multiple of the party's own patience budget scores 0 on
+ * the speed axis; 0ms scores 1. Above 1.0 the restaurant is not a candidate at all — that is
+ * the "queue exceeds the party's tolerance" gate, and it reports `restaurant_full`. */
+export const DISTRICT_WAIT_INTOLERABLE_MULTIPLE = 1.0;
+
+// --- price and menu fit, scored from the LOCKED menu ------------------------------------------
+
+/**
+ * How steeply the market-scaled deviation from a dish's `suggestedPrice` moves its perceived
+ * value, and what that value is AT the suggested price. Applied to the same value axis
+ * `priceGuidance()` uses in setup-rules.js, so "Excellent value" in the setup UI and a high
+ * price score in the district are the same judgement.
+ *
+ * `DISTRICT_PRICE_NEUTRAL_VALUE` is below 1 on purpose, and the check script is what found it:
+ * with the neutral point at 1.0 the axis is SATURATED at the suggested price, so undercutting
+ * buys a player exactly nothing — which contradicts §11 ("A low price improves conversion with
+ * price-sensitive diners") and leaves half the pricing decision invisible to demand. Leaving
+ * headroom above neutral makes a discount a real, measurable lever in both directions.
+ */
+export const DISTRICT_PRICE_VALUE_SLOPE = 1.2;
+export const DISTRICT_PRICE_NEUTRAL_VALUE = 0.75;
+/** How far one matching preferred/disliked tag moves a dish's fit off neutral (0.5). */
+export const DISTRICT_MENU_FIT_TAG_STEP = 0.25;
+
+// --- reputation, PRD §4.2 "compound ... but not so strongly that the match becomes unwinnable"
+//
+// THE CAP IS THE POINT. Reputation is an exponential moving average of the satisfaction of the
+// parties a restaurant actually served, so it compounds across a match — a run of happy guests
+// lifts it, a run of walkouts drops it — but it is clamped into a band, so the most a perfect
+// match can ever buy is `DISTRICT_REPUTATION_MAX`. Combined with the softmax, a restaurant at
+// the ceiling facing one at the floor still loses a meaningful share of parties, which is the
+// §23 mitigation "cap runaway advantages" stated as a number rather than a hope.
+
+export const DISTRICT_REPUTATION_START = 60;
+export const DISTRICT_REPUTATION_MIN = 25;
+export const DISTRICT_REPUTATION_MAX = 90;
+/**
+ * Share of the gap between current reputation and the latest party's satisfaction taken by each
+ * review. MEASURED against §4.2's "not so strongly that the match becomes unwinnable early":
+ * at 0.08 a flawless opening two minutes (fifteen guests) took a restaurant from 60 to 89 —
+ * essentially the whole band — and left the rival drawing under 30% of the district before the
+ * match was a quarter old. At 0.03 the same fifteen guests reach the mid-70s and the full band
+ * takes most of a match to cross, so reputation is an asset a player BUILDS rather than an
+ * opening they cannot be caught from. `scripts/check-district-choice.mjs` asserts the
+ * consequence, not the constant.
+ */
+export const DISTRICT_REPUTATION_REVIEW_WEIGHT = 0.03;
+/** A party that gave up before being served leaves no review, but the queue it walked out of
+ * was visible. Scored as a small fixed knock against the same band — one point, for the same
+ * reason the review weight is small. */
+export const DISTRICT_REPUTATION_WALKOUT_PENALTY = 1;

@@ -111,26 +111,89 @@ export interface StationSnapshot {
 /**
  * `match_snapshot.restaurants[]` — one per player. Everything here is server-computed;
  * PRD §12 "Networking model" forbids the browser calculating any of it.
+ *
+ * BOTH PLAYERS RECEIVE THIS ARRAY IDENTICALLY, so everything in it must be genuinely public.
+ * STORY-010 publishes it, and publishes exactly the observables its own choice model scores a
+ * restaurant on: what a customer in the street can see. The fields a later story owns are
+ * OPTIONAL until that story fills them in, each marked with the story that will — a partial
+ * object is honest, and placeholders that read as real data are not (the same reasoning
+ * order-system.js gives for not filling this shape in itself).
+ *
+ * `menu`, `inventory` and `cash` are deliberately NOT published while STORY-010 owns this
+ * array: they are the player's private setup submission (PRD §18, Decision 16 — `you.setup`),
+ * read by the choice model server-side and never republished to the rival.
  */
 export interface RestaurantSnapshot {
   restaurantId: string;
   playerId: string;
-  /** Priced menu as submitted in `setup_submit`, keyed by dish id. */
-  menu: Array<{ dishId: string; price: number; available: boolean }>;
-  /** Remaining units, keyed by ingredient id from dishes.json `ingredients`. */
-  inventory: Record<string, number>;
-  cash: number;
-  revenue: number;
+
+  // --- published today, STORY-010: the public observables the choice model scores ---
+  /** PRD §6 "Visible reputation". Compounds across the match inside a capped band. */
+  reputation: number;
+  /** Parties queueing at this restaurant right now. PRD §6 "Actual queue length". */
+  queueLength: number;
+  seatsTotal: number;
+  seatsAvailable: number;
+  /** What the district projects a party of two would wait here, from the live queue, free
+   * tables and the kitchen's deepest station queue. PRD §6 "Actual service speed". */
+  projectedWaitMs: number;
+  guestsServed: number;
+  averageSatisfaction: number;
+  abandonedParties: number;
+  tables: TableSnapshot[];
+
+  // --- owned by later stories; absent until then ---
+  /** STORY-006 (inventory) — priced menu with live availability. */
+  menu?: Array<{ dishId: string; price: number; available: boolean }>;
+  /** STORY-006 — remaining units, keyed by ingredient id from dishes.json `ingredients`. */
+  inventory?: Record<string, number>;
+  /** STORY-013 (scoring). */
+  cash?: number;
+  revenue?: number;
+  /** STORY-012 (upgrades). */
+  purchasedUpgradeIds?: string[];
+  /** STORY-005's kitchen publishes ticket state through `orders[]`; a per-station view is a
+   * later story's. */
+  stations?: StationSnapshot[];
+  /** STORY-007 (worker AI). */
+  workers?: Array<{ workerId: string; role: WorkerRole; position: Vec3; busy: boolean }>;
+  /** STORY-015 (HUD bottlenecks). */
+  activeBottlenecks?: BottleneckKind[];
+}
+
+/**
+ * One party's restaurant choice, PRD §17 step 6 ("Record decision reason for analytics and
+ * post-match explanation"). SERVER-SIDE ONLY: the whole log lives on `match.districtDecisions`
+ * and never enters a snapshot, because one restaurant's losses are the other's reasons. The
+ * per-restaurant roll-up STORY-014's results screen reads is `match.districtSummary`.
+ */
+export interface DistrictDecision {
+  customerId: string;
+  segmentId: string;
+  partySize: number;
+  atMs: number;
+  /** Null when the party left the district without choosing. */
+  chosenRestaurantId: string | null;
+  /** Null when no single component decided it — two comparable restaurants, or no rival to
+   * compare against at all. Never guessed. */
+  reason: DecisionReason | null;
+  /** Each restaurant's total utility for this party, in [0,1]. */
+  utilities: Record<string, number>;
+  projectedWaitMs: Record<string, number>;
+}
+
+/** `match.districtSummary` — one entry per restaurant, published at the `results` transition. */
+export interface DistrictSummaryEntry {
+  restaurantId: string;
   reputation: number;
   guestsServed: number;
   averageSatisfaction: number;
   abandonedParties: number;
-  queueLength: number;
-  purchasedUpgradeIds: string[];
-  tables: TableSnapshot[];
-  stations: StationSnapshot[];
-  workers: Array<{ workerId: string; role: WorkerRole; position: Vec3; busy: boolean }>;
-  activeBottlenecks: BottleneckKind[];
+  /** Funnel counters in §8 vocabulary. `chosen` is parties won; `CHOOSE_RIVAL` is parties this
+   * restaurant lost to the other one — a funnel outcome, never a party state. */
+  counts: Record<string, number>;
+  wonByReason: Partial<Record<DecisionReason, number>>;
+  lostByReason: Partial<Record<DecisionReason, number>>;
 }
 
 /**

@@ -25,11 +25,7 @@ import { customerSystem, _internal } from '../server/src/game/systems/customer-s
 import { orderSystem } from '../server/src/game/systems/order-system.js';
 import { setupSystem } from '../server/src/game/systems/setup-system.js';
 import { CUSTOMER_STATES, CUSTOMER_STATE_LIST, isExitState } from '../shared/schemas/game-state.js';
-import {
-  CUSTOMER_ANGRY_SATISFACTION_THRESHOLD,
-  CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY,
-  CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD,
-} from '../shared/constants/tuning.js';
+import { CUSTOMER_ANGRY_SATISFACTION_THRESHOLD } from '../shared/constants/tuning.js';
 import { catalogue } from '../server/src/game/catalogue.js';
 
 const results = [];
@@ -242,43 +238,61 @@ function freshParty(match, state) {
   return _internal.spawnParty(match, state, { footTrafficMultiplier: 1, partySizeMultiplier: 1, segmentWeightOverrides: {} });
 }
 
-// 5a. CHOOSE_RIVAL — force the placeholder roll below its threshold.
+// 5a. CHOOSE_RIVAL — STORY-010 moved this from a party STATE to a per-restaurant FUNNEL
+// outcome. No party is ever in state CHOOSE_RIVAL any more: `match_snapshot.customers[]` is one
+// shared array both players receive identically, and "chose the rival" is viewer-relative — the
+// party that walked past p1 is walking INTO p2, in APPROACH_OR_QUEUE. It is counted against the
+// restaurant that lost it, which is the shape STORY-014's results screen needs. The full
+// two-restaurant choice model is checked in scripts/check-district-choice.mjs; this asserts the
+// §8 exit vocabulary still has a home.
 {
-  const match = makeMatch({ id: 'm_rival', seed: 'rival' });
+  const match = makeMatch({ id: 'm_rival', seed: 'rival', requiredPlayers: 2 });
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
   const party = freshParty(match, state);
   party.state = CUSTOMER_STATES.EVALUATE_RESTAURANTS;
-  const fixedLowRng = { ...state, rng: () => CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY / 2 };
-  _internal.resolveEvaluateRestaurants(match, fixedLowRng, party);
+  _internal.resolveEvaluateRestaurants(match, state, party);
+
+  const chosen = party.restaurantId;
+  const rival = [...state.restaurants.values()].find((v) => v.restaurantId !== chosen);
   check(
-    'CHOOSE_RIVAL fires when the placeholder roll lands below CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY',
-    party.state === CUSTOMER_STATES.CHOOSE_RIVAL && party.decisionReason === null,
-    `state=${party.state} decisionReason=${party.decisionReason}`,
+    'a party that picks one restaurant is booked as CHOOSE_RIVAL against the other restaurant\'s funnel',
+    chosen !== null &&
+      party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE &&
+      rival.counts[CUSTOMER_STATES.CHOOSE_RIVAL] === 1 &&
+      state.restaurants.get(chosen).counts.chosen === 1,
+    `chose ${chosen}; ${rival.restaurantId} booked ${rival.counts[CUSTOMER_STATES.CHOOSE_RIVAL]} lost party`,
+  );
+  check(
+    'no party is ever left in state CHOOSE_RIVAL — the district state machine has no viewer-relative state',
+    party.state !== CUSTOMER_STATES.CHOOSE_RIVAL,
+    `state=${party.state} restaurantId=${party.restaurantId}`,
   );
 }
 
-// 5b. LEAVE_DISTRICT — force queue pressure over threshold, then force the second roll to leave.
+// 5b. LEAVE_DISTRICT — every table taken and a queue long enough that the projected wait no
+// longer fits inside the party's own patience budget. No coin flip: the gate is deterministic.
 {
   const match = makeMatch({ id: 'm_leave_district', seed: 'leave-district' });
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
-  // Pack the queue with enough APPROACH_OR_QUEUE parties to exceed the pressure threshold.
-  const queueDepth = Math.ceil(state.totalSeats * (CUSTOMER_QUEUE_PRESSURE_LEAVE_THRESHOLD + 1));
-  for (let i = 0; i < queueDepth; i += 1) {
-    const p = freshParty(match, state);
-    p.state = CUSTOMER_STATES.APPROACH_OR_QUEUE;
+  const view = state.restaurants.get('p1');
+  for (const table of view.tables.values()) table.occupiedBy = 'someone_else';
+  for (let i = 0; i < view.tables.size * 3; i += 1) {
+    const queuer = freshParty(match, state);
+    queuer.restaurantId = 'p1';
+    queuer.state = CUSTOMER_STATES.APPROACH_OR_QUEUE;
   }
+
   const party = freshParty(match, state);
   party.state = CUSTOMER_STATES.EVALUATE_RESTAURANTS;
-  let call = 0;
-  const rolls = [CUSTOMER_RIVAL_PLACEHOLDER_PROBABILITY + 0.5, 0.01]; // skip rival, then leave
-  const scriptedRng = { ...state, rng: () => rolls[Math.min(call++, rolls.length - 1)] };
-  _internal.resolveEvaluateRestaurants(match, scriptedRng, party);
+  const waitMs = _internal.projectedWaitMs(match, state, view, party.partySize);
+  _internal.resolveEvaluateRestaurants(match, state, party);
   check(
-    'LEAVE_DISTRICT fires when queue pressure exceeds the threshold and the second roll says leave',
+    'LEAVE_DISTRICT fires with reason restaurant_full when the projected wait exceeds the party\'s own patience',
     party.state === CUSTOMER_STATES.LEAVE_DISTRICT && party.decisionReason === 'restaurant_full',
-    `state=${party.state} decisionReason=${party.decisionReason} queueDepth=${queueDepth} totalSeats=${state.totalSeats}`,
+    `state=${party.state} decisionReason=${party.decisionReason} projectedWait=${Math.round(waitMs / 1000)}s ` +
+      `patience=${Math.round(party.patienceSeconds)}s`,
   );
 }
 
@@ -287,9 +301,11 @@ function freshParty(match, state) {
   const match = makeMatch({ id: 'm_abandon', seed: 'abandon' });
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
-  for (const table of state.tables.values()) table.occupiedBy = 'someone_else';
+  const view = state.restaurants.get('p1');
+  for (const table of view.tables.values()) table.occupiedBy = 'someone_else';
 
   const party = freshParty(match, state);
+  party.restaurantId = 'p1';
   party.state = CUSTOMER_STATES.APPROACH_OR_QUEUE;
   party.patienceMsRemaining = 0;
   _internal.advanceParty(match, state, party, TICK_MS);
@@ -301,7 +317,7 @@ function freshParty(match, state) {
     `state=${party.state} decisionReason=${party.decisionReason}`,
   );
 
-  for (const table of state.tables.values()) table.occupiedBy = null;
+  for (const table of view.tables.values()) table.occupiedBy = null;
 }
 
 // 5d. CANCEL_ORDER — seated, patience runs out while waiting for food.
@@ -310,6 +326,7 @@ function freshParty(match, state) {
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
   const party = freshParty(match, state);
+  party.restaurantId = 'p1';
   party.state = CUSTOMER_STATES.APPROACH_OR_QUEUE;
   _internal.advanceParty(match, state, party, TICK_MS); // seats it (a table is free)
   const seatedOk = party.state === CUSTOMER_STATES.SEATED && party.tableId !== null;
@@ -330,6 +347,7 @@ function freshParty(match, state) {
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
   const party = freshParty(match, state);
+  party.restaurantId = 'p1';
   // Every wait factor as bad as it can be: patience fully consumed at every hand-off, and the
   // visit already far past the party's own patience budget.
   party.patienceAtSeatedFrac = 0;
@@ -477,9 +495,11 @@ function freshParty(match, state) {
   runUntilPhase(match, 'service');
   const state = _internal.ensureState(match);
   const party = freshParty(match, state);
+  party.restaurantId = 'p1';
   party.state = CUSTOMER_STATES.APPROACH_OR_QUEUE;
   party.patienceMsRemaining = 0;
-  for (const table of state.tables.values()) table.occupiedBy = 'blocker';
+  const blocked = state.restaurants.get('p1');
+  for (const table of blocked.tables.values()) table.occupiedBy = 'blocker';
   _internal.advanceParty(match, state, party, TICK_MS);
   const exitedNow = party.state === CUSTOMER_STATES.ABANDON_QUEUE && state.parties.has(party.customerId);
 
@@ -492,7 +512,7 @@ function freshParty(match, state) {
     exitedNow && removedLater,
     `exitedNow=${exitedNow} removedLater=${removedLater}`,
   );
-  for (const table of state.tables.values()) table.occupiedBy = null;
+  for (const table of blocked.tables.values()) table.occupiedBy = null;
 }
 
 // --- 10. balance hypothesis: a full-length match against a fixed seed, reported to the log ---
