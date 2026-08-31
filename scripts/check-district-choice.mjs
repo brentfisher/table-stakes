@@ -18,6 +18,7 @@
 // Run: node scripts/check-district-choice.mjs
 
 import { Match } from '../server/src/game/match.js';
+import { catalogue } from '../server/src/game/catalogue.js';
 import { clearSystems, registerSystem, stepMatch } from '../server/src/game/simulation-loop.js';
 import { customerSystem, _internal } from '../server/src/game/systems/customer-system.js';
 import { orderSystem } from '../server/src/game/systems/order-system.js';
@@ -275,6 +276,48 @@ console.log('Shared district and restaurant choice check\n');
     'an identical menu at an identical price splits the district evenly (45-55%)',
     shares[0] > 0.45 && shares[0] < 0.55,
     `${(shares[0] * 100).toFixed(1)}% with nothing to choose between them`,
+  );
+}
+
+// --- 2b. the party's OWN §6 weights are what combine the scores -------------------------------
+//
+// Two segments, the same two restaurants, one axis of difference between them. A tourist puts
+// 0.40 of its profile on reputation and an office worker 0.10, so the same reputation gap must
+// move the tourist far more. Flat or shared weighting passes every other check in this file and
+// fails this one.
+{
+  const match = makeDistrict({
+    id: 'm_weights',
+    seed: 'weights-seed',
+    menus: { p1: submission(SAME_DISHES), p2: submission(SAME_DISHES) },
+  });
+  runUntilPhase(match, 'service');
+  const state = _internal.ensureState(match);
+  state.restaurants.get('p1').reputation = DISTRICT_REPUTATION_MAX;
+  state.restaurants.get('p2').reputation = DISTRICT_REPUTATION_MIN;
+
+  // The segment profile is copied onto the party exactly as `spawnParty` copies it, so that the
+  // draw is over ONE segment instead of the market's mix — the same deterministic forcing
+  // check-customer-lifecycle uses for its exit states.
+  const asSegment = (segmentId) => (party) => {
+    const segment = catalogue.segmentsById[segmentId];
+    party.segmentId = segment.id;
+    party.preferredTags = segment.preferredTags;
+    party.dislikedTags = segment.dislikedTags;
+    party.serviceSpeedWeight = segment.serviceSpeedWeight;
+    party.priceWeight = segment.priceWeight;
+    party.menuFitWeight = segment.menuFitWeight;
+    party.reputationWeight = segment.reputationWeight;
+  };
+
+  const tourist = share(tallyChoices(match, state, 800, asSegment('tourist')));
+  const officeWorker = share(tallyChoices(match, state, 800, asSegment('office_worker')));
+
+  check(
+    "each party weights the same scores with ITS OWN §6 profile — a reputation-led segment reacts more",
+    tourist > officeWorker + 0.1,
+    `tourist (reputationWeight 0.40) took the better-reputation restaurant ${(tourist * 100).toFixed(0)}% ` +
+      `of the time, office worker (0.10) ${(officeWorker * 100).toFixed(0)}%`,
   );
 }
 
