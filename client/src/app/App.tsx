@@ -53,8 +53,23 @@ export function App(): JSX.Element {
       </div>
       <div className="help">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}
-        <kbd>E</kbd> interact · <kbd>Tab</kbd> overview
+        <kbd>E</kbd> interact · <kbd>F</kbd> put down · <kbd>Tab</kbd> overview
       </div>
+      {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
+          this is it, verbatim — nothing here decides whether pressing E will succeed. */}
+      {status?.prompt ? (
+        <div className="interact-prompt">
+          <kbd>E</kbd>
+          {status.prompt.label}
+        </div>
+      ) : null}
+      {status && (status.carrying.length > 0 || status.currentAction) ? (
+        <div className="carry-status">
+          {status.currentAction ? `${status.currentAction}…` : null}
+          {status.currentAction && status.carrying.length > 0 ? ' · ' : null}
+          {status.carrying.length > 0 ? `carrying ${status.carrying.length}` : null}
+        </div>
+      ) : null}
     </div>
   );
 }

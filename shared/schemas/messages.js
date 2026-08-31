@@ -58,6 +58,14 @@ export const IMPLEMENTED_CLIENT_MESSAGE_TYPES = Object.freeze([
   // the note above. Appended, never re-sorted: three stories fan out from the same commit and
   // an append-only diff to this list rebases cleanly.
   'setup_submit',
+  // STORY-008 added `interact` in the same commit as its handler
+  // (`message-router.js#handleInteract`) and its authority check
+  // (`server/src/game/validators/action-validator.js`). `purchase_upgrade` stays OUT of this
+  // list: STORY-008 defines the terminal's contextual prompt but not the upgrade catalogue or
+  // its effects, which are STORY-012's — adding the type here with no catalogue behind it would
+  // be exactly the silent inaction Decision 7 forbids, and `smoke-milestone0.mjs` still pins
+  // `purchase_upgrade` to `not_implemented`.
+  'interact',
 ]);
 
 /**
@@ -80,6 +88,12 @@ export const ERROR_CODES = Object.freeze([
   // back as `invalid_payload`. The accompanying message carries `reason`, one of
   // SETUP_REJECTION_REASONS in setup-rules.js.
   'setup_rejected',
+  // STORY-008. Same split as `setup_rejected`, one level down: an `interact` can be perfectly
+  // well FORMED (a real action, a non-empty targetId) and still illegal — out of range, aimed
+  // at a target that does not exist, or wrong for that target's current state. The accompanying
+  // message carries `reason`, a short machine-readable string named in
+  // `action-validator.js` (e.g. `out_of_range`, `no_such_target`, `nothing_queued`, `busy`).
+  'interact_rejected',
 ]);
 
 /**
@@ -112,6 +126,16 @@ export const EVENT_STATES = Object.freeze(['warning', 'active', 'ended']);
 /**
  * Legal `action` values on an `interact` message. PRD §8 "Interactions"; the §12 example uses
  * `"action": "cook"`. A story that adds a new contextual action widens this list.
+ *
+ * STORY-008 widened it by two. PRD §8 lists "carry a plate to a table" as one interaction, but
+ * the owner is a real controllable body, not an abstracted worker on a timed route (§17's
+ * `deliver_order`) — the carry has to be two touches, one at the service pass and one at the
+ * destination table, or the walk between them is not gameplay. `deliver` is the second touch
+ * (it already existed for that); `pickup` is the first, new one. `drop_carry` is `F`'s §8
+ * "secondary action": put down whatever the owner is carrying without delivering it, freeing
+ * the carry slot and returning the plate to the pass rather than losing it — the one
+ * self-targeted action, sent with `targetId: "self"` since `validateInteract` requires a
+ * non-empty string.
  */
 export const INTERACT_ACTIONS = Object.freeze([
   'cook',
@@ -122,6 +146,8 @@ export const INTERACT_ACTIONS = Object.freeze([
   'clear_table',
   'repair',
   'handle_complaint',
+  'pickup',
+  'drop_carry',
 ]);
 
 /** Dish categories, PRD §7 "Menu configuration". */

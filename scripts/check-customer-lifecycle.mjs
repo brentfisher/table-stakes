@@ -475,6 +475,9 @@ function freshParty(match, state) {
     'customerId', 'segmentId', 'partySize', 'state', 'restaurantId',
     'position', 'x', 'y', 'z', 'patienceRemaining', 'satisfaction',
     'tableId', 'orderId', 'decisionReason',
+    // STORY-008: PRD §8 "unhappy customer" bottleneck signal, the target `handle_complaint`
+    // resolves against. Sticky-underneath but live on the wire — see customer-system.js.
+    'unhappy',
   ]);
   const actualKeys = new Set();
   for (const c of snapshot.customers) {

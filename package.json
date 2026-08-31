@@ -24,6 +24,7 @@
     "check:district": "node scripts/check-district-choice.mjs",
     "check:inventory": "node scripts/check-inventory.mjs",
     "check:workers": "node scripts/check-workers.mjs",
-    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run check:orders && npm run check:district && npm run check:inventory && npm run check:workers && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
+    "check:owner": "node scripts/check-owner-actions.mjs",
+    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run check:orders && npm run check:district && npm run check:inventory && npm run check:workers && npm run check:owner && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
   }
 }

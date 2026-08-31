@@ -191,6 +191,15 @@ export class Match {
       setup: null,
       disconnectedAtMs: null,
       input: { x: 0, z: 0, sprint: false },
+      // STORY-008. `carrying`/`lastInteractSequence` are read and written directly by
+      // `action-validator.js`, the same way `movement-system.js` already reads and writes
+      // `sprintRemainingMs` above — a player field, not a system-attached array, so no facade
+      // is needed for the one caller that touches it. `pendingAction` is the ONE field on this
+      // object never serialized: it is the timer for the in-flight action, and `currentAction`
+      // (its public name) is derived from it at snapshot time.
+      carrying: [],
+      pendingAction: null,
+      lastInteractSequence: 0,
     };
     this.players.set(playerId, player);
     return player;
@@ -452,6 +461,16 @@ export class Match {
         // another player's setup.
         ready: p.ready,
         lastSequence: p.lastSequence,
+        // STORY-008. `p.carrying` holds `{orderId, tableId}` internally (`action-validator.js`
+        // needs the destination table to validate `deliver`'s target); only the order id is
+        // public here — it is already public on `orders[]`, same reasoning as `ready`, and the
+        // client cross-references that array for a dish name rather than this one duplicating
+        // it. `currentAction` is derived here, not read off `pendingAction` directly — a pure
+        // function of the clock, so a snapshot pulled between actions never shows a stale one.
+        // `action-validator.js` does the real (mutating) expiry check.
+        carrying: p.carrying.map((c) => c.orderId),
+        currentAction:
+          p.pendingAction && this.elapsedMs < p.pendingAction.readyAtMs ? p.pendingAction.action : null,
       })),
     };
   }

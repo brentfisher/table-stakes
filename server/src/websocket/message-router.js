@@ -19,6 +19,7 @@ import { validateClientMessage } from '../../../shared/schemas/validation.js';
 import * as connections from './connection-manager.js';
 import * as matchManager from '../game/match-manager.js';
 import { acceptSetupSubmission } from '../game/validators/setup-validator.js';
+import { handleInteract as checkInteractAuthority } from '../game/validators/action-validator.js';
 
 export function routeMessage(ws, raw) {
   let message;
@@ -54,6 +55,8 @@ export function routeMessage(ws, raw) {
       return handlePlayerReady(record, message);
     case 'setup_submit':
       return handleSetupSubmit(ws, record, message);
+    case 'interact':
+      return handleInteract(ws, record, message);
     default:
       return undefined;
   }
@@ -148,6 +151,45 @@ function handlePlayerInput(record, message) {
   const room = matchManager.getRoom(record.roomId);
   if (!room) return;
   room.match.applyInput(record.playerId, message);
+}
+
+/**
+ * PRD §12 client-to-server example 2, §8 "the interaction system should be contextual". Two
+ * gates, same order and same reason as `handleSetupSubmit`'s (Decision 11): shape first
+ * (`invalid_payload` for a malformed `targetId`/`action`), then authority — is THIS action legal
+ * for THIS target right now, which is `action-validator.js`'s whole job.
+ */
+function handleInteract(ws, record, message) {
+  if (!record.roomId) return;
+  const room = matchManager.getRoom(record.roomId);
+  if (!room) {
+    connections.send(ws, { type: 'error', error: 'room_not_found', roomId: record.roomId });
+    return;
+  }
+
+  const shape = validateClientMessage(message);
+  if (!shape.ok) {
+    connections.send(ws, { type: 'error', error: shape.error, detail: shape.detail });
+    console.log(`[ws] ${record.playerId} interact malformed: ${shape.detail}`);
+    return;
+  }
+
+  const result = checkInteractAuthority(room.match, record.playerId, message);
+  if (result.silent) return; // a stale/duplicate sequence — Match#applyInput drops these the same way
+  if (!result.ok) {
+    connections.send(ws, {
+      type: 'error',
+      error: result.error,
+      reason: result.reason,
+      detail: result.detail,
+    });
+    console.log(
+      `[ws] ${record.playerId} interact rejected: ${message.action} ${message.targetId} — ` +
+        `${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
+    );
+    return;
+  }
+  console.log(`[ws] ${record.playerId} interact accepted: ${message.action} ${message.targetId}`);
 }
 
 /**

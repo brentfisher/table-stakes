@@ -105,9 +105,21 @@ export interface PlayerSnapshot {
    * is the whole of what one player learns about the other's setup.
    */
   ready: boolean;
-  /** Set while the owner is mid-action at a station or table. */
-  carrying?: string[];
-  currentAction?: InteractAction | null;
+  /**
+   * STORY-008. Order ids the owner is physically holding, picked up at the service pass and
+   * not yet delivered — `OWNER_CARRY_CAPACITY` entries at most. PRD §7's "one plate" baseline
+   * treats a whole order (every dish on it) as one carry slot, matching how `kitchen.readyOrders`
+   * already groups a table's dishes together. The client cross-references `orders[]` by
+   * `orderId` for the dish name(s) to show in the HUD rather than duplicating them here.
+   */
+  carrying: string[];
+  /**
+   * STORY-008. The `interact` action currently in progress, or `null` when free — an owner
+   * action costs real time (`OWNER_TASK_DURATIONS_MS`) exactly as a worker's does, and a second
+   * `interact` sent before this clears is rejected `busy`. Distinct from `carrying`: a plate can
+   * sit in the owner's hands with no action in progress while they walk it to a table.
+   */
+  currentAction: InteractAction | null;
 }
 
 /** One table in a restaurant, PRD §8 "Operational bottlenecks" (dirty tables block seating). */
@@ -292,6 +304,13 @@ export interface CustomerSnapshot {
   tableId: string | null;
   orderId: string | null;
   decisionReason: DecisionReason | null;
+  /**
+   * PRD §8 "Unhappy customer" bottleneck (STORY-008). True once patience has fallen to
+   * `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD` or below and stays true until the owner's
+   * `handle_complaint` interaction recovers the party — a live signal, not a one-shot event,
+   * so the client can render the "red patience meter" for exactly as long as it applies.
+   */
+  unhappy: boolean;
 }
 
 /**

@@ -88,6 +88,8 @@ import {
   DISTRICT_REPUTATION_REVIEW_WEIGHT,
   DISTRICT_REPUTATION_WALKOUT_PENALTY,
   EVENT_DEMAND_SHIFT_BAND,
+  UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD,
+  OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC,
 } from '../../../../shared/constants/tuning.js';
 
 const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
@@ -383,6 +385,42 @@ function createFloorFacade(match, state) {
       const [x, y, z] = state.queuePosition;
       return { x, y, z };
     },
+
+    /**
+     * STORY-008's `handle_complaint` candidates. Only parties with a table: `everUnhappy` can
+     * be set while a party is still in `APPROACH_OR_QUEUE`, but there is nowhere for the owner
+     * to stand and interact with a party that has no table yet — the queue itself has no
+     * per-party position, only `queuePosition()`'s single point for the whole line. No worker
+     * ever reads this: PRD §17's server list has no complaint-handling rule, this is owner-only.
+     */
+    unhappyParties(restaurantId) {
+      const out = [];
+      for (const party of state.parties.values()) {
+        if (party.restaurantId !== restaurantId) continue;
+        if (!party.everUnhappy || party.complaintHandled) continue;
+        if (!party.tableId) continue;
+        out.push({ customerId: party.customerId, tableId: party.tableId });
+      }
+      return out;
+    },
+
+    /** The owner apologized and comped something. PRD §8: "Deliver, apologize, comp item" ->
+     * satisfaction and reputation are protected rather than lost. One recovery per party — see
+     * `party.complaintHandled` — so this cannot be farmed by interacting with the same table
+     * repeatedly. */
+    handleComplaint(customerId) {
+      const party = findParty(customerId);
+      if (!party || !party.everUnhappy || party.complaintHandled) {
+        return { ok: false, reason: 'not_unhappy' };
+      }
+      party.complaintHandled = true;
+      const relief = party.patienceSeconds * 1000 * OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC;
+      party.patienceMsRemaining = Math.min(
+        party.patienceSeconds * 1000,
+        party.patienceMsRemaining + relief,
+      );
+      return { ok: true };
+    },
   };
 }
 
@@ -494,6 +532,14 @@ function spawnParty(match, state, effects) {
     // What the kitchen said about the order when it landed: the PRD §8 satisfaction factors
     // `computeSatisfactionFactors` could not compute before a kitchen existed. Null until then.
     orderOutcome: null,
+
+    // STORY-008. PRD §8 "unhappy customer" bottleneck. `everUnhappy` is sticky — once patience
+    // has crossed `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD` the party stays a candidate for
+    // `recoveryActions` even if patience recovers between phases; `complaintHandled` is the
+    // owner's one recovery per party. `unhappy`, the live public signal, is derived as
+    // `everUnhappy && !complaintHandled` wherever it is read, rather than stored a second time.
+    everUnhappy: false,
+    complaintHandled: false,
   };
 
   state.parties.set(customerId, party);
@@ -1056,7 +1102,14 @@ function computeSatisfactionFactors(match, party) {
     orderAccuracy: outcome?.orderAccuracy ?? null,
     tableCleanliness: null,
     eventRelevance: null,
-    recoveryActions: null,
+    // STORY-008. Null (not scored either way) for a party that never crossed
+    // `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD` — most parties, most of the time, and the whole
+    // reason this factor renormalizes over non-null values rather than defaulting to a neutral
+    // score. Once a party DID cross it, this is the one factor that rewards the owner
+    // specifically for noticing and acting: 1 if `handle_complaint` reached them, 0 if it never
+    // did — nothing between, because PRD §8 pairs this bottleneck with a discrete
+    // "apologize/comp" action, not a partial-credit one.
+    recoveryActions: party.everUnhappy ? (party.complaintHandled ? 1 : 0) : null,
     visitDurationVsPatience,
   };
 }
@@ -1148,6 +1201,10 @@ function orderRequest(party) {
 function advanceParty(match, state, party, dtMs) {
   if (PATIENCE_DECAYING_STATES.has(party.state)) {
     party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs);
+    // STORY-008. Sticky, not a live threshold check on every read: a party that crossed into
+    // "unhappy" and was never helped stays a `recoveryActions` candidate even if it recovers
+    // patience crossing into its next phase (`patienceAtSeatedFrac` etc. resample per phase).
+    if (patienceFraction(party) <= UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD) party.everUnhappy = true;
   }
 
   const msInState = match.elapsedMs - party.stateEnteredAtMs;
@@ -1308,6 +1365,10 @@ function toPublicCustomerSnapshot(party) {
     tableId: party.tableId,
     orderId: party.orderId,
     decisionReason: party.decisionReason,
+    // STORY-008. Live, not sticky: `everUnhappy` is the sticky scoring flag `recoveryActions`
+    // reads; this is what the client shows a "handle complaint" prompt against, and it clears
+    // the instant the owner reaches them.
+    unhappy: party.everUnhappy && !party.complaintHandled,
   };
 }
 

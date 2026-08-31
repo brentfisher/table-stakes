@@ -82,6 +82,41 @@ body {
   font: inherit;
 }
 
+/* STORY-008 §8 "contextual interact prompt": "E — Cook Smash Burger". Bottom-center, the
+   convention for this kind of prompt in third-person games, and distinct from `.help`'s
+   static control legend — this one only exists while a real target is in range. */
+.interact-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  background: var(--panel);
+  border: 1px solid var(--ok);
+  border-radius: 999px;
+  color: var(--text);
+  font-weight: 600;
+  pointer-events: none;
+}
+.interact-prompt kbd {
+  background: #232b33;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-right: 6px;
+  color: var(--ok);
+  font: inherit;
+}
+
+.carry-status {
+  position: absolute;
+  left: 50%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
 .scope-note {
   position: absolute;
   right: 12px;

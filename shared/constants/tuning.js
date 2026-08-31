@@ -757,3 +757,62 @@ export const WORKER_TICKET_URGENCY_BUCKET_MS = 2_000;
  * STORY-007's PR is therefore attributable to the body, not to a retuned trigger.
  */
 export const WORKER_RESTOCK_THRESHOLD_UNITS = INVENTORY_RESTOCK_THRESHOLD_UNITS;
+
+// ============================================================================================
+// STORY-008 — owner interaction. PRD §8 "Player avatar"/"Interactions", §4.1 (active ownership).
+// ============================================================================================
+
+/** How close the owner must stand to a target for `action-validator.js` to accept an
+ * `interact` naming it. One number for every action: PRD §8's contextual prompt is "near a
+ * valid object", not a per-object radius, and `upgrade_terminal`'s own `interactionRadius` in
+ * `restaurant-layout.json` is the one deliberate exception (a terminal purchase is STORY-012's,
+ * not read here). */
+export const OWNER_INTERACT_RANGE = 2.2;
+
+/**
+ * The owner's per-action duration, derived from the worker's — never a second set of numbers,
+ * for the same reason `WORKER_MOVE_SPEED` is derived rather than tuned: the differential is the
+ * thing under test, and two free numbers would let it drift silently. See
+ * `OWNER_TASK_SPEED_ADVANTAGE`'s comment, which names this exact formula.
+ *
+ * `pickup` and `drop_carry` have no worker equivalent — a worker server is never modeled as
+ * carrying a plate, it delivers atomically — so those two get their own small base costs,
+ * scaled by the same advantage for consistency.
+ */
+export const OWNER_ACTION_BASE_DURATIONS_MS = Object.freeze({
+  pickup: 400,
+  drop_carry: 200,
+});
+
+export const OWNER_TASK_DURATIONS_MS = Object.freeze({
+  cook: Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE),
+  plate: Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE),
+  pickup: Math.round(OWNER_ACTION_BASE_DURATIONS_MS.pickup / OWNER_TASK_SPEED_ADVANTAGE),
+  deliver: Math.round(WORKER_TASK_DURATIONS_MS.deliver_order / OWNER_TASK_SPEED_ADVANTAGE),
+  drop_carry: Math.round(OWNER_ACTION_BASE_DURATIONS_MS.drop_carry / OWNER_TASK_SPEED_ADVANTAGE),
+  restock: Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE),
+  seat: Math.round(WORKER_TASK_DURATIONS_MS.seat_party / OWNER_TASK_SPEED_ADVANTAGE),
+  clear_table: Math.round(WORKER_TASK_DURATIONS_MS.clear_table / OWNER_TASK_SPEED_ADVANTAGE),
+  handle_complaint: Math.round(WORKER_TASK_DURATIONS_MS.collect_payment / OWNER_TASK_SPEED_ADVANTAGE),
+});
+
+/**
+ * PRD §7 "one plate" baseline. A server-side property, not a client constant, so STORY-012's
+ * Serving Tray upgrade can raise it to 2 then 3 by reading it off the match rather than the
+ * client asserting its own capacity.
+ */
+export const OWNER_CARRY_CAPACITY = 1;
+
+/**
+ * PRD §8 "Unhappy customer" bottleneck: a party whose patience has fallen this far or further is
+ * the red-meter state a "Handle complaint" prompt targets. Above this fraction, the wait is
+ * normal impatience, not yet the state PRD §8 pairs with "Deliver, apologize, comp item".
+ */
+export const UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD = 0.35;
+
+/**
+ * The "comp item" a handled complaint buys: extra patience, expressed as a share of the party's
+ * OWN total budget so a patient segment and an impatient one both get a proportionate reprieve
+ * rather than the same flat number of seconds.
+ */
+export const OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC = 0.3;
