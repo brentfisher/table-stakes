@@ -167,3 +167,13 @@ export declare const DISTRICT_REPUTATION_MIN: number;
 export declare const DISTRICT_REPUTATION_MAX: number;
 export declare const DISTRICT_REPUTATION_REVIEW_WEIGHT: number;
 export declare const DISTRICT_REPUTATION_WALKOUT_PENALTY: number;
+
+export declare const INVENTORY_RNG_STREAM: string;
+export declare const INVENTORY_STATION_BIN_CAPACITY: number;
+export declare const INVENTORY_RESTOCK_THRESHOLD_UNITS: number;
+export declare const INVENTORY_RESTOCK_TRAVEL_MS: number;
+export declare const INVENTORY_RESTOCK_MS_PER_UNIT: number;
+export declare const INVENTORY_MAX_CONCURRENT_RESTOCKS: number;
+export declare const INVENTORY_AUTO_RESTOCK: boolean;
+export declare const STARTING_INVENTORY_DEFAULT_CASH_SHARE: number;
+export declare const STARTING_INVENTORY_DEFAULT_SERVINGS: number;

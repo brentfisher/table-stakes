@@ -16,6 +16,9 @@
 //   customers  — STORY-004
 //   orders     — STORY-005  (after customers: an order exists because a party ordered)
 //   events     — STORY-011
+//   inventory  — STORY-006  (after customers: it decorates the restaurants[] array that system
+//                            REASSIGNS wholesale during its own update, so anything written
+//                            before it runs is discarded)
 //   scoring    — STORY-013  (last: it reads what everything else produced)
 
 import { registerSystem } from '../simulation-loop.js';
@@ -24,6 +27,7 @@ import { eventSystem } from './event-system.js';
 import { customerSystem } from './customer-system.js';
 import { orderSystem } from './order-system.js';
 import { setupSystem } from './setup-system.js';
+import { inventorySystem } from './inventory-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -37,5 +41,12 @@ export function registerAllSystems() {
   // it up in the same tick rather than a tick later.
   registerSystem(orderSystem);
   registerSystem(eventSystem);
+  // `inventory` runs after `customers` because it decorates that system's `restaurants[]` with
+  // the PRD §8 shortage signal, and `customer-system.js` reassigns that array wholesale in its
+  // own update. Running last costs one tick of staleness on `match.dishAvailability`, which the
+  // kitchen reads defensively — and costs nothing at the start of service, because
+  // `onPhaseChange` runs for every system before any `update`, so the pantry facade and the
+  // first availability map exist before `order-system.js` dispatches its first ticket.
+  registerSystem(inventorySystem);
   // STORY-013: registerSystem(scoringSystem);
 }

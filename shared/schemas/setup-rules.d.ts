@@ -166,6 +166,22 @@ export declare function segmentForecast(
   }>,
 ): SegmentForecastEntry[];
 
+/**
+ * PRD §7 item 3: a sensible opening pantry for a menu, trimmed to what `cash * cashShare` buys.
+ * STORY-006's inventory model seeds a restaurant's pantry from the allocation this produces when
+ * the player never submitted one.
+ */
+export declare function defaultInventoryAllocation(
+  dishes: Array<{ ingredients?: Record<string, number> }>,
+  ingredients: Record<string, { unitCost: number }>,
+  opts: {
+    cash: number;
+    cashShare: number;
+    servings: number;
+    maxUnitsPerIngredient: number;
+  },
+): Record<string, number>;
+
 export declare const MENU_MAIN_SLOTS: number;
 export declare const MENU_ADDON_SLOTS: number;
 

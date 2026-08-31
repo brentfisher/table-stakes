@@ -19,21 +19,23 @@
 // runs after a clean `{ok: true}`.
 //
 // ---------------------------------------------------------------------------------------
-// STORY-006 BOUNDARY. The starting inventory allocation is validated, priced and stored, and
-// then read by nobody: STORY-006 owns the inventory MODEL — depletion, spoilage, restocking,
-// what happens when a dish's ingredient runs out. Until it lands, `startingInventory` is a
-// priced bag of units on the accepted submission, and the `inventory_over_budget` rule this
-// story's acceptance criteria require is enforced here regardless. When 006 lands it should
-// seed its per-restaurant inventory from `player.setup.startingInventory` and change nothing
-// about this validator.
+// STORY-006 BOUNDARY (now landed). `startingInventory` is no longer a priced bag of units read
+// by nobody: `systems/inventory-system.js` seeds each restaurant's pantry from
+// `player.setup.startingInventory` at the setup -> service lock, and every rule below is
+// UNCHANGED — same reasons, same order, same rejection codes. The one thing STORY-006 adds here
+// is to `defaultSubmission()`: "an empty pantry" was a legal default while nothing read the
+// allocation, and is a restaurant that cannot cook now that something does.
 // ---------------------------------------------------------------------------------------
 
 import {
   STARTING_CASH,
+  STARTING_INVENTORY_DEFAULT_CASH_SHARE,
+  STARTING_INVENTORY_DEFAULT_SERVINGS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
 } from '../../../../shared/constants/tuning.js';
 import { MENU_ADDON_SLOTS, MENU_MAIN_SLOTS } from '../../../../shared/schemas/messages.js';
 import {
+  defaultInventoryAllocation,
   inventoryCost,
   isAddonCategory,
   isPriceInRange,
@@ -321,11 +323,20 @@ export function acceptSetupSubmission(match, playerId, message, options = {}) {
  * choice, scoring) needs a menu to exist for both restaurants.
  *
  * Deterministic and content-derived: the first `MENU_MAIN_SLOTS` producible mains in catalogue
- * order at their own suggested prices, no add-ons, no upgrade, no policy, an empty pantry, and
- * each worker at the first post it is allowed to take. It is deliberately unambitious — an
- * idle player should get a working restaurant, not a good one — and it is put through
- * `validateSetupSubmission` like any other submission so it can never be the one illegal menu
- * in the match.
+ * order at their own suggested prices, no add-ons, no upgrade, no policy, a pantry stocked for
+ * that menu out of part of the starting cash, and each worker at the first post it is allowed to
+ * take. It is deliberately unambitious — an idle player should get a working restaurant, not a
+ * good one — and it is put through `validateSetupSubmission` like any other submission so it can
+ * never be the one illegal menu in the match.
+ *
+ * STORY-006 CHANGED ONE LINE OF IT: the allocation was `{}`. That was a correct default while
+ * nothing read the allocation and a broken one the moment something did — a restaurant with an
+ * empty pantry cannot cook a single ticket, and PRD §7 lists "Available ingredient inventory"
+ * among the things the setup phase HANDS the player. The allocation is derived from this menu by
+ * `defaultInventoryAllocation()` in setup-rules.js, the same function STORY-009's UI can offer as
+ * a one-click stock-up, and it is trimmed to a share of the cash so it is affordable by
+ * construction rather than by luck — a submission this function cannot get past its own
+ * validator throws, and that is the assertion.
  */
 export function defaultSubmission(options = {}) {
   const { catalogue, layout, startingCash } = resolveContext(options);
@@ -338,7 +349,12 @@ export function defaultSubmission(options = {}) {
     staffAssignments: Object.fromEntries(
       rosterOf(layout).map((worker) => [worker.id, worker.posts[0]]),
     ),
-    startingInventory: {},
+    startingInventory: defaultInventoryAllocation(mains, catalogue.ingredients, {
+      cash: startingCash,
+      cashShare: STARTING_INVENTORY_DEFAULT_CASH_SHARE,
+      servings: STARTING_INVENTORY_DEFAULT_SERVINGS,
+      maxUnitsPerIngredient: STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
+    }),
     policyId: null,
   };
 

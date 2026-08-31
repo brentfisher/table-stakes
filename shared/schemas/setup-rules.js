@@ -205,6 +205,48 @@ export function inventoryCost(allocation, ingredients) {
 }
 
 /**
+ * PRD §7 item 3's allocation, suggested rather than demanded: how much of each ingredient a menu
+ * needs to serve `servings` of every dish on it, trimmed to what `cash * cashShare` can buy.
+ *
+ * Pure and browser-safe like everything else here, so STORY-009's setup UI can offer it as the
+ * "stock my menu" button and `defaultSubmission()` can use the same function for the player who
+ * never submits — one definition of a sensible opening pantry rather than two that drift.
+ *
+ * Scaling down is proportional and floored, so the result is always affordable and always a
+ * whole number of units; an expensive menu gets a shallower pantry, never an illegal submission.
+ *
+ * @param {Array<{ingredients?: Record<string, number>}>} dishes  the menu, mains and add-ons
+ * @param {Record<string, {unitCost: number}>} ingredients        catalogue.ingredients
+ * @param {{cash: number, cashShare: number, servings: number, maxUnitsPerIngredient: number}} opts
+ * @returns {Record<string, number>} a `startingInventory` allocation
+ */
+export function defaultInventoryAllocation(dishes, ingredients, opts) {
+  const { cash, cashShare, servings, maxUnitsPerIngredient } = opts;
+  const target = {};
+  for (const dish of dishes ?? []) {
+    for (const [ingredientId, perServing] of Object.entries(dish?.ingredients ?? {})) {
+      const want = Math.min(perServing * servings, maxUnitsPerIngredient);
+      target[ingredientId] = Math.min(
+        maxUnitsPerIngredient,
+        (target[ingredientId] ?? 0) + want,
+      );
+    }
+  }
+
+  const budget = toCents(Math.max(0, cash) * cashShare);
+  const full = inventoryCost(target, ingredients);
+  if (full === null) return {};
+  const scale = full > budget ? budget / full : 1;
+
+  const out = {};
+  for (const [ingredientId, units] of Object.entries(target)) {
+    const scaled = Math.floor(units * scale);
+    if (scaled > 0) out[ingredientId] = scaled;
+  }
+  return out;
+}
+
+/**
  * PRD §7's setup briefing: "Broad spending and patience indicators". Broad — a label, never
  * the segment's budget or its `patienceSeconds`. Same discipline as `priceGuidance`: the
  * player reads the market, not the simulation's parameters.

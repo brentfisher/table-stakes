@@ -49,13 +49,21 @@
 // vocabulary is an order id — which was already a public field on `CustomerSnapshot`.
 // ============================================================================================
 //
-// STORY-006 (ingredients) SEAM. This system asks one question about a dish before committing
-// to it: `isDishAvailable()`. Today that reads an optional `match.dishAvailability` map that
-// nothing writes, so every menu dish is available. When STORY-006 lands it publishes that map
-// and gets both outcomes for free: a dish that goes unavailable BEFORE the party orders drops
-// out of the draw, and one that goes unavailable while its ticket is still queued has that
-// ticket voided — which reduces the order's `correctness`, and, if it voids every ticket,
-// cancels the order outright and sends the party to CANCEL_ORDER.
+// STORY-006 (ingredients) SEAM, now filled in. This system asks one question about a dish before
+// committing to it: `isDishAvailable()`, which reads the `match.dishAvailability` map
+// `inventory-system.js` publishes. Both outcomes come from that map alone: a dish that goes
+// unavailable BEFORE the party orders drops out of the draw, and one that goes unavailable while
+// its ticket is still queued has that ticket voided — which reduces the order's `correctness`,
+// and, if it voids every ticket, cancels the order outright and sends the party to CANCEL_ORDER.
+//
+// The map was NOT the whole of the integration, and this file's original note said so by
+// omission rather than on purpose: `dishAvailability` is read in `orderableEntries` (order time)
+// and in `voidUnavailableTickets` (a sweep), and neither of those is a STATION STEP. STORY-006's
+// acceptance criterion is that a dish's ingredients are consumed "at the correct step, not at
+// order time", which needs a hook where a step is dispatched. That hook is `claimIngredients()`
+// in `dispatchQueues` — twenty lines, read through an optional `match.pantry` facade with the
+// same defensiveness as `match.dishAvailability`, and inert when no inventory system is
+// registered. Nothing else about the kitchen moved.
 //
 // REVENUE IS SERVER-SIDE ONLY (Milestone 0 Decision 2), computed here from the price the
 // player set during setup — never from anything a client sends. It accrues to
@@ -294,6 +302,10 @@ function makeTicket(state, order, entry) {
     remainingMs: 0,
     readyAtMs: null,
     voidedReason: null,
+    /** STORY-006. The ingredient this ticket could not be started for, or null. A `queued`
+     * ticket with a non-null blocker is not waiting for a free pair of hands — it is waiting for
+     * stock to reach the station, which is a different §8 bottleneck with a different fix. */
+    blockedByIngredientId: null,
   };
 }
 
@@ -437,10 +449,43 @@ function dispatchQueues(match, restaurant) {
   for (const stationId of LAYOUT_STATIONS) {
     const station = restaurant.stations.get(stationId);
     if (!station) continue;
-    while (station.active.length < station.concurrency && station.queue.length > 0) {
-      startStep(match, station, station.queue.shift());
+    let index = 0;
+    while (station.active.length < station.concurrency && index < station.queue.length) {
+      const ticket = station.queue[index];
+      if (!claimIngredients(match, restaurant, station, ticket)) {
+        // Skipped, not stopped: PRD §8's consequence of a shortage is that the affected DISHES
+        // stall, not that the kitchen does. A head-of-line block would let one empty bin idle
+        // every other pair of hands at that station. The ticket keeps its place in the queue.
+        index += 1;
+        continue;
+      }
+      station.queue.splice(index, 1);
+      startStep(match, station, ticket);
     }
   }
+}
+
+/**
+ * STORY-006's other half. The `dishAvailability` seam below answers "may this dish be ORDERED",
+ * which is a question about the menu; this answers "may this ticket be STARTED", which is a
+ * question about the station's bin, and the two are deliberately not the same — an order placed
+ * while the bin was full may reach the front of the queue after it has run dry.
+ *
+ * Called at the instant a ticket's FIRST station step is dispatched (`stepIndex === -1`) and
+ * never again, because that is when the raw goods are actually pulled: an order sitting in a
+ * queue has not been cooked and has not spent anything.
+ *
+ * `match.pantry` is read exactly as defensively as `match.dishAvailability` and
+ * `match.eventEffects` are — with no inventory system registered, every claim succeeds and this
+ * file behaves precisely as it did before STORY-006.
+ */
+function claimIngredients(match, restaurant, station, ticket) {
+  if (ticket.stepIndex !== -1) return true; // already claimed when this ticket first started
+  const pantry = match.pantry;
+  if (!pantry) return true;
+  const claim = pantry.claim(restaurant.restaurantId, station.station, ticket.dish);
+  ticket.blockedByIngredientId = claim.ok ? null : (claim.missingIngredientId ?? null);
+  return claim.ok;
 }
 
 /**
@@ -770,6 +815,7 @@ function toPublicOrderSnapshot(order, ticket, elapsedMs) {
     currentStepIndex: ticket.stepIndex,
     remainingMs: Math.max(0, Math.round(ticket.remainingMs)),
     readyAgeMs: ticket.readyAtMs === null ? 0 : Math.max(0, Math.round(elapsedMs - ticket.readyAtMs)),
+    blockedByIngredientId: ticket.blockedByIngredientId ?? null,
   };
 }
 
@@ -853,6 +899,7 @@ export const _internal = {
   priceFairnessFor,
   advanceActiveTickets,
   dispatchQueues,
+  claimIngredients,
   resolveReadyOrders,
   voidUnavailableTickets,
   cancelOrder,
