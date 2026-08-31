@@ -704,25 +704,28 @@ export const WORKER_ARRIVAL_EPSILON = 0.35;
  * one definition of what a pantry trip costs.
  */
 /*
- * MEASURED, not guessed. `scripts/check-workers.mjs` prints, over nine seeded full matches, the
- * §24 routine-work share and the parties each restaurant served. Two things came out of that
- * sweep and are recorded here so the next person does not repeat it:
+ * MEASURED, not guessed. These are the numbers §24's 60-75% band is actually tuned on.
+ * `scripts/check-workers.mjs` prints, over nine seeded full matches with no player, the routine
+ * work the brigade completed and the parties each restaurant served. The sweep, at multiples of
+ * the base durations, so the next person does not repeat it:
  *
- *   - THE §24 SHARE BARELY MOVES WITH THESE NUMBERS. Raising every duration by 40% moved the
- *     pooled share by less than one point (77.0% -> 77.3%) while costing 3-5 parties served per
- *     restaurant. The funnel self-regulates: slower hands mean fewer parties get in, so the work
- *     that goes undone falls almost exactly as fast as the work that gets done. The share is a
- *     property of the SHAPE of the §17 lists, not of how fast a pair of hands is.
- *   - THROUGHPUT DOES MOVE. So these are set at the fast end of what still reads as a person
- *     doing a job, because the only thing tuning them buys is parties served.
+ *     x1.00   pooled 78.3%   front of house 72.2%   11-23 parties served
+ *     x1.15   pooled 76.9%   front of house 70.1%   10-21
+ *     x1.25   pooled 74.1%   front of house 66.9%   13-21   <- these numbers
+ *     x1.40   pooled 73.8%   front of house 66.2%   11-20
+ *
+ * The share is bought almost entirely between x1.15 and x1.25 and then flattens: past that point
+ * slower hands turn parties away as fast as they leave work undone, so the ratio stops moving and
+ * only throughput falls. x1.25 is therefore the slowest setting that buys anything — it is inside
+ * §24's band with the throughput cost of roughly one party per restaurant.
  */
 export const WORKER_TASK_DURATIONS_MS = Object.freeze({
-  seat_party: 600,
-  take_order: 800,
-  deliver_order: 700,
-  clear_table: 1_000,
-  collect_payment: 700,
-  tend_station: 500,
+  seat_party: 750,
+  take_order: 1_000,
+  deliver_order: 875,
+  clear_table: 1_250,
+  collect_payment: 875,
+  tend_station: 625,
 });
 
 /** Per-task variation, drawn from `WORKER_RNG_STREAM`. Workers are people, not clockwork; the

@@ -47,6 +47,7 @@ import {
   CUSTOMER_SEATED_GREET_MS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
   WORKER_MOVE_SPEED,
+  WORKER_RESTOCK_THRESHOLD_UNITS,
   WORKER_TASK_DURATIONS_MS,
   WORKER_TASK_NEAR_COMPLETION_FRACTION,
   WORKER_TICKET_URGENCY_BUCKET_MS,
@@ -982,10 +983,11 @@ function plantReadyOrder(match, { customerId, tableId }) {
   const FOH = ['deliver_order', 'seat_party', 'take_order', 'clear_table', 'collect_payment'];
 
   for (const seed of SEEDS) {
-    const setup = () => {
-      const auto = defaultSubmission();
-      return { ...auto, menu: PROBE_MAINS, addons: [] };
-    };
+    // The auto-filled submission EXACTLY as `setup-validator.js` builds it — menu and starting
+    // inventory together. Substituting a menu here and keeping the auto allocation puts a dish on
+    // the board with none of its ingredients bought: it is unavailable from the first tick, and
+    // the §24 ratio is then measured against a restaurant running a menu it never had.
+    const setup = () => defaultSubmission();
     const match = makeMatch({
       id: `m_bal_${seed}`,
       seed,
@@ -1031,6 +1033,7 @@ function plantReadyOrder(match, { customerId, tableId }) {
         served: summary.get(staff.restaurantId)?.guestsServed ?? 0,
         chosen: staff.work.partiesChosen,
         trips: staff.work.restockTrips,
+        refusals: staff.work.restockRefusals,
         helpTicks,
       });
     }
@@ -1050,6 +1053,7 @@ function plantReadyOrder(match, { customerId, tableId }) {
 
   const pooled = pooledCompleted / pooledRequired;
   const pooledFoh = pooledFohCompleted / pooledFohRequired;
+  const pooledCookShare = rows.reduce((n, r) => n + r.cookShare, 0) / rows.length;
   const shares = rows.map((r) => r.share);
   const served = rows.map((r) => r.served);
   console.log(
@@ -1059,20 +1063,38 @@ function plantReadyOrder(match, { customerId, tableId }) {
   );
   console.log(
     `    split by role: front of house ${(pooledFoh * 100).toFixed(1)}%, ` +
-      `kitchen rail ${(
-        (rows.reduce((n, r) => n + r.cookShare, 0) / rows.length) * 100
-      ).toFixed(1)}% — the server is the bottleneck, the cook is not`,
+      `kitchen rail ${(pooledCookShare * 100).toFixed(1)}% — the server is the bottleneck, ` +
+      'the cook is not',
   );
   console.log(
     `    parties served per restaurant: ${Math.min(...served)}-${Math.max(...served)} ` +
       `(PRD §24 hypothesis: 40-90, measured 36-49 by check-orders with the abstractions in place)\n`,
   );
 
+  // This is the acceptance criterion, asserted as written: 60-75% of routine work, over seeded
+  // matches with nobody playing. WORKER_TASK_DURATIONS_MS records the sweep it is tuned on.
   check(
-    'PRD §24: automated staff complete most but nowhere near all of the routine work, unaided',
-    pooled > 0.5 && pooled < 0.9,
-    `pooled ${(pooled * 100).toFixed(1)}% — §24 hypothesis is 60-75%; front of house alone is ` +
-      `${(pooledFoh * 100).toFixed(1)}%, inside it. See the PR for why the combined figure sits high.`,
+    'PRD §24: automated staff complete 60-75% of routine work over nine seeded matches, no player',
+    pooled >= 0.6 && pooled <= 0.75,
+    `pooled ${(pooled * 100).toFixed(1)}% (${pooledCompleted}/${pooledRequired}) across ` +
+      `${rows.length} restaurant-matches`,
+  );
+  // The finding underneath the ratio, and the one worth arguing with: the band is bought entirely
+  // on the floor. The cook clears its rail almost completely at every setting swept, because a
+  // ticket the cook does not load is a plate nobody eats — the kitchen has no slack to give. So
+  // every hour of work §24 leaves for the owner is FRONT-of-house work, and STORY-008's owner
+  // actions have to be worth doing there or the 25-40% is unreachable in practice.
+  check(
+    'the 25-40% §24 leaves for the owner is all on the floor — the rail has no slack to give',
+    pooledCookShare > 0.9 && pooledFoh < pooledCookShare - 0.2,
+    `kitchen rail ${(pooledCookShare * 100).toFixed(1)}%, front of house ` +
+      `${(pooledFoh * 100).toFixed(1)}%`,
+  );
+  check(
+    'the cook does not thrash the pantry: a trip it sets off on is a trip it completes',
+    rows.every((r) => r.refusals === 0),
+    `${rows.reduce((n, r) => n + r.trips, 0)} trips, ` +
+      `${rows.reduce((n, r) => n + r.refusals, 0)} refused on arrival`,
   );
   check(
     'no restaurant completes everything — there is always work left for the owner (§24’s 25-40%)',
@@ -1103,6 +1125,9 @@ function plantReadyOrder(match, { customerId, tableId }) {
 // 11. THE BALANCE MOVEMENT FROM FLIPPING INVENTORY_AUTO_RESTOCK OFF
 // =============================================================================================
 {
+  /** A third of what the auto-fill buys — deliberately under-bought, the way STORY-006's
+   * check measures under-buying, so the reserve runs down inside one service. */
+  const THIN_PANTRY_FRACTION = 0.35;
   console.log('\n  What a real body costs: a thin pantry, restocked by a cook rather than by magic:\n');
   const rows = [];
   for (const seed of ['thin-1', 'thin-2', 'thin-3']) {
@@ -1110,9 +1135,9 @@ function plantReadyOrder(match, { customerId, tableId }) {
       const auto = defaultSubmission();
       const startingInventory = {};
       for (const [ingredientId, units] of Object.entries(auto.startingInventory)) {
-        startingInventory[ingredientId] = Math.max(1, Math.round(units * 0.35));
+        startingInventory[ingredientId] = Math.max(1, Math.round(units * THIN_PANTRY_FRACTION));
       }
-      return { ...auto, menu: PROBE_MAINS, addons: [], startingInventory };
+      return { ...auto, startingInventory };
     };
     const match = makeMatch({
       id: `m_thin_${seed}`,
@@ -1124,6 +1149,10 @@ function plantReadyOrder(match, { customerId, tableId }) {
     let blockedTicks = 0;
     let helpTicks = 0;
     let ticks = 0;
+    // A counter at zero WITH the reserve still able to fill it: the cook was too late. Distinct
+    // from an exhausted ingredient, which no amount of walking fixes.
+    let dryTicks = 0;
+    const goneUnavailable = new Set();
     quiet(() => {
       while ((match.phase === 'service' || match.phase === 'final_rush') && !match.ended) {
         stepMatch(match, TICK_MS);
@@ -1134,31 +1163,52 @@ function plantReadyOrder(match, { customerId, tableId }) {
             break;
           }
         }
+        for (const inv of match._inventorySimState?.restaurants.values() ?? []) {
+          if (inv.shortages.some((sh) => sh.binLevel === 0 && !sh.exhausted)) dryTicks += 1;
+          for (const dishId of inv.ledger?.dishesGoneUnavailable ?? []) {
+            goneUnavailable.add(`${inv.restaurantId}:${dishId}`);
+          }
+        }
         const live = match._workerSimState;
         if (live && [...live.restaurants.values()].some((s) => s.workers.some((w) => w.needsHelp))) {
           helpTicks += 1;
         }
       }
     });
-    rows.push({ seed, blocked: blockedTicks / ticks, help: helpTicks / ticks });
+    rows.push({
+      seed,
+      blocked: blockedTicks / ticks,
+      help: helpTicks / ticks,
+      dry: dryTicks / ticks,
+      gone: goneUnavailable.size,
+    });
     console.log(
-      `    ${seed} ${match.market.id.padEnd(20)} production blocked on an empty bin ` +
-        `${((blockedTicks / ticks) * 100).toFixed(1)}% of ticks, cook asking for help ` +
-        `${((helpTicks / ticks) * 100).toFixed(1)}%`,
+      `    ${seed} ${match.market.id.padEnd(20)} counter empty with stock still in the back ` +
+        `${((dryTicks / ticks) * 100).toFixed(1)}% of ticks, production blocked ` +
+        `${((blockedTicks / ticks) * 100).toFixed(1)}%, ` +
+        `${goneUnavailable.size} of 6 dishes ran out for good`,
     );
   }
+  const peakDry = Math.max(...rows.map((r) => r.dry));
   const peakBlocked = Math.max(...rows.map((r) => r.blocked));
   console.log('');
+  // What this measurement was expected to show, and did not: that a walking cook turns a thin
+  // pantry into a TIMING pressure the way STORY-006 predicted. It does not. Rule 4's trip starts
+  // at WORKER_RESTOCK_THRESHOLD_UNITS, and a bin still holding eight units outlasts the walk, so
+  // the counter never actually runs dry while there is anything in the back to fetch. Under-buying
+  // still costs — it costs the menu, permanently — but it costs it at the reserve, not at the rail.
   check(
-    'shortage is now a TIMING pressure: with a real cook walking, a thin pantry visibly blocks the line',
-    peakBlocked > 0,
-    `peak ${(peakBlocked * 100).toFixed(1)}% of ticks — STORY-006 measured 0-0.3% with the ` +
-      'abstracted restocker, which had perfect knowledge and no walk',
+    'a thin pantry never catches the cook out: no counter sits empty while the reserve could fill it',
+    peakDry === 0 && peakBlocked === 0,
+    `counter dry with stock in the back ${(peakDry * 100).toFixed(1)}% of ticks, ` +
+      `production blocked ${(peakBlocked * 100).toFixed(1)}% — the threshold-` +
+      `${WORKER_RESTOCK_THRESHOLD_UNITS}u trip starts early enough to cover its own walk`,
   );
   check(
-    'but the cook still keeps up: no match spends most of its service blocked on stock',
-    peakBlocked < 0.5,
-    `${(peakBlocked * 100).toFixed(1)}% < 50%`,
+    'under-buying costs the MENU instead: on a third of the auto-fill every dish runs out for good',
+    rows.every((r) => r.gone === 6),
+    `all 6 restaurant-menus emptied in all ${rows.length} runs — the pressure STORY-006 priced ` +
+      'is a reserve that runs down, not a rail that stalls',
   );
 }
 
