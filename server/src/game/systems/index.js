@@ -19,6 +19,8 @@
 //   inventory  — STORY-006  (after customers: it decorates the restaurants[] array that system
 //                            REASSIGNS wholesale during its own update, so anything written
 //                            before it runs is discarded)
+//   workers    — STORY-007  (after inventory: same decoration trap, plus it reads the freshest
+//                            shortage state when the cook decides whether to walk to the pantry)
 //   scoring    — STORY-013  (last: it reads what everything else produced)
 
 import { registerSystem } from '../simulation-loop.js';
@@ -28,6 +30,7 @@ import { customerSystem } from './customer-system.js';
 import { orderSystem } from './order-system.js';
 import { setupSystem } from './setup-system.js';
 import { inventorySystem } from './inventory-system.js';
+import { workerSystem } from './worker-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -48,5 +51,14 @@ export function registerAllSystems() {
   // `onPhaseChange` runs for every system before any `update`, so the pantry facade and the
   // first availability map exist before `order-system.js` dispatches its first ticket.
   registerSystem(inventorySystem);
+  // `workers` runs LAST for two reasons. It decorates `restaurants[]` with `workers[]`, and both
+  // `customer-system.js` (which reassigns that array wholesale) and `inventory-system.js` must
+  // already have run or the decoration is discarded. And the cook's §17 rule 4 decision — is any
+  // bin worth a trip to the pantry — is read from `match.pantry` AFTER this tick's restock
+  // progress and shortage recomputation, so the cook never sets off for a bin that was filled
+  // earlier in the same tick. The cost is one tick (50ms) of dispatch latency: a ticket the cook
+  // loads is started here and burns its first `dtMs` next tick. That is the same staleness class
+  // `inventory` already documents and accepts, and it is invisible at a 10 Hz broadcast.
+  registerSystem(workerSystem);
   // STORY-013: registerSystem(scoringSystem);
 }

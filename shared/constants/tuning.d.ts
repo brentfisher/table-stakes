@@ -177,3 +177,22 @@ export declare const INVENTORY_MAX_CONCURRENT_RESTOCKS: number;
 export declare const INVENTORY_AUTO_RESTOCK: boolean;
 export declare const STARTING_INVENTORY_DEFAULT_CASH_SHARE: number;
 export declare const STARTING_INVENTORY_DEFAULT_SERVINGS: number;
+
+export declare const WORKER_RNG_STREAM: string;
+export declare const OWNER_TASK_SPEED_ADVANTAGE: number;
+export declare const WORKER_MOVE_SPEED: number;
+export declare const WORKER_ARRIVAL_EPSILON: number;
+
+export interface WorkerTaskDurationsMs {
+  seat_party: number;
+  take_order: number;
+  deliver_order: number;
+  clear_table: number;
+  collect_payment: number;
+  tend_station: number;
+}
+export declare const WORKER_TASK_DURATIONS_MS: WorkerTaskDurationsMs;
+export declare const WORKER_TASK_JITTER: number;
+export declare const WORKER_TASK_NEAR_COMPLETION_FRACTION: number;
+export declare const WORKER_TICKET_URGENCY_BUCKET_MS: number;
+export declare const WORKER_RESTOCK_THRESHOLD_UNITS: number;

@@ -295,6 +295,10 @@ function makeTicket(state, order, entry) {
     dish: entry.dish,
     price: entry.price,
     state: 'placed',
+    /** When this ticket last joined a station queue. STORY-007's cook ranks by it (PRD §17 cook
+     * rule 2, "highest urgency ticket at assigned station"), so it must be recorded even when
+     * nothing is reading it — a queue age computed after the fact would be a guess. */
+    queuedAtMs: 0,
     /** Index into the dish's `stationSteps`; -1 until the first step starts. */
     stepIndex: -1,
     /** The station this ticket is at, or waiting for. Null once it is off the line. */
@@ -355,13 +359,13 @@ function generateOrder(match, state, restaurant, request) {
 
   restaurant.orders.set(order.orderId, order);
   restaurant.ledger.ordersPlaced += 1;
-  for (const ticket of order.tickets) enqueueTicket(restaurant, ticket);
+  for (const ticket of order.tickets) enqueueTicket(match, restaurant, ticket);
   return { ok: true, orderId: order.orderId };
 }
 
 // --- the production line ----------------------------------------------------------------------
 
-function enqueueTicket(restaurant, ticket) {
+function enqueueTicket(match, restaurant, ticket) {
   const station = restaurant.stations.get(ticket.station);
   if (!station) {
     // A dish routed through a station this layout does not have. The setup validator's
@@ -370,6 +374,7 @@ function enqueueTicket(restaurant, ticket) {
     return;
   }
   ticket.state = 'queued';
+  ticket.queuedAtMs = match.elapsedMs;
   station.queue.push(ticket);
   if (station.queue.length > station.maxQueueDepth) station.maxQueueDepth = station.queue.length;
 }
@@ -387,7 +392,7 @@ function finishStep(match, restaurant, ticket) {
   const nextStep = ticket.dish.stationSteps[ticket.stepIndex + 1];
   if (nextStep) {
     ticket.station = nextStep.station;
-    enqueueTicket(restaurant, ticket);
+    enqueueTicket(match, restaurant, ticket);
     return;
   }
   // Off the line and onto the service pass. Freshness starts decaying from this instant.
@@ -449,6 +454,12 @@ function dispatchQueues(match, restaurant) {
   for (const stationId of LAYOUT_STATIONS) {
     const station = restaurant.stations.get(stationId);
     if (!station) continue;
+    // STORY-007's seam, read exactly as defensively as `match.pantry` and `match.dishAvailability`
+    // are: with no worker system registered `match.brigade` is undefined and every station
+    // auto-dispatches, which is this file's behaviour before that story existed. A station a COOK
+    // is posted to is loaded by that cook, in the cook's §17 priority order, through
+    // `startTicket()` below — so this loop must not race it to the queue.
+    if (match.brigade?.ownsStation(restaurant.restaurantId, stationId)) continue;
     let index = 0;
     while (station.active.length < station.concurrency && index < station.queue.length) {
       const ticket = station.queue[index];
@@ -622,21 +633,40 @@ function resolveReadyOrders(match, restaurant) {
       order.readyAtMs = match.elapsedMs;
       continue;
     }
+    // STORY-007. `ORDER_PASS_HANDOFF_MS` was this file's admission that nobody was carrying the
+    // plate. Where a SERVER is on the floor, the plate sits on the pass until that server walks
+    // to it and then to the table, and `deliverOrder` is called by the worker system instead.
+    // Without a worker system registered the abstracted hand-off still runs, unchanged.
+    if (match.brigade?.ownsDelivery(restaurant.restaurantId)) continue;
     if (match.elapsedMs - order.readyAtMs < ORDER_PASS_HANDOFF_MS) continue;
 
-    const scored = scoreOrder(match, order, match.elapsedMs);
-    order.state = 'delivered';
-    order.deliveredAtMs = match.elapsedMs;
-    order.quality = scored.quality;
-    order.qualityComponents = scored.components;
-    order.satisfaction = scored.satisfaction;
-    // Server-side, from the player's own set prices, over the dishes that ACTUALLY arrived.
-    order.revenue = toCents(served.reduce((sum, t) => sum + t.price, 0));
-    for (const ticket of served) ticket.state = 'delivered';
-    restaurant.ledger.ordersDelivered += 1;
-    restaurant.ledger.qualitySum += scored.quality;
-    restaurant.ledger.qualitySamples += 1;
+    deliverOrder(match, restaurant, order);
   }
+}
+
+/**
+ * Hand one order to its table: score it, book the revenue and mark its tickets delivered. The
+ * abstracted hand-off above and STORY-007's server both end here, so a plate carried by a body
+ * and a plate that teleported are scored by exactly one piece of code.
+ */
+function deliverOrder(match, restaurant, order) {
+  if (order.state !== 'ready') return false;
+  const served = order.tickets.filter((t) => t.state === 'ready');
+  if (served.length === 0) return false;
+
+  const scored = scoreOrder(match, order, match.elapsedMs);
+  order.state = 'delivered';
+  order.deliveredAtMs = match.elapsedMs;
+  order.quality = scored.quality;
+  order.qualityComponents = scored.components;
+  order.satisfaction = scored.satisfaction;
+  // Server-side, from the player's own set prices, over the dishes that ACTUALLY arrived.
+  order.revenue = toCents(served.reduce((sum, t) => sum + t.price, 0));
+  for (const ticket of served) ticket.state = 'delivered';
+  restaurant.ledger.ordersDelivered += 1;
+  restaurant.ledger.qualitySum += scored.quality;
+  restaurant.ledger.qualitySamples += 1;
+  return true;
 }
 
 function cancelOrder(restaurant, order, reason, atMs) {
@@ -782,6 +812,103 @@ function createKitchenFacade(match, state) {
     queueDepth(restaurantId, station) {
       return state.restaurants.get(restaurantId)?.stations.get(station)?.queue.length ?? 0;
     },
+
+    // --- STORY-007's half of the seam: a cook that chooses, and a server that carries ---------
+    //
+    // Nothing below is new kitchen BEHAVIOUR. `startTicket` is the same `claimIngredients` +
+    // `startStep` pair `dispatchQueues` runs, addressed by ticket instead of by FIFO position;
+    // `deliverOrder` is the same scoring `resolveReadyOrders` runs. The worker system decides
+    // WHICH and WHEN, and this file still decides WHAT HAPPENS.
+
+    /**
+     * The rail a cook reads: everything queued at one station, oldest first, as an explicit
+     * field list rather than the internal ticket (which holds the whole dish record).
+     * `queueAgeMs` is §17 cook rule 2's urgency and `patienceRisk` is rule 3's, in [0,1] where 1
+     * is a party about to walk.
+     */
+    queuedTicketsAt(restaurantId, station) {
+      const restaurant = state.restaurants.get(restaurantId);
+      const s = restaurant?.stations.get(station);
+      if (!s) return [];
+      return s.queue.map((ticket) => {
+        const order = restaurant.orders.get(ticket.orderId);
+        const patienceMs = order?.request?.patienceMs ?? 0;
+        const waited = order ? match.elapsedMs - order.placedAtMs : 0;
+        return {
+          ticketId: ticket.ticketId,
+          orderId: ticket.orderId,
+          station,
+          queueAgeMs: Math.max(0, match.elapsedMs - ticket.queuedAtMs),
+          patienceRisk: patienceMs > 0 ? clamp(waited / patienceMs, 0, 1) : 0,
+          blockedByIngredientId: ticket.blockedByIngredientId ?? null,
+        };
+      });
+    },
+
+    /** True while that station has a free pair of hands for a new ticket. */
+    stationHasCapacity(restaurantId, station) {
+      const s = state.restaurants.get(restaurantId)?.stations.get(station);
+      return s ? s.active.length < s.concurrency : false;
+    },
+
+    /**
+     * Load one named queued ticket onto its station. The `blocked` refusal — the pantry could not
+     * supply a serving — is PRD §17 cook rule 5's trigger, and it names the ingredient so the
+     * "needs help" signal can say what is missing rather than just that something is.
+     *
+     * @returns {{ok: true} | {ok: false, reason: string, missingIngredientId?: string|null}}
+     */
+    startTicket(restaurantId, ticketId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      if (!restaurant) return { ok: false, reason: 'unknown_restaurant' };
+      for (const stationId of LAYOUT_STATIONS) {
+        const station = restaurant.stations.get(stationId);
+        if (!station) continue;
+        const index = station.queue.findIndex((t) => t.ticketId === ticketId);
+        if (index === -1) continue;
+        const ticket = station.queue[index];
+        if (station.active.length >= station.concurrency) {
+          return { ok: false, reason: 'station_full' };
+        }
+        if (!claimIngredients(match, restaurant, station, ticket)) {
+          return {
+            ok: false,
+            reason: 'blocked',
+            missingIngredientId: ticket.blockedByIngredientId ?? null,
+          };
+        }
+        station.queue.splice(index, 1);
+        startStep(match, station, ticket);
+        return { ok: true };
+      }
+      return { ok: false, reason: 'not_queued' };
+    },
+
+    /** Orders plated and waiting on the pass for a runner. Oldest first — the plate losing
+     * freshness fastest is at the head, which is what §17 server rule 1 acts on. */
+    readyOrders(restaurantId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      if (!restaurant) return [];
+      const out = [];
+      for (const order of restaurant.orders.values()) {
+        if (order.state !== 'ready') continue;
+        out.push({
+          orderId: order.orderId,
+          customerId: order.customerId,
+          tableId: order.tableId,
+          readyAgeMs: Math.max(0, match.elapsedMs - (order.readyAtMs ?? match.elapsedMs)),
+        });
+      }
+      out.sort((a, b) => b.readyAgeMs - a.readyAgeMs);
+      return out;
+    },
+
+    /** The plate reached the table. PRD §17 server rule 1. */
+    deliverOrder(orderId) {
+      const found = findOrder(state, orderId);
+      if (!found) return false;
+      return deliverOrder(match, found.restaurant, found.order);
+    },
   };
 }
 
@@ -901,6 +1028,7 @@ export const _internal = {
   dispatchQueues,
   claimIngredients,
   resolveReadyOrders,
+  deliverOrder,
   voidUnavailableTickets,
   cancelOrder,
   toPublicOrderSnapshot,

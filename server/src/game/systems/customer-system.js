@@ -134,6 +134,20 @@ function buildTables() {
         seats: entity.seats,
         position: entity.position,
         occupiedBy: null,
+        /**
+         * STORY-007. PRD §8 "Operational bottlenecks" lists a dirty table as one, `TableSnapshot`
+         * has always declared the field, and §17's server priority list has "Clear dirty table"
+         * as rule 4 — which is unimplementable while every table is permanently clean. A table a
+         * party has left is dirty and CANNOT BE SEATED until somebody clears it.
+         *
+         * It only ever becomes true where a floor staff exists to clear it (`match.brigade`), so
+         * a match with no worker system registered still has permanently clean tables and this
+         * system behaves exactly as it did before STORY-007.
+         */
+        dirty: false,
+        /** Bumped every time the table is dirtied, so the worker system can tell one clearing job
+         * from the next one at the same table without holding a reference to it. */
+        soilCount: 0,
       });
     }
   }
@@ -242,8 +256,134 @@ function ensureState(match) {
         [CUSTOMER_STATES.LEAVE_ANGRY]: 0,
       },
     };
+    match.floor = createFloorFacade(match, match._customerSimState);
   }
   return match._customerSimState;
+}
+
+// --- the facade the worker system calls (STORY-007) ------------------------------------------
+//
+// The mirror image of the seam `order-system.js` built the other way: the kitchen publishes
+// `match.kitchen` and this system calls it; this system publishes `match.floor` and the worker
+// system calls that. Neither reads the other's internals, and the only shared vocabulary is a
+// customer id, a table id and a restaurant id — all of them already public on `CustomerSnapshot`.
+//
+// Every getter returns an explicit field list, never the internal party object: the PRD §6 hidden
+// profile (budget, preferred tags, patience seconds) lives on that object and does not need to
+// cross this line for a server to decide who to walk to next.
+
+function createFloorFacade(match, state) {
+  const partiesAt = (restaurantId, customerState) => {
+    const out = [];
+    for (const party of state.parties.values()) {
+      if (party.restaurantId !== restaurantId) continue;
+      if (party.state !== customerState) continue;
+      out.push({
+        customerId: party.customerId,
+        partySize: party.partySize,
+        tableId: party.tableId,
+        position: { ...party.position },
+        patienceRemaining: patienceFraction(party),
+        waitingMs: Math.max(0, match.elapsedMs - party.stateEnteredAtMs),
+      });
+    }
+    // Longest-waiting first. A queue is a queue: §17's server list says nothing about picking
+    // favourites within one of its rules, and first-come-first-served is the rule a person
+    // watching the floor would describe.
+    out.sort((a, b) => b.waitingMs - a.waitingMs);
+    return out;
+  };
+  const findParty = (customerId) => state.parties.get(customerId) ?? null;
+
+  return {
+    /** §17 server rule 2's candidates: parties standing in the queue. */
+    waitingParties(restaurantId) {
+      return partiesAt(restaurantId, CUSTOMER_STATES.APPROACH_OR_QUEUE);
+    },
+
+    /** Is there a clean, free table this party would fit at right now? Asked before a server
+     * commits to the walk, and asked again by `seatParty` when it gets there. */
+    hasTableFor(restaurantId, partySize) {
+      const view = state.restaurants.get(restaurantId);
+      return view ? bestFitTable(view.tables, partySize) !== null : false;
+    },
+
+    /** Walk the party to a table. Fails if the floor filled up while the server was walking —
+     * which is the point of making the walk take time. */
+    seatParty(customerId) {
+      const party = findParty(customerId);
+      if (!party || party.state !== CUSTOMER_STATES.APPROACH_OR_QUEUE) {
+        return { ok: false, reason: 'not_waiting' };
+      }
+      tryToSeat(match, state, party);
+      return party.tableId
+        ? { ok: true, tableId: party.tableId }
+        : { ok: false, reason: 'no_table' };
+    },
+
+    /** §17 server rule 3's candidates: parties seated and holding a menu. */
+    partiesToGreet(restaurantId) {
+      return partiesAt(restaurantId, CUSTOMER_STATES.SEATED);
+    },
+
+    /** The server reached the table. The party then spends `CUSTOMER_ORDERING_MS` choosing, as
+     * it always has — that is the party's own deliberation, not the server standing there. */
+    takeOrderFrom(customerId) {
+      const party = findParty(customerId);
+      if (!party || party.state !== CUSTOMER_STATES.SEATED) return { ok: false, reason: 'not_seated' };
+      transitionTo(match, party, CUSTOMER_STATES.ORDERING);
+      return { ok: true };
+    },
+
+    /** §17 server rule 5's candidates: parties sitting with the bill. */
+    partiesAwaitingPayment(restaurantId) {
+      return partiesAt(restaurantId, CUSTOMER_STATES.PAYING);
+    },
+
+    /** Money is already booked when the party finished eating (`finishEating` settles with the
+     * kitchen); this is the physical half — the table is released and the party walks. */
+    collectPayment(customerId) {
+      const party = findParty(customerId);
+      if (!party || party.state !== CUSTOMER_STATES.PAYING) return { ok: false, reason: 'not_paying' };
+      freeTable(match, state, party);
+      const [ex, ey, ez] = state.entryPosition;
+      party.position = { x: ex, y: ey, z: ez };
+      transitionTo(match, party, CUSTOMER_STATES.LEAVING);
+      return { ok: true };
+    },
+
+    /** §17 server rule 4's candidates. `soilCount` distinguishes this dirtying from the next one
+     * at the same table, so a clearing job can be counted once. */
+    dirtyTables(restaurantId) {
+      const view = state.restaurants.get(restaurantId);
+      if (!view) return [];
+      return [...view.tables.values()]
+        .filter((table) => table.dirty)
+        .map((table) => ({
+          tableId: table.id,
+          soilCount: table.soilCount,
+          position: { x: table.position[0], y: table.position[1], z: table.position[2] },
+        }));
+    },
+
+    clearTable(restaurantId, tableId) {
+      const table = state.restaurants.get(restaurantId)?.tables.get(tableId);
+      if (!table || !table.dirty) return { ok: false, reason: 'not_dirty' };
+      table.dirty = false;
+      return { ok: true };
+    },
+
+    tablePositionOf(restaurantId, tableId) {
+      const table = state.restaurants.get(restaurantId)?.tables.get(tableId);
+      return table ? { x: table.position[0], y: table.position[1], z: table.position[2] } : null;
+    },
+
+    /** Where parties queue, so a server walking out to seat somebody has somewhere to walk to. */
+    queuePosition() {
+      const [x, y, z] = state.queuePosition;
+      return { x, y, z };
+    },
+  };
 }
 
 // --- segment / arrival draws, seeded from match.createRngStream('customers') ----------------
@@ -804,6 +944,9 @@ function bestFitTable(tables, partySize) {
   let best = null;
   for (const table of tables.values()) {
     if (table.occupiedBy) continue;
+    // STORY-007: a dirty table is not a free table. This is what makes the server's rule-4
+    // clearing job matter — an uncleared floor is lost seats, not cosmetic.
+    if (table.dirty) continue;
     if (table.seats < partySize) continue;
     if (!best || table.seats < best.seats) best = table;
   }
@@ -829,10 +972,21 @@ function tryToSeat(match, state, party) {
   transitionTo(match, party, CUSTOMER_STATES.SEATED);
 }
 
-function freeTable(state, party) {
+/**
+ * Release the table a party was sitting at. `soil` is true wherever the party actually SAT and
+ * ate off it; a party that never got a table has nothing to release, and one whose order was
+ * cancelled still leaves a table that needs wiping.
+ */
+function freeTable(match, state, party, soil = true) {
   if (!party.tableId) return;
   const table = viewOf(state, party)?.tables.get(party.tableId);
-  if (table) table.occupiedBy = null;
+  if (table) {
+    table.occupiedBy = null;
+    if (soil && match.brigade?.ownsTableClearing(party.restaurantId)) {
+      table.dirty = true;
+      table.soilCount += 1;
+    }
+  }
   party.tableId = null;
 }
 
@@ -929,7 +1083,7 @@ function transitionTo(match, party, nextState) {
 
 function exitParty(match, state, party, exitState, decisionReason) {
   const view = viewOf(state, party);
-  freeTable(state, party);
+  freeTable(match, state, party);
   party.state = exitState;
   party.stateEnteredAtMs = match.elapsedMs;
   party.exitAtMs = match.elapsedMs;
@@ -1016,7 +1170,13 @@ function advanceParty(match, state, party, dtMs) {
         exitParty(match, state, party, CUSTOMER_STATES.ABANDON_QUEUE, 'customer_abandoned_queue');
         break;
       }
-      tryToSeat(match, state, party);
+      // STORY-007. PRD §17 server rule 2 is "seat waiting party if table is available", and
+      // `restaurant-layout.json` gives `server_1` the `host_stand` post — §7's "abstract host
+      // behavior" means there is no HOST WORKER, not that nobody walks a party to a table. Where
+      // a server exists, seating is that server's job and happens through `floor.seatParty()`.
+      // With no worker system registered the automatic seating this system shipped with runs
+      // unchanged.
+      if (!match.brigade?.ownsSeating(party.restaurantId)) tryToSeat(match, state, party);
       break;
 
     case CUSTOMER_STATES.SEATED:
@@ -1024,6 +1184,10 @@ function advanceParty(match, state, party, dtMs) {
         exitParty(match, state, party, CUSTOMER_STATES.CANCEL_ORDER);
         break;
       }
+      // STORY-007. `CUSTOMER_SEATED_GREET_MS` was the abstracted greeting. Where a server
+      // exists, the greeting IS that server arriving at the table (§17 server rule 3, "take
+      // order from newly seated party"), and the party sits with its menu until it does.
+      if (match.brigade?.ownsOrderTaking(party.restaurantId)) break;
       if (msInState >= CUSTOMER_SEATED_GREET_MS) transitionTo(match, party, CUSTOMER_STATES.ORDERING);
       break;
 
@@ -1076,8 +1240,12 @@ function advanceParty(match, state, party, dtMs) {
       break;
 
     case CUSTOMER_STATES.PAYING:
+      // STORY-007. §17 server rule 5, "handle payment". Where a server exists the party holds its
+      // table until somebody comes to take the money — which is the pressure that makes rule 5
+      // worth having a rule for. `floor.collectPayment()` runs the same three lines.
+      if (match.brigade?.ownsPayment(party.restaurantId)) break;
       if (msInState >= CUSTOMER_PAYING_MS) {
-        freeTable(state, party);
+        freeTable(match, state, party);
         const [ex, ey, ez] = state.entryPosition;
         party.position = { x: ex, y: ey, z: ez };
         transitionTo(match, party, CUSTOMER_STATES.LEAVING);
@@ -1182,7 +1350,9 @@ function toPublicRestaurantSnapshot(match, state, view) {
       id: table.id,
       seats: table.seats,
       occupiedBy: table.occupiedBy,
-      dirty: false, // a restaurant-state story owns cleanliness; never observed dirty today.
+      // STORY-007: real, and the reason the server's rule-4 clearing job exists. Still always
+      // false in a match with no worker system registered — see `buildTables`.
+      dirty: table.dirty === true,
     })),
   };
 }
@@ -1265,6 +1435,7 @@ export const customerSystem = {
 
     match.customers = [];
     match.restaurants = [];
+    match.floor = undefined;
     match._customerSimState = undefined;
   },
 };
@@ -1309,4 +1480,7 @@ export const _internal = {
   toPublicCustomerSnapshot,
   patienceFraction,
   buildTables,
+  createFloorFacade,
+  freeTable,
+  bestFitTable,
 };
