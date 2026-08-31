@@ -995,6 +995,59 @@ const ticketsOf = (match, restaurantId = 'p1') => {
     peakBlocked < 0.5,
     `${(peakBlocked * 100).toFixed(1)}% < 50%`,
   );
+
+  // THE SAME MATCHES, WITH A THIN PANTRY. PRD §7 makes the allocation a strategic commitment and
+  // the story makes running out the consequence of getting it wrong; this is that consequence,
+  // measured. Same seeds, same menus, a quarter of the stock.
+  console.log('\n  The same six matches with a quarter of the allocation — under-buying, priced:\n');
+  const thinRows = [];
+  for (const seed of SEEDS) {
+    const menu = [
+      { dishId: 'smash_burger', price: 14 },
+      { dishId: 'caesar_salad', price: 12 },
+      { dishId: 'chicken_sandwich', price: 13 },
+    ];
+    const thin = () => {
+      const auto = defaultSubmission();
+      const startingInventory = Object.fromEntries(
+        Object.entries(auto.startingInventory).map(([id, n]) => [id, Math.max(1, Math.round(n / 4))]),
+      );
+      return { ...auto, menu, addons: [], startingInventory, autoFilled: false };
+    };
+    const match = makeMatch({
+      id: `m_thin_${seed}`,
+      seed,
+      phasePreset: 'full',
+      setups: { p1: thin(), p2: thin() },
+    });
+    runUntilPhase(match, 'service');
+    quiet(() => {
+      while ((match.phase === 'service' || match.phase === 'final_rush') && !match.ended) {
+        stepMatch(match, TICK_MS);
+      }
+    });
+    const served = (match.districtSummary ?? []).map((s) => s.guestsServed);
+    const cancelled = (match.districtSummary ?? []).reduce(
+      (sum, s) => sum + (s.counts?.CANCEL_ORDER ?? 0),
+      0,
+    );
+    thinRows.push({ served, cancelled });
+    console.log(`    ${seed} served=${served.join('/')} cancelled orders=${cancelled}`);
+  }
+  const thinServed = thinRows.flatMap((r) => r.served);
+  const thinMean = thinServed.reduce((s, n) => s + n, 0) / thinServed.length;
+  const fullMean = allServed.reduce((s, n) => s + n, 0) / allServed.length;
+  console.log(
+    `\n    under-stocked: ${Math.min(...thinServed)}-${Math.max(...thinServed)} served ` +
+      `(mean ${thinMean.toFixed(1)}) against ${fullMean.toFixed(1)} well-stocked — ` +
+      `${(100 - (thinMean / fullMean) * 100).toFixed(0)}% fewer parties served\n`,
+  );
+  check(
+    'under-buying stock costs a restaurant real parties — the §7 allocation is a decision with teeth',
+    thinMean < fullMean && thinRows.some((r) => r.cancelled > 0),
+    `mean ${thinMean.toFixed(1)} vs ${fullMean.toFixed(1)} parties served, ` +
+      `${thinRows.reduce((s, r) => s + r.cancelled, 0)} orders cancelled outright`,
+  );
 }
 
 // --- results ---------------------------------------------------------------------------------
