@@ -142,10 +142,32 @@ export interface RestaurantSnapshot {
   abandonedParties: number;
   tables: TableSnapshot[];
 
-  // --- owned by later stories; absent until then ---
-  /** STORY-006 (inventory) — priced menu with live availability. */
+  // --- STORY-006 (inventory) ---
+  /**
+   * PRD §8 "Ingredient shortage / Empty ingredient icon" — one entry per (station, ingredient)
+   * whose bin cannot currently supply a full serving. Empty when nothing is short.
+   *
+   * This is the shortage signal, and it is deliberately the ONLY thing STORY-006 publishes here.
+   * `menu` and `inventory` below stay declared and stay unpublished: `restaurants[]` is the one
+   * array both players receive identically, and a rival's dish ids, prices and stock levels are
+   * private setup state (PRD §18, Decision 16). An ingredient being short at a station is an
+   * in-world signal by §8's own description, and names none of those three.
+   */
+  shortages?: Array<{
+    station: Station;
+    ingredientId: string;
+    /** Tickets currently held in that station's queue by this shortage. */
+    blockedTickets: number;
+    restocking: boolean;
+    /** True once the pantry is empty too: the dish is gone for the rest of the match. */
+    exhausted: boolean;
+  }>;
+
+  // --- declared, and deliberately NOT published; see `shortages` above ---
+  /** Priced menu with live availability. Server-side only — private setup state. */
   menu?: Array<{ dishId: string; price: number; available: boolean }>;
-  /** STORY-006 — remaining units, keyed by ingredient id from dishes.json `ingredients`. */
+  /** Remaining units, keyed by ingredient id from dishes.json `ingredients`. Server-side only;
+   * read through `match.pantry.stockOf()`. */
   inventory?: Record<string, number>;
   /** STORY-013 (scoring). */
   cash?: number;
@@ -251,6 +273,15 @@ export interface OrderSnapshot {
   remainingMs: number;
   /** Ms since the dish finished, for the PRD §17 freshness component of order quality. */
   readyAgeMs: number;
+  /**
+   * STORY-006. The ingredient that stopped this ticket from starting its first station step, or
+   * null. THIS IS WHAT SEPARATES THE TWO PRD §8 BOTTLENECKS: a `queued` ticket with a null
+   * blocker is in a kitchen backlog (its station has no free hands); a `queued` ticket with a
+   * non-null blocker is an ingredient shortage (the station's bin ran dry), and the fix is a
+   * restock, not another cook. Queue depth is unaffected either way — a blocked ticket keeps its
+   * place in its station's queue.
+   */
+  blockedByIngredientId: string | null;
 }
 
 /**

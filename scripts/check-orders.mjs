@@ -757,6 +757,11 @@ registerAll();
   const allowed = new Set([
     'orderId', 'ticketId', 'restaurantId', 'customerId', 'tableId', 'dishId', 'price',
     'state', 'station', 'currentStepIndex', 'remainingMs', 'readyAgeMs',
+    // STORY-006 widened OrderSnapshot: a queued ticket that is blocked on an empty ingredient
+    // bin names the ingredient, so the §8 kitchen-backlog and ingredient-shortage bottlenecks
+    // are distinguishable on the wire instead of both reading as `queued`. Null with no
+    // inventory system registered, which is this script's own configuration.
+    'blockedByIngredientId',
   ]);
   const actual = new Set();
   for (const o of snapshot.orders) for (const k of Object.keys(o)) actual.add(k);
