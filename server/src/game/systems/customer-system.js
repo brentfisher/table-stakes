@@ -204,8 +204,14 @@ function ensureState(match) {
     }
     match._customerSimState = {
       rng: match.createRngStream(CUSTOMER_RNG_STREAM),
-      /** Decision 18: the choice draws from its OWN named sub-stream, so changing how a party
-       * chooses cannot shift the arrival sequence a seed produces, and vice versa. */
+      /**
+       * Decision 18: the choice draws from its OWN named sub-stream, so a change to how parties
+       * choose does not shift the segment/patience/budget draws a seed produces for a given
+       * party. It does NOT make the arrival TIMELINE independent of the choice: the customers
+       * stream is also drawn from when a party starts eating, so how many parties get that far
+       * still moves the later inter-arrival gaps. That coupling predates this story (STORY-004
+       * put both draws on one stream) and is left alone rather than quietly re-cut here.
+       */
       districtRng: match.createRngStream(DISTRICT_RNG_STREAM),
       parties: new Map(),
       nextId: 1,
