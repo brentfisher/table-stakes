@@ -504,10 +504,20 @@ export const DISTRICT_WAIT_INTOLERABLE_MULTIPLE = 1.0;
 
 // --- price and menu fit, scored from the LOCKED menu ------------------------------------------
 
-/** How steeply a price above the dish's `suggestedPrice` destroys its perceived value. Applied
- * to the same market-scaled value axis `priceGuidance()` uses in setup-rules.js, so "Excellent
- * value" in the setup UI and a high price score in the district are the same judgement. */
+/**
+ * How steeply the market-scaled deviation from a dish's `suggestedPrice` moves its perceived
+ * value, and what that value is AT the suggested price. Applied to the same value axis
+ * `priceGuidance()` uses in setup-rules.js, so "Excellent value" in the setup UI and a high
+ * price score in the district are the same judgement.
+ *
+ * `DISTRICT_PRICE_NEUTRAL_VALUE` is below 1 on purpose, and the check script is what found it:
+ * with the neutral point at 1.0 the axis is SATURATED at the suggested price, so undercutting
+ * buys a player exactly nothing — which contradicts §11 ("A low price improves conversion with
+ * price-sensitive diners") and leaves half the pricing decision invisible to demand. Leaving
+ * headroom above neutral makes a discount a real, measurable lever in both directions.
+ */
 export const DISTRICT_PRICE_VALUE_SLOPE = 1.2;
+export const DISTRICT_PRICE_NEUTRAL_VALUE = 0.75;
 /** How far one matching preferred/disliked tag moves a dish's fit off neutral (0.5). */
 export const DISTRICT_MENU_FIT_TAG_STEP = 0.25;
 
@@ -523,10 +533,18 @@ export const DISTRICT_MENU_FIT_TAG_STEP = 0.25;
 export const DISTRICT_REPUTATION_START = 60;
 export const DISTRICT_REPUTATION_MIN = 25;
 export const DISTRICT_REPUTATION_MAX = 90;
-/** Share of the gap between current reputation and the latest party's satisfaction taken by
- * each review. ~0.08 means a restaurant needs a dozen-odd consistent guests to move its
- * reputation a long way, so one bad table is not a verdict. */
-export const DISTRICT_REPUTATION_REVIEW_WEIGHT = 0.08;
+/**
+ * Share of the gap between current reputation and the latest party's satisfaction taken by each
+ * review. MEASURED against §4.2's "not so strongly that the match becomes unwinnable early":
+ * at 0.08 a flawless opening two minutes (fifteen guests) took a restaurant from 60 to 89 —
+ * essentially the whole band — and left the rival drawing under 30% of the district before the
+ * match was a quarter old. At 0.03 the same fifteen guests reach the mid-70s and the full band
+ * takes most of a match to cross, so reputation is an asset a player BUILDS rather than an
+ * opening they cannot be caught from. `scripts/check-district-choice.mjs` asserts the
+ * consequence, not the constant.
+ */
+export const DISTRICT_REPUTATION_REVIEW_WEIGHT = 0.03;
 /** A party that gave up before being served leaves no review, but the queue it walked out of
- * was visible. Scored as a small negative sample against the same moving average. */
-export const DISTRICT_REPUTATION_WALKOUT_PENALTY = 2;
+ * was visible. Scored as a small fixed knock against the same band — one point, for the same
+ * reason the review weight is small. */
+export const DISTRICT_REPUTATION_WALKOUT_PENALTY = 1;

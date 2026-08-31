@@ -160,6 +160,7 @@ export declare const DISTRICT_TABLE_TURN_MS: number;
 export declare const DISTRICT_BACKLOG_WAIT_PER_TICKET_MS: number;
 export declare const DISTRICT_WAIT_INTOLERABLE_MULTIPLE: number;
 export declare const DISTRICT_PRICE_VALUE_SLOPE: number;
+export declare const DISTRICT_PRICE_NEUTRAL_VALUE: number;
 export declare const DISTRICT_MENU_FIT_TAG_STEP: number;
 export declare const DISTRICT_REPUTATION_START: number;
 export declare const DISTRICT_REPUTATION_MIN: number;

@@ -80,6 +80,7 @@ import {
   DISTRICT_BACKLOG_WAIT_PER_TICKET_MS,
   DISTRICT_WAIT_INTOLERABLE_MULTIPLE,
   DISTRICT_PRICE_VALUE_SLOPE,
+  DISTRICT_PRICE_NEUTRAL_VALUE,
   DISTRICT_MENU_FIT_TAG_STEP,
   DISTRICT_REPUTATION_START,
   DISTRICT_REPUTATION_MIN,
@@ -488,7 +489,9 @@ function dishFit(dish, party) {
  */
 function dishValue(dish, price, party, market) {
   const deviation = (price / dish.suggestedPrice - 1) * (market?.priceSensitivity ?? 1);
-  const value = clamp(1 - deviation * DISTRICT_PRICE_VALUE_SLOPE, 0, 1);
+  // Neutral sits BELOW 1 so that undercutting the suggested price still buys something. With
+  // neutral at 1 the axis saturates and a discount is invisible — see the constant's comment.
+  const value = clamp(DISTRICT_PRICE_NEUTRAL_VALUE - deviation * DISTRICT_PRICE_VALUE_SLOPE, 0, 1);
   const affordability = price <= party.budget ? 1 : clamp(party.budget / price, 0, 1);
   return value * affordability;
 }
