@@ -141,6 +141,9 @@ function resolveAction(match, restaurantId, player, targetId, action) {
 
 function requireRange(player, position, label) {
   if (!position) return fail('interact_rejected', 'no_such_target', label);
+  if (distance(player.position, position) > OWNER_INTERACT_RANGE) {
+    return fail('interact_rejected', 'out_of_range', label);
+  }
   return null;
 }
 
