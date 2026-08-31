@@ -126,6 +126,19 @@ else, a well-stocked restaurant spends 0–0.3% of a full service with productio
 as a *timing* pressure is therefore mostly latent until a body has to get there. Shortage as an
 *exhaustion* pressure is real today, and is what the §7 allocation decides — see the PR.
 
+RETIRED BY STORY-007, AND NOT THE WAY THIS DECISION EXPECTED. "Flipping the flag" would have
+stopped every match that has no worker system registered — `check-inventory.mjs`'s own probes
+included — so the stand-in is stood down per restaurant instead, through
+`brigade.ownsRestocking()`, exactly as the plate-runner, greet and payment abstractions are. The
+flag stays `true`; a kitchen with a cook in it is restocked by the cook, and a kitchen with no
+brigade behind it still restocks by itself.
+
+AND THE TIMING PRESSURE PREDICTED ABOVE DID NOT ARRIVE. With a real cook walking to the pantry, a
+thin pantry (a third of the auto-fill) still leaves a counter empty-with-stock-in-the-back for
+0.0% of ticks across three full matches: rule 4's trip starts at eight units, which outlasts the
+walk. Under-buying costs the menu — every dish ran out for good in every thin run — not the rail.
+Measured by `check-workers.mjs`.
+
 ## Decision 41 — An idle player gets a stocked pantry, not an empty one
 
 `defaultSubmission()` allocated `startingInventory: {}`. That was correct while nothing read the
