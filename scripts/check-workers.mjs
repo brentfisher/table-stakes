@@ -535,14 +535,36 @@ function cookProbe(id, staff) {
     'task=null needsHelp=null — this is the state the signal must be distinguishable from',
   );
 
-  // The lettuce is gone from the counter AND from the reserve, and the one pair of carrying hands
-  // is committed elsewhere, so nothing the cook can do will start the tickets it can see.
+  // The block that rule 5 is actually about: the counter is empty, the RESERVE is not, and the
+  // restaurant's one pair of carrying hands (INVENTORY_MAX_CONCURRENT_RESTOCKS = 1) is already
+  // walking a different bin, so rule 4 cannot send the cook for it either.
+  //
+  // Emptying the reserve as well would NOT produce this state, it would produce a different and
+  // self-resolving one: an exhausted ingredient takes its dishes off the menu, STORY-006 voids
+  // the tickets that can no longer be made, and a cook with an empty rail is idle rather than
+  // blocked. That is `dishAvailability`'s signal, not §17 rule 5's.
   inv.bins.get('prep').lettuce = 0;
-  inv.pantry.lettuce = 0;
+  const elsewhere = match.pantry
+    .binShortfalls('p1')
+    .find((b) => b.ingredientId !== 'lettuce' && b.pantryUnits > 0);
+  inv.bins.get(elsewhere.station)[elsewhere.ingredientId] = Math.max(elsewhere.perServing, 4);
+  const carrying = match.pantry.requestRestock('p1', elsewhere.station, elsewhere.ingredientId);
+
   match.kitchen.placeOrder(request({ customerId: 'party_probe_a' }));
   match.kitchen.placeOrder(request({ customerId: 'party_probe_b' }));
-  // Force the block to be discovered the way it is in a real match — by the cook trying.
+  // Force the block to be discovered the way it is in a real match — by the cook walking over
+  // and trying. The refusal from `startTicket` is what stamps the blocker on the ticket.
   step(match, 60);
+
+  check(
+    'SETUP: the reserve still has lettuce and the one restock slot is committed elsewhere',
+    carrying.ok === true &&
+      inv.pantry.lettuce > 0 &&
+      match.pantry.restockSlotFree('p1') === false &&
+      match.kitchen.queuedTicketsAt('p1', 'prep').length > 0,
+    `${elsewhere.ingredientId}@${elsewhere.station} in flight, lettuce reserve ` +
+      `${inv.pantry.lettuce}u, ${match.kitchen.queuedTicketsAt('p1', 'prep').length} tickets still on the rail`,
+  );
 
   const helped = cook.needsHelp;
   check(
@@ -874,6 +896,9 @@ function plantReadyOrder(match, { customerId, tableId }) {
   );
 
   match.floor.collectPayment('party_probe_paying');
+  // `match.restaurants` is republished by the customer system's own `update()`, so the wire view
+  // of the floor is one tick behind a facade call made from outside the loop.
+  step(match, 1);
   check(
     'a party that leaves its table leaves it DIRTY, and the snapshot says so',
     view.tables.get('table_1').dirty === true &&
