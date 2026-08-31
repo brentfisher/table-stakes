@@ -710,15 +710,12 @@ function createBrigadeFacade(state) {
       return hasRole(restaurantId, 'server');
     },
     ownsSeating(restaurantId) {
-      if (process.env.WK_NO_SEAT) return false;
       return hasRole(restaurantId, 'server');
     },
     ownsOrderTaking(restaurantId) {
-      if (process.env.WK_NO_ORDER) return false;
       return hasRole(restaurantId, 'server');
     },
     ownsPayment(restaurantId) {
-      if (process.env.WK_NO_PAY) return false;
       return hasRole(restaurantId, 'server');
     },
     ownsTableClearing(restaurantId) {
