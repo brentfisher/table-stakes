@@ -462,7 +462,7 @@ export const DISTRICT_CHOICE_TEMPERATURE = 0.12;
  * but should not make the restaurant completely empty" — a softmax term is never zero, so it
  * cannot.
  */
-export const DISTRICT_LEAVE_UTILITY = 0.33;
+export const DISTRICT_LEAVE_UTILITY = 0.6;
 
 /**
  * Weight given to event affinity, ADDED to the party's own four §6 weights (which sum to 1) and
@@ -484,9 +484,15 @@ export const DISTRICT_REASON_EPSILON = 0.02;
 // read through `match.kitchen.queueDepth()` — the same number `match_snapshot.orders` derives —
 // never from the order system's internals.
 
-/** Ms of wait attributed to each party already queueing ahead, per free table. A queue of six
- * in front of six tables is one table-turn of waiting. */
-export const DISTRICT_QUEUE_WAIT_PER_PARTY_MS = 9_000;
+/**
+ * How long one occupied table takes to come free again — one TABLE TURN. This is what a party
+ * facing a full dining room is actually waiting for, and it is derived from this file's own
+ * state durations rather than picked: greet 1s + ordering 6s + a kitchen wait in the 15-25s
+ * range for a typical order + eating 8-16s + paying 3s + leaving 1.5s. A party sees a queue of
+ * five in front of six tables and reads it as one turn; a party of four sees the same queue in
+ * front of the THREE tables big enough for it and reads it as two.
+ */
+export const DISTRICT_TABLE_TURN_MS = 45_000;
 /** Ms of wait attributed to each ticket already queued at a kitchen station. Roughly one
  * station step (dishes.json steps run 4-12s), because a queued ticket is one step of somebody
  * else's food between this party and its own. */

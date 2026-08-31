@@ -156,7 +156,7 @@ export declare const DISTRICT_CHOICE_TEMPERATURE: number;
 export declare const DISTRICT_LEAVE_UTILITY: number;
 export declare const DISTRICT_EVENT_AFFINITY_WEIGHT: number;
 export declare const DISTRICT_REASON_EPSILON: number;
-export declare const DISTRICT_QUEUE_WAIT_PER_PARTY_MS: number;
+export declare const DISTRICT_TABLE_TURN_MS: number;
 export declare const DISTRICT_BACKLOG_WAIT_PER_TICKET_MS: number;
 export declare const DISTRICT_WAIT_INTOLERABLE_MULTIPLE: number;
 export declare const DISTRICT_PRICE_VALUE_SLOPE: number;

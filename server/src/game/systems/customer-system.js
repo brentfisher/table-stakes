@@ -76,7 +76,7 @@ import {
   DISTRICT_LEAVE_UTILITY,
   DISTRICT_EVENT_AFFINITY_WEIGHT,
   DISTRICT_REASON_EPSILON,
-  DISTRICT_QUEUE_WAIT_PER_PARTY_MS,
+  DISTRICT_TABLE_TURN_MS,
   DISTRICT_BACKLOG_WAIT_PER_TICKET_MS,
   DISTRICT_WAIT_INTOLERABLE_MULTIPLE,
   DISTRICT_PRICE_VALUE_SLOPE,
@@ -530,15 +530,20 @@ function kitchenBacklogFor(match, restaurantId) {
  * Public information only — queue length, table occupancy, station queue depth.
  */
 function projectedWaitMs(match, state, view, partySize) {
+  // Only tables big enough for THIS party count — a four-top waiting on the three tables that
+  // seat four waits longer than a solo diner does in the same dining room.
+  let fittingTables = 0;
   let freeFittingTables = 0;
   for (const table of view.tables.values()) {
-    if (!table.occupiedBy && table.seats >= partySize) freeFittingTables += 1;
+    if (table.seats < partySize) continue;
+    fittingTables += 1;
+    if (!table.occupiedBy) freeFittingTables += 1;
   }
   const queued = queueLengthFor(state, view.restaurantId);
   const seatWaitMs =
     freeFittingTables > 0
       ? 0
-      : Math.ceil((queued + 1) / Math.max(1, view.tables.size)) * DISTRICT_QUEUE_WAIT_PER_PARTY_MS;
+      : Math.ceil((queued + 1) / Math.max(1, fittingTables)) * DISTRICT_TABLE_TURN_MS;
   const kitchenWaitMs = kitchenBacklogFor(match, view.restaurantId) * DISTRICT_BACKLOG_WAIT_PER_TICKET_MS;
   return seatWaitMs + kitchenWaitMs;
 }
