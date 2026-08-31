@@ -548,3 +548,90 @@ export const DISTRICT_REPUTATION_REVIEW_WEIGHT = 0.03;
  * was visible. Scored as a small fixed knock against the same band — one point, for the same
  * reason the review weight is small. */
 export const DISTRICT_REPUTATION_WALKOUT_PENALTY = 1;
+
+// ============================================================================================
+// Inventory, ingredient bins and restocking — PRD §7 item 3, §8 "Ingredient shortage", §10
+// "Restocking". STORY-006.
+// ============================================================================================
+//
+// Two levels of stock, because PRD §8's bottleneck is a DISTANCE problem, not an arithmetic one:
+// the restaurant's PANTRY holds what the player bought in setup, and each kitchen STATION holds
+// a small working BIN. Production consumes from the bin; a restock walks stock from the pantry
+// to the bin and takes time. The §10 "Restocking" upgrade category ("Organized Pantry", "Pantry
+// Shelves — restock travel time -25%") only makes sense against a model where that walk has a
+// duration, and the §9 `ingredient_shortage` event ("one ingredient restocks more slowly") only
+// makes sense against a model where a restock has a duration to multiply.
+//
+// WHAT IS NOT HERE: how much of each ingredient a dish needs, and what a unit costs. Both live
+// in `shared/game-data/dishes.json` (`dishes[].ingredients`, `ingredients[].unitCost`) and are
+// never duplicated here.
+
+/** The named RNG sub-stream (Decision 18) the inventory model draws from. Used only to pick
+ * which ingredient the §9 `ingredient_shortage` event hits — one draw per match, per shortage. */
+export const INVENTORY_RNG_STREAM = 'inventory';
+
+/**
+ * How many units of ONE ingredient a station bin can hold. This is the working stock at the
+ * counter, not the reserve: it is deliberately smaller than a service's total consumption, so
+ * that the walk to the pantry is a recurring operational cost rather than a one-off at open.
+ *
+ * MEASURED, not guessed — `scripts/check-inventory.mjs` prints, over a full service, how much of
+ * the kitchen's time is spent with at least one ticket blocked on an empty bin. At 24 units that
+ * lands in the low single-digit percent for a well-stocked restaurant: shortage is a thing that
+ * happens and is felt, not a thing that defines the match.
+ */
+export const INVENTORY_STATION_BIN_CAPACITY = 24;
+
+/** A bin at or below this level triggers a refill. Set well above zero so a restock that takes
+ * `INVENTORY_RESTOCK_TRAVEL_MS` has a chance to land before the bin actually empties. */
+export const INVENTORY_RESTOCK_THRESHOLD_UNITS = 8;
+
+/**
+ * PRD §10 "Restocking / Organized Pantry / Faster owner or staff ingredient retrieval", and the
+ * §10 example table's "Pantry Shelves $150 — restock travel time -25%". The walk to the storage
+ * room and back, before any handling: this is the number `restockTravelTimeMultiplier` scales,
+ * and it is the reason that upgrade is worth $150.
+ */
+export const INVENTORY_RESTOCK_TRAVEL_MS = 3_500;
+
+/** Handling: pulling and carrying one unit. Added to the travel time, so a big top-up costs more
+ * than a small one and a restock is never instantaneous even at the pantry door. */
+export const INVENTORY_RESTOCK_MS_PER_UNIT = 150;
+
+/**
+ * How many restocks one restaurant can have in flight at once. ONE, because a restock is a pair
+ * of hands walking to the back — PRD §7's prep worker "restocks ingredients", singular, and §8's
+ * whole point is that the owner has to physically go. STORY-007 (worker restocking) and
+ * STORY-008 (the owner's restock interaction) are what widen this: each of them adds a body, and
+ * this number becomes how many bodies are carrying rather than a global throttle.
+ */
+export const INVENTORY_MAX_CONCURRENT_RESTOCKS = 1;
+
+/**
+ * THE ABSTRACTED RESTOCKER, and the one place this story admits nobody is actually walking.
+ *
+ * Exactly the same admission `ORDER_PASS_HANDOFF_MS` makes about the plate runner: the JOB model
+ * (a timed pantry -> bin move, at `pantryFacade.requestRestock()`) is real and permanent, but
+ * until STORY-007 gives the prep worker legs and STORY-008 gives the owner an `interact` action,
+ * something has to decide WHEN to walk or the kitchen simply stops after one bin. When true, the
+ * inventory system requests a refill for any bin at or under the threshold. STORY-007/008 replace
+ * this TRIGGER — not the job, not the duration, not the shortage state — with a body that has to
+ * get there.
+ */
+export const INVENTORY_AUTO_RESTOCK = true;
+
+/**
+ * PRD §7 item 3, "Starting inventory allocation". A player who submits no allocation still opens
+ * with a kitchen: `defaultSubmission()` spends this share of the cash left after the opening
+ * upgrade on a balanced, menu-derived pantry. It is deliberately not all of it — §7's default is
+ * meant to be "a working restaurant, not a good one", and cash held back is a legal (if timid)
+ * strategy a real player might also choose.
+ */
+export const STARTING_INVENTORY_DEFAULT_CASH_SHARE = 0.6;
+
+/**
+ * How many servings of each menu dish the default allocation aims to cover. The allocation is
+ * scaled down proportionally when the cash share cannot buy this many, so an expensive menu gets
+ * a shallower pantry rather than an illegal submission.
+ */
+export const STARTING_INVENTORY_DEFAULT_SERVINGS = 45;
