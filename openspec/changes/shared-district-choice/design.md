@@ -82,8 +82,13 @@ the 40-90 band.
 
 ## Decision 33 — `match_snapshot.restaurants[]` carries the observables, and only those
 
-The district view both players receive is exactly what the model scores a restaurant on:
-reputation, queue length, capacity, projected wait, and the service record. Menu, prices, cash
+The district view both players receive is what the model scores a restaurant on — reputation,
+queue length, capacity, projected wait — plus three fields that are NOT model inputs and are
+published anyway: `guestsServed`, `averageSatisfaction` and `abandonedParties`. They are the
+§4.4 district overview's service record, §5's results phase compares them, and a player has no
+other way to read their own. Naming the exception is the point: an allowlist justified as "only
+what the model reads" that quietly carries three more fields is the kind of label that reads as
+coverage. Menu, prices, cash
 and inventory are the player's private setup submission (PRD §18, Decision 16) — read
 server-side, never republished. The unowned `RestaurantSnapshot` fields are declared optional
 with the story that fills each one in, rather than shipped as placeholder zeroes that read as

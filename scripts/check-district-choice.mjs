@@ -202,23 +202,36 @@ console.log('Shared district and restaurant choice check\n');
 // `share < 0.9` would pass for a coin flip, and `share > 0.5` would pass for an argmax. A modest
 // edge must win a modestly larger share — more than chance, far short of everything.
 {
-  const rows = [];
-  for (const seed of ['edge-1', 'edge-2', 'edge-3', 'edge-4', 'edge-5', 'edge-6']) {
-    const match = makeDistrict({
-      id: `m_edge_${seed}`,
-      seed,
-      menus: { p1: submission(cheaperBy(0.9)), p2: submission(SAME_DISHES) },
+  const SEEDS = ['edge-1', 'edge-2', 'edge-3', 'edge-4', 'edge-5', 'edge-6'];
+  // Run the same seeds twice: once with p1 undercutting, once with the two menus identical. The
+  // second run is a MATCHED CONTROL, and the assertion below is the difference between them
+  // rather than a bare threshold on the first — so it stays meaningful if a later retune moves
+  // the district's absolute conversion rate, and cannot be satisfied by a model that ignores
+  // price and happens to sit above the number.
+  const sweep = (priceFactor) => {
+    const rows = [];
+    for (const seed of SEEDS) {
+      const match = makeDistrict({
+        id: `m_edge_${priceFactor}_${seed}`,
+        seed,
+        menus: { p1: submission(cheaperBy(priceFactor)), p2: submission(SAME_DISHES) },
+      });
+      runUntilPhase(match, 'service');
+      rows.push(tallyChoices(match, _internal.ensureState(match), 400));
+    }
+    return rows.reduce((acc, t) => ({ p1: acc.p1 + t.p1, p2: acc.p2 + t.p2, leave: acc.leave + t.leave }), {
+      p1: 0,
+      p2: 0,
+      leave: 0,
     });
-    runUntilPhase(match, 'service');
-    const state = _internal.ensureState(match);
-    rows.push(tallyChoices(match, state, 400));
-  }
-  const totals = rows.reduce((acc, t) => ({ p1: acc.p1 + t.p1, p2: acc.p2 + t.p2, leave: acc.leave + t.leave }), {
-    p1: 0,
-    p2: 0,
-    leave: 0,
-  });
+  };
+
+  const totals = sweep(0.9);
+  const control = sweep(1.0);
   const edgeShare = share(totals);
+  const controlShare = share(control);
+  // ~1 percentage point at these sample sizes, so a 3-point gap is a real effect, not noise.
+  const noise = 100 / Math.sqrt(totals.p1 + totals.p2) / 100;
 
   // The score edge those prices actually buy, measured through the shipped scorer.
   const probe = makeDistrict({
@@ -237,13 +250,15 @@ console.log('Shared district and restaurant choice check\n');
   console.log(
     `\n    a 10% price undercut is worth ${(u1 - u2).toFixed(3)} of utility at temperature ` +
       `${DISTRICT_CHOICE_TEMPERATURE}; it won ${(edgeShare * 100).toFixed(1)}% of ` +
-      `${totals.p1 + totals.p2} contested parties across 6 seeds\n`,
+      `${totals.p1 + totals.p2} contested parties across ${SEEDS.length} seeds, against ` +
+      `${(controlShare * 100).toFixed(1)}% for the same seeds with identical menus\n`,
   );
 
   check(
-    'a modestly better restaurant wins a modestly larger share — a SPLIT (55-85%), never a sweep',
-    edgeShare > 0.55 && edgeShare < 0.85,
-    `p1 took ${(edgeShare * 100).toFixed(1)}% (${totals.p1} vs ${totals.p2}); argmax would be ~100%, blindness ~50%`,
+    'a modestly better restaurant wins a modestly larger share — a SPLIT, never a sweep',
+    edgeShare > controlShare + 3 * noise && edgeShare < 0.85,
+    `p1 took ${(edgeShare * 100).toFixed(1)}% against a matched control of ${(controlShare * 100).toFixed(1)}% ` +
+      `(${totals.p1} vs ${totals.p2}); argmax would be ~100%, price-blindness would be the control`,
   );
   check(
     'the worse restaurant is never shut out — it keeps a substantial share of the district',
@@ -274,8 +289,8 @@ console.log('Shared district and restaurant choice check\n');
   );
   check(
     'an identical menu at an identical price splits the district evenly (45-55%)',
-    shares[0] > 0.45 && shares[0] < 0.55,
-    `${(shares[0] * 100).toFixed(1)}% with nothing to choose between them`,
+    controlShare > 0.45 && controlShare < 0.55,
+    `${(controlShare * 100).toFixed(1)}% across ${control.p1 + control.p2} parties with nothing to choose between them`,
   );
 }
 
@@ -888,8 +903,11 @@ console.log('Shared district and restaurant choice check\n');
     for (const table of restaurant.tables ?? []) for (const key of Object.keys(table)) keys.add(key);
   }
   const unexpected = [...keys].filter((k) => !allowed.has(k));
+  // Named for what it actually checks. The allowlist is not "only what the model reads" — it
+  // also carries the §4.4 service record — and an assertion that claimed otherwise would pass
+  // by construction while reading as a stronger guarantee than it is.
   check(
-    'match_snapshot.restaurants carries exactly the public observables the model itself scores',
+    'match_snapshot.restaurants carries only public district fields — no key outside the allowlist',
     snapshots.p1.restaurants.length === 2 && unexpected.length === 0,
     unexpected.length === 0 ? [...keys].sort().join(', ') : `unexpected: ${unexpected.join(', ')}`,
   );
