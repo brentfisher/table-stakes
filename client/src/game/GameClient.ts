@@ -6,10 +6,14 @@ import { InputController } from './InputController';
 import { StateInterpolator, type PlayerState } from './StateInterpolator';
 import { EntityViewRegistry } from './EntityViewRegistry';
 import { SceneManager } from './SceneManager';
+import { InteractionController, type InteractionPrompt } from './InteractionController';
 import type {
+  CustomerSnapshot,
   MatchEndReason,
   MatchPhase,
+  OrderSnapshot,
   PublicMarket,
+  RestaurantSnapshot,
 } from '../../../shared/schemas/messages';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 
@@ -54,6 +58,16 @@ export interface GameClientStatus {
   setupRejection: { reason: string; detail: string } | null;
   /** Set once `match_complete` arrives; the match is over. */
   endReason: MatchEndReason | null;
+  /**
+   * STORY-008 §8 "contextual interact prompt" — `InteractionController`'s current pick, or
+   * null with nothing in range. Recomputed every render frame from interpolated position but
+   * only patched into status on CHANGE, so the HUD does not re-render at frame rate.
+   */
+  prompt: InteractionPrompt | null;
+  /** STORY-008. Order ids the owner is carrying, straight off `players[].carrying`. */
+  carrying: string[];
+  /** STORY-008. The in-progress `interact` action, or null — `players[].currentAction`. */
+  currentAction: string | null;
 }
 
 const INPUT_SEND_HZ = 20;
@@ -64,6 +78,7 @@ export class GameClient {
   private readonly interpolator = new StateInterpolator();
   private readonly registry = new EntityViewRegistry();
   private readonly scene: SceneManager;
+  private readonly interaction = new InteractionController();
 
   private sinceInputSend = 0;
   private status: GameClientStatus = {
@@ -81,6 +96,9 @@ export class GameClient {
     opponentReady: false,
     setupRejection: null,
     endReason: null,
+    prompt: null,
+    carrying: [],
+    currentAction: null,
   };
 
   /** Called at panel cadence, not per frame — React subscribes here. */
@@ -106,6 +124,17 @@ export class GameClient {
     this.network.onStatusChange = (connection) => this.patchStatus({ connection });
     this.network.onMessage = (message) => this.handleMessage(message);
     this.scene.onFrame = (dt) => this.handleFrame(dt);
+
+    // PRD §8: `E` sends whatever `InteractionController` currently has resolved; `F` is the
+    // secondary action, always "put down what I'm carrying" while carrying something and a
+    // no-op otherwise — there is nothing else PRD §8 names for it that this MVP can act on
+    // (see `INTERACT_ACTIONS`'s comment in messages.js for why `drop_carry` exists at all).
+    this.input.onInteract = () => {
+      if (this.status.prompt) this.network.sendInteract(this.status.prompt.targetId, this.status.prompt.action);
+    };
+    this.input.onSecondary = () => {
+      if (this.status.carrying.length > 0) this.network.sendInteract('self', 'drop_carry');
+    };
   }
 
   start(roomId?: string): void {
@@ -131,6 +160,20 @@ export class GameClient {
       this.interpolator.push(players);
       const you = message.you as { ready?: boolean; setup?: AcceptedSetup | null } | null;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
+      const self = players.find((p) => p.playerId === this.status.playerId) as
+        | (PlayerState & { carrying?: string[]; currentAction?: string | null })
+        | undefined;
+      // STORY-008. `InteractionController` is refreshed here (once per snapshot, ~10 Hz), not
+      // in `handleFrame` (per render frame) — the candidates it reads (orders/customers/
+      // restaurants) only change at snapshot cadence, and re-deriving them at frame rate would
+      // be pure waste. `resolve()` itself still runs per frame, against interpolated position.
+      this.interaction.setSnapshot({
+        restaurantId: this.status.playerId,
+        restaurants: (message.restaurants ?? []) as RestaurantSnapshot[],
+        orders: (message.orders ?? []) as OrderSnapshot[],
+        customers: (message.customers ?? []) as CustomerSnapshot[],
+        carrying: self?.carrying ?? [],
+      });
       this.patchStatus({
         playerCount: players.length,
         serverTime: Number(message.serverTime ?? 0),
@@ -145,6 +188,8 @@ export class GameClient {
         // An accepted submission clears the last rejection: the snapshot IS the acceptance
         // receipt, so there is no second message to wait for.
         ...(you?.setup ? { setupRejection: null } : {}),
+        carrying: self?.carrying ?? [],
+        currentAction: self?.currentAction ?? null,
       });
       return;
     }
@@ -187,6 +232,17 @@ export class GameClient {
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (self) this.scene.cameraController.setTarget(self.position.x, self.position.z);
+
+    // STORY-008. Re-resolved every frame against interpolated position (cheap: a handful of
+    // array scans, no allocation on the hot path beyond the winning candidate), but only
+    // patched into `status` when it actually changes, so the HUD re-renders on prompt CHANGE,
+    // not at frame rate.
+    if (self) {
+      const prompt = this.interaction.resolve(self.position);
+      const changed =
+        prompt?.targetId !== this.status.prompt?.targetId || prompt?.action !== this.status.prompt?.action;
+      if (changed) this.patchStatus({ prompt });
+    }
 
     this.sinceInputSend += dt * 1000;
     if (this.sinceInputSend >= 1000 / INPUT_SEND_HZ) {

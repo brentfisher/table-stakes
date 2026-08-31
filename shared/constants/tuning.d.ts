@@ -196,3 +196,27 @@ export declare const WORKER_TASK_JITTER: number;
 export declare const WORKER_TASK_NEAR_COMPLETION_FRACTION: number;
 export declare const WORKER_TICKET_URGENCY_BUCKET_MS: number;
 export declare const WORKER_RESTOCK_THRESHOLD_UNITS: number;
+
+export declare const OWNER_INTERACT_RANGE: number;
+
+export interface OwnerActionBaseDurationsMs {
+  pickup: number;
+  drop_carry: number;
+}
+export declare const OWNER_ACTION_BASE_DURATIONS_MS: OwnerActionBaseDurationsMs;
+
+export interface OwnerTaskDurationsMs {
+  cook: number;
+  plate: number;
+  pickup: number;
+  deliver: number;
+  drop_carry: number;
+  restock: number;
+  seat: number;
+  clear_table: number;
+  handle_complaint: number;
+}
+export declare const OWNER_TASK_DURATIONS_MS: OwnerTaskDurationsMs;
+export declare const OWNER_CARRY_CAPACITY: number;
+export declare const UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD: number;
+export declare const OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC: number;

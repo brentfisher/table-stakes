@@ -341,6 +341,12 @@ function generateOrder(match, state, restaurant, request) {
     satisfaction: null,
     revenue: 0,
     settled: false,
+    // STORY-008. Set once a player physically picks a ready order up off the pass. A claimed
+    // order is excluded from `readyOrders()` — the same pool `worker-system.js`'s server reads
+    // for its own §17 rule 1 — so the owner and the AI server can never both set off for the
+    // same plate, and cleared from the abstracted hand-off in `resolveReadyOrders` below for the
+    // same reason.
+    claimedBy: null,
   };
 
   const mainWeights = mains.map((entry) => dishWeight(match, entry, request));
@@ -638,6 +644,10 @@ function resolveReadyOrders(match, restaurant) {
     // to it and then to the table, and `deliverOrder` is called by the worker system instead.
     // Without a worker system registered the abstracted hand-off still runs, unchanged.
     if (match.brigade?.ownsDelivery(restaurant.restaurantId)) continue;
+    // STORY-008. A plate the OWNER already picked up is spoken for regardless of who owns
+    // delivery duty — the abstraction must not hand it to a table out from under a player mid-
+    // walk, in the one configuration (no worker system) where it would otherwise still run.
+    if (order.claimedBy) continue;
     if (match.elapsedMs - order.readyAtMs < ORDER_PASS_HANDOFF_MS) continue;
 
     deliverOrder(match, restaurant, order);
@@ -885,13 +895,16 @@ function createKitchenFacade(match, state) {
     },
 
     /** Orders plated and waiting on the pass for a runner. Oldest first — the plate losing
-     * freshness fastest is at the head, which is what §17 server rule 1 acts on. */
+     * freshness fastest is at the head, which is what §17 server rule 1 acts on. STORY-008: a
+     * plate a player already claimed (see `claimOrder`) is excluded — this is the ONE pool both
+     * the AI server and the owner's `pickup` interact read, so a claimed plate is spoken for on
+     * both sides at once rather than needing separate arbitration in each caller. */
     readyOrders(restaurantId) {
       const restaurant = state.restaurants.get(restaurantId);
       if (!restaurant) return [];
       const out = [];
       for (const order of restaurant.orders.values()) {
-        if (order.state !== 'ready') continue;
+        if (order.state !== 'ready' || order.claimedBy) continue;
         out.push({
           orderId: order.orderId,
           customerId: order.customerId,
@@ -901,6 +914,33 @@ function createKitchenFacade(match, state) {
       }
       out.sort((a, b) => b.readyAgeMs - a.readyAgeMs);
       return out;
+    },
+
+    /**
+     * STORY-008 §8 "carry a plate to a table", touch 1. Claims a ready, unclaimed order for one
+     * player, so it disappears from `readyOrders()` for both the AI server and any other
+     * `pickup` until it is delivered or dropped. Returns the order's own tableId, which is what
+     * `action-validator.js` checks the owner's `deliver` target against — the owner must walk
+     * the plate to the table it was actually ordered for, not any table they like.
+     */
+    claimOrder(restaurantId, orderId, playerId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      const order = restaurant?.orders.get(orderId);
+      if (!order) return { ok: false, reason: 'unknown_order' };
+      if (order.state !== 'ready') return { ok: false, reason: 'not_ready' };
+      if (order.claimedBy) return { ok: false, reason: 'already_claimed' };
+      order.claimedBy = playerId;
+      return { ok: true, tableId: order.tableId };
+    },
+
+    /** §8's secondary action, `drop_carry`: the claim is released and the plate goes back to
+     * `readyOrders()` — for the AI server, or for a second `pickup`. Not a void; the dish is not
+     * lost, only whoever was walking it changed their mind or ran out of match. */
+    unclaimOrder(orderId) {
+      const found = findOrder(state, orderId);
+      if (!found || found.order.state !== 'ready') return false;
+      found.order.claimedBy = null;
+      return true;
     },
 
     /** The plate reached the table. PRD §17 server rule 1. */

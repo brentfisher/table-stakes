@@ -44,7 +44,10 @@ export type ErrorCode =
   | 'invalid_payload'
   | 'match_full'
   /** STORY-009: well-formed but illegal setup submission. Carries `reason`. */
-  | 'setup_rejected';
+  | 'setup_rejected'
+  /** STORY-008: well-formed but illegal `interact` — out of range, no such target, or wrong
+   * for the target's current state. Carries `reason`. */
+  | 'interact_rejected';
 
 export type MatchPhase =
   | 'lobby'
@@ -67,7 +70,9 @@ export type InteractAction =
   | 'seat'
   | 'clear_table'
   | 'repair'
-  | 'handle_complaint';
+  | 'handle_complaint'
+  | 'pickup'
+  | 'drop_carry';
 
 export type DishCategory = 'entree' | 'side' | 'drink' | 'dessert' | 'snack';
 
