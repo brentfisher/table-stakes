@@ -1009,9 +1009,12 @@ function plantReadyOrder(match, { customerId, tableId }) {
     let helpTicks = 0;
     let ticks = 0;
     let lastState = match._workerSimState;
+    // Both systems are torn down at `results`, so the last live view of each is captured here.
+    let lastInventory = match._inventorySimState;
     quiet(() => {
       while ((match.phase === 'service' || match.phase === 'final_rush') && !match.ended) {
         lastState = match._workerSimState ?? lastState;
+        lastInventory = match._inventorySimState ?? lastInventory;
         stepMatch(match, TICK_MS);
         ticks += 1;
         const live = match._workerSimState;
@@ -1045,6 +1048,7 @@ function plantReadyOrder(match, { customerId, tableId }) {
         chosen: staff.work.partiesChosen,
         trips: staff.work.restockTrips,
         refusals: staff.work.restockRefusals,
+        landed: lastInventory?.restaurants.get(staff.restaurantId)?.ledger.restocksCompleted ?? 0,
         helpTicks,
       });
     }
@@ -1106,6 +1110,16 @@ function plantReadyOrder(match, { customerId, tableId }) {
     rows.every((r) => r.refusals === 0),
     `${rows.reduce((n, r) => n + r.trips, 0)} trips, ` +
       `${rows.reduce((n, r) => n + r.refusals, 0)} refused on arrival`,
+  );
+  // The seam is registration-order sensitive: inventory updates BEFORE workers, so if the brigade
+  // were not published yet when `autoRestock` first ran, the stand-in would quietly refill a
+  // brigaded kitchen and every §24 number above would be measuring a restaurant nobody walked in.
+  // A bin can only have been filled by a trip the cook made, give or take one still in the air.
+  check(
+    'every refill in the balance runs was walked by the cook — the stand-in never fired behind it',
+    rows.every((r) => r.landed <= r.trips + 1),
+    `${rows.reduce((n, r) => n + r.landed, 0)} refills landed against ` +
+      `${rows.reduce((n, r) => n + r.trips, 0)} cook trips across ${rows.length} restaurant-matches`,
   );
   check(
     'no restaurant completes everything — there is always work left for the owner (§24’s 25-40%)',
