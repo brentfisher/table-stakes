@@ -554,7 +554,10 @@ registerSystem(setupSystem);
   // and this pins that list. A field added to the player record later cannot leak by being
   // something nobody thought to forbid — it fails here the moment it reaches the public array.
   const PUBLIC_PLAYER_FIELDS = ['playerId', 'position', 'facing', 'sprinting', 'connected',
-    'ready', 'lastSequence'];
+    'ready', 'lastSequence',
+    // STORY-008: an order id being carried and the in-progress interact action, neither of
+    // which names anything private — see match.js's toSnapshot().
+    'carrying', 'currentAction'];
   const opponentEntry = match.toSnapshot('p2').players.find((p) => p.playerId === 'p1');
   check(
     'the opponent entry carries exactly the public field allowlist, readiness included',
