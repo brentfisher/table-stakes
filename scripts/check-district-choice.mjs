@@ -945,6 +945,34 @@ console.log('Shared district and restaurant choice check\n');
       summary.every((r) => Number.isFinite(r.reputation) && r.counts.chosen >= 0),
     summary.map((r) => `${r.restaurantId}: chosen=${r.counts.chosen} lost=${r.counts.CHOOSE_RIVAL} rep=${r.reputation}`).join(' | '),
   );
+  // A match aborted by a disconnect never transitions into `results` — `#endMatch` sets the
+  // phase directly, so `onPhaseChange` never fires. The roll-up therefore cannot live only on
+  // that transition. Without this assertion the publish site can be deleted and every other
+  // check here still passes, which is how the defect got in.
+  {
+    const aborted = makeDistrict({
+      id: 'm_aborted',
+      seed: 'aborted-seed',
+      phasePreset: 'prototype',
+      menus: { p1: submission(cheaperBy(0.8)), p2: submission(SAME_DISHES) },
+    });
+    quiet(() => {
+      // Run far enough into service that real decisions exist to roll up.
+      for (let i = 0; i < 4_000 && !aborted.ended; i += 1) stepMatch(aborted, TICK_MS);
+      aborted.removePlayer('p2');
+      // Step past the reconnect grace window so the drop ends the match.
+      for (let i = 0; i < 40_000 && !aborted.ended; i += 1) stepMatch(aborted, TICK_MS);
+    });
+    const abortedSummary = aborted.districtSummary ?? [];
+    check(
+      'a match aborted by a disconnect still publishes the decision roll-up',
+      aborted.ended &&
+        abortedSummary.length === 2 &&
+        (aborted.districtDecisions?.length ?? 0) > 0,
+      `ended=${aborted.ended} endReason=${aborted.endReason ?? '?'} summary=${abortedSummary.length} decisions=${aborted.districtDecisions?.length ?? 0}`,
+    );
+  }
+
   check(
     'the full decision log outlives the match, one record per decision, each with its scores',
     (match.districtDecisions?.length ?? 0) > 0 &&
