@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GameClient, type GameClientStatus } from '../game/GameClient';
 import { HudPanel } from '../ui/HudPanel';
 import { SetupScreen } from '../ui/SetupScreen';
+import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -44,6 +45,15 @@ export function App(): JSX.Element {
         <SetupScreen
           status={status}
           onSubmit={(payload) => clientRef.current?.submitSetup(payload)}
+        />
+      ) : null}
+      {/* STORY-012. Opens on proximity, not an `E` press — see
+          `InteractionController#nearUpgradeTerminal`'s own comment for why. */}
+      {status?.nearUpgradeTerminal ? (
+        <UpgradeTerminal
+          cash={status.cash}
+          purchasedUpgradeIds={status.purchasedUpgradeIds}
+          onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
         />
       ) : null}
       <div className="scope-note">

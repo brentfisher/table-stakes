@@ -120,6 +120,13 @@ export interface PlayerSnapshot {
    * sit in the owner's hands with no action in progress while they walk it to a table.
    */
   currentAction: InteractAction | null;
+  /**
+   * STORY-012. How many orders this owner may carry at once — `OWNER_CARRY_CAPACITY` (1)
+   * unless a Serving Tray upgrade raised it. PUBLIC: it is already derivable from watching
+   * `carrying` reach 2 or 3, and the client's own `InteractionController` needs its OWN
+   * capacity to know when to stop offering the `pickup` prompt.
+   */
+  carryCapacity: number;
 }
 
 /** One table in a restaurant, PRD §8 "Operational bottlenecks" (dirty tables block seating). */

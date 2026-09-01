@@ -47,7 +47,11 @@ export type ErrorCode =
   | 'setup_rejected'
   /** STORY-008: well-formed but illegal `interact` — out of range, no such target, or wrong
    * for the target's current state. Carries `reason`. */
-  | 'interact_rejected';
+  | 'interact_rejected'
+  /** STORY-012: well-formed but illegal `purchase_upgrade` — out of range of the terminal,
+   * unknown upgrade, already owned, unmet tier prerequisite, an effect not wired to any
+   * system, or unaffordable. Carries `reason`. */
+  | 'purchase_rejected';
 
 export type MatchPhase =
   | 'lobby'
@@ -231,6 +235,19 @@ export interface SnapshotViewer {
    * exists ONLY here, and `players[]` carries nothing that could reconstruct it.
    */
   setup: AcceptedSetup | null;
+  /**
+   * STORY-012. Starting cash plus revenue earned so far, minus every upgrade bought — the
+   * live spendable balance a `purchase_upgrade` debits. Null until the upgrade system exists
+   * (before `service`). Private for the same reason `setup` is: it is derived from the
+   * viewer's own menu/pricing choices.
+   */
+  cash: number | null;
+  /**
+   * STORY-012. Upgrade ids this restaurant owns, including any `startingUpgradeId` chosen at
+   * setup. Private, unlike the public `carryCapacity` it helps produce — which SPECIFIC
+   * upgrades a player owns is competitive information the same way their menu is.
+   */
+  purchasedUpgradeIds: string[];
 }
 
 /** One entry of the snapshot's `events[]`. PRD §12 server-to-client example 1. */

@@ -38,6 +38,10 @@ interface LayoutEntity {
   type: string;
   station?: string;
   position: [number, number, number];
+  /** STORY-012. `upgrade_terminal` is the one entity that declares its own interaction radius
+   * in the layout, rather than using the owner's general `OWNER_INTERACT_RANGE` — it is a
+   * fixed, single, always-known target, not a family of targets a generic range constant fits. */
+  interactionRadius?: number;
 }
 const ENTITY_BY_ID = new Map<string, LayoutEntity>(
   (layoutData.entities as LayoutEntity[]).map((entity) => [entity.id, entity]),
@@ -68,6 +72,9 @@ export interface InteractionSnapshotInput {
   /** `action-validator.js` rejects every interact outside service/final_rush (`wrong_phase`) —
    * mirrored here so the prompt never offers an action the server is certain to refuse. */
   matchPhase: string | null;
+  /** STORY-012. `OWNER_CARRY_CAPACITY` unless a Serving Tray upgrade raised it — read off the
+   * owner's own public `PlayerSnapshot.carryCapacity` rather than duplicated here. */
+  carryCapacity: number;
 }
 
 const INTERACT_PHASES = new Set(['service', 'final_rush']);
@@ -81,6 +88,7 @@ export class InteractionController {
   private customers: CustomerSnapshot[] = [];
   private carrying: string[] = [];
   private matchPhase: string | null = null;
+  private carryCapacity = 1;
 
   setSnapshot(input: InteractionSnapshotInput): void {
     this.restaurantId = input.restaurantId;
@@ -89,6 +97,20 @@ export class InteractionController {
     this.customers = input.customers;
     this.carrying = input.carrying;
     this.matchPhase = input.matchPhase;
+    this.carryCapacity = input.carryCapacity;
+  }
+
+  /**
+   * STORY-012. Whether the owner is close enough to the upgrade terminal to browse it.
+   * Deliberately separate from `resolve()`/the `E —` prompt system: the terminal has no single
+   * verb+object action, it is a browse-and-pick affordance, so walking into range opens the
+   * shop overlay directly rather than requiring an `E` press first.
+   */
+  nearUpgradeTerminal(position: Vec3): boolean {
+    const entity = ENTITY_BY_ID.get('upgrade_terminal');
+    if (!entity) return false;
+    const radius = entity.interactionRadius ?? OWNER_INTERACT_RANGE;
+    return distanceXZ(position, this.entityVec(entity)) <= radius;
   }
 
   /** The owner's own position/facing, sampled the same way the render loop samples it —
@@ -132,13 +154,16 @@ export class InteractionController {
   }
 
   private deliverCandidate(position: Vec3): InteractionPrompt | null {
-    if (this.carrying.length === 0) return null;
-    const orderId = this.carrying[0];
-    const order = this.orders.find((o) => o.orderId === orderId);
-    if (!order?.tableId) return null;
-    const tablePos = this.tablePosition(order.tableId);
-    if (!tablePos || distanceXZ(position, tablePos) > OWNER_INTERACT_RANGE) return null;
-    return { targetId: order.tableId, action: 'deliver', label: `Deliver ${dishName(order.dishId)}` };
+    // STORY-012. Carrying more than one order (Serving Tray) means the nearest one's table, not
+    // always `carrying[0]`'s, is the one actually in range.
+    for (const orderId of this.carrying) {
+      const order = this.orders.find((o) => o.orderId === orderId);
+      if (!order?.tableId) continue;
+      const tablePos = this.tablePosition(order.tableId);
+      if (!tablePos || distanceXZ(position, tablePos) > OWNER_INTERACT_RANGE) continue;
+      return { targetId: order.tableId, action: 'deliver', label: `Deliver ${dishName(order.dishId)}` };
+    }
+    return null;
   }
 
   private handleComplaintCandidate(position: Vec3): InteractionPrompt | null {
@@ -160,7 +185,8 @@ export class InteractionController {
   }
 
   private pickupCandidate(position: Vec3): InteractionPrompt | null {
-    if (this.carrying.length > 0) return null; // AC's one-plate baseline
+    // STORY-012. `OWNER_CARRY_CAPACITY` baseline unless a Serving Tray upgrade raised it.
+    if (this.carrying.length >= this.carryCapacity) return null;
     if (!this.inRange(position, 'service_pass')) return null;
     const ready = this.orders.find(
       (o) => o.restaurantId === this.restaurantId && o.state === 'ready',

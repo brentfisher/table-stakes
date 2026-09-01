@@ -60,12 +60,15 @@ export const IMPLEMENTED_CLIENT_MESSAGE_TYPES = Object.freeze([
   'setup_submit',
   // STORY-008 added `interact` in the same commit as its handler
   // (`message-router.js#handleInteract`) and its authority check
-  // (`server/src/game/validators/action-validator.js`). `purchase_upgrade` stays OUT of this
-  // list: STORY-008 defines the terminal's contextual prompt but not the upgrade catalogue or
-  // its effects, which are STORY-012's — adding the type here with no catalogue behind it would
-  // be exactly the silent inaction Decision 7 forbids, and `smoke-milestone0.mjs` still pins
-  // `purchase_upgrade` to `not_implemented`.
+  // (`server/src/game/validators/action-validator.js`).
   'interact',
+  // STORY-012 added `purchase_upgrade` in the same commit as its handler
+  // (`message-router.js#handlePurchaseUpgrade`) and its authority check
+  // (`server/src/game/validators/action-validator.js#handlePurchaseUpgrade`) — the upgrade
+  // catalogue and its effects that STORY-008 deferred. `smoke-milestone0.mjs`'s "declared but
+  // unimplemented" real-socket check moved to a genuinely unknown type, since every entry in
+  // `CLIENT_MESSAGE_TYPES` is now implemented.
+  'purchase_upgrade',
 ]);
 
 /**
@@ -94,6 +97,13 @@ export const ERROR_CODES = Object.freeze([
   // message carries `reason`, a short machine-readable string named in
   // `action-validator.js` (e.g. `out_of_range`, `no_such_target`, `nothing_queued`, `busy`).
   'interact_rejected',
+  // STORY-012. Same split, for `purchase_upgrade`: well-formed (a non-empty `upgradeId`) and
+  // still illegal — out of range of the terminal, unknown id, already owned, its tier
+  // prerequisite unmet, its effect not wired to any system yet, or unaffordable. The
+  // accompanying message carries `reason`, a short machine-readable string named in
+  // `action-validator.js` (e.g. `out_of_range`, `unknown_upgrade`, `already_owned`,
+  // `prerequisite_missing`, `effect_not_implemented`, `insufficient_cash`).
+  'purchase_rejected',
 ]);
 
 /**

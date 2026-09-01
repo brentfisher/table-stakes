@@ -16,6 +16,27 @@ import type {
   RestaurantSnapshot,
 } from '../../../shared/schemas/messages';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
+import upgradesData from '../../../shared/game-data/upgrades.json';
+
+interface UpgradeInfo {
+  id: string;
+  cost: number;
+  requires?: string;
+}
+const UPGRADE_BY_ID = new Map<string, UpgradeInfo>(
+  (upgradesData.upgrades as UpgradeInfo[]).map((u) => [u.id, u]),
+);
+/** STORY-012. Only these 5 of the 11 catalogue entries have a live effect hook — see
+ * `server/src/game/systems/upgrade-system.js`'s `KNOWN_EFFECT_KEYS`. The affordability
+ * indicator and the terminal overlay both restrict to this list; the other 6 are legal
+ * catalogue data with nothing yet reading them. */
+export const WIRED_UPGRADE_IDS = [
+  'serving_tray_1',
+  'serving_tray_2',
+  'faster_grill_1',
+  'better_seating_1',
+  'pantry_shelves_1',
+];
 
 /** What the §18 setup screen sends. PRD §12 client-to-server example 4, plus §7's extras. */
 export interface SetupSubmitPayload {
@@ -68,6 +89,36 @@ export interface GameClientStatus {
   carrying: string[];
   /** STORY-008. The in-progress `interact` action, or null — `players[].currentAction`. */
   currentAction: string | null;
+  /** STORY-012. Starting cash plus revenue earned so far, minus every upgrade bought —
+   * straight off the private `you.cash`. Null before `service` (before upgrades exist). */
+  cash: number | null;
+  /** STORY-012. This restaurant's own owned upgrade ids, straight off `you.purchasedUpgradeIds`. */
+  purchasedUpgradeIds: string[];
+  /** STORY-012. Whether the owner is close enough to browse the upgrade terminal — drives
+   * whether `UpgradeTerminal`'s shop overlay renders. Recomputed every frame, patched on
+   * change, same discipline as `prompt`. */
+  nearUpgradeTerminal: boolean;
+  /**
+   * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
+   * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
+   * any) already owned, and costs no more than `cash` — computed from public catalogue data,
+   * not duplicated server-side.
+   */
+  canAffordUpgrade: boolean;
+}
+
+/** STORY-012 AC: an ambient "something is worth buying" signal, computed from public catalogue
+ * data — never a second copy of `action-validator.js#handlePurchaseUpgrade`'s own legality
+ * checks, just the subset a HUD indicator needs (unaffordable/owned/locked all read the same). */
+function canAffordAnyUpgrade(cash: number | null, owned: string[]): boolean {
+  if (cash === null) return false;
+  return WIRED_UPGRADE_IDS.some((id) => {
+    if (owned.includes(id)) return false;
+    const upgrade = UPGRADE_BY_ID.get(id);
+    if (!upgrade) return false;
+    if (upgrade.requires && !owned.includes(upgrade.requires)) return false;
+    return upgrade.cost <= cash;
+  });
 }
 
 const INPUT_SEND_HZ = 20;
@@ -99,6 +150,10 @@ export class GameClient {
     prompt: null,
     carrying: [],
     currentAction: null,
+    cash: null,
+    purchasedUpgradeIds: [],
+    nearUpgradeTerminal: false,
+    canAffordUpgrade: false,
   };
 
   /** Called at panel cadence, not per frame — React subscribes here. */
@@ -158,10 +213,23 @@ export class GameClient {
     if (message.type === 'match_snapshot') {
       const players = (message.players ?? []) as PlayerState[];
       this.interpolator.push(players);
-      const you = message.you as { ready?: boolean; setup?: AcceptedSetup | null } | null;
+      // STORY-012 "Serving Tray": one small plate mesh per carried order, public — see
+      // `RestaurantScene#setCarrying`. Snapshot cadence (~10 Hz) is plenty for a count that
+      // only changes on pickup/deliver/drop, so this does not go through `handleFrame`.
+      for (const p of players as (PlayerState & { carrying?: string[] })[]) {
+        this.scene.restaurant.setCarrying(p.playerId, p.carrying?.length ?? 0);
+      }
+      const you = message.you as
+        | {
+            ready?: boolean;
+            setup?: AcceptedSetup | null;
+            cash?: number | null;
+            purchasedUpgradeIds?: string[];
+          }
+        | null;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
       const self = players.find((p) => p.playerId === this.status.playerId) as
-        | (PlayerState & { carrying?: string[]; currentAction?: string | null })
+        | (PlayerState & { carrying?: string[]; currentAction?: string | null; carryCapacity?: number })
         | undefined;
       // STORY-008. `InteractionController` is refreshed here (once per snapshot, ~10 Hz), not
       // in `handleFrame` (per render frame) — the candidates it reads (orders/customers/
@@ -174,7 +242,18 @@ export class GameClient {
         customers: (message.customers ?? []) as CustomerSnapshot[],
         carrying: self?.carrying ?? [],
         matchPhase: (message.matchPhase ?? null) as string | null,
+        carryCapacity: self?.carryCapacity ?? 1,
       });
+      const cash = you?.cash ?? null;
+      const purchasedUpgradeIds = you?.purchasedUpgradeIds ?? [];
+      // STORY-012 "Faster Grill I" / "Pantry Shelves": only the OWNER'S OWN restaurant has
+      // these station/pantry meshes at all (the competitor is a simplified shell — see
+      // `RestaurantScene#buildCompetitor`), and ownership rarely changes, so this only touches
+      // the scene when the owned set actually changed rather than every ~10 Hz snapshot.
+      if (purchasedUpgradeIds.join(',') !== this.status.purchasedUpgradeIds.join(',')) {
+        this.scene.restaurant.setStationUpgraded('grill', purchasedUpgradeIds.includes('faster_grill_1'));
+        this.scene.restaurant.setPantryUpgraded(purchasedUpgradeIds.includes('pantry_shelves_1'));
+      }
       this.patchStatus({
         playerCount: players.length,
         serverTime: Number(message.serverTime ?? 0),
@@ -191,6 +270,9 @@ export class GameClient {
         ...(you?.setup ? { setupRejection: null } : {}),
         carrying: self?.carrying ?? [],
         currentAction: self?.currentAction ?? null,
+        cash,
+        purchasedUpgradeIds,
+        canAffordUpgrade: canAffordAnyUpgrade(cash, purchasedUpgradeIds),
       });
       return;
     }
@@ -226,6 +308,12 @@ export class GameClient {
     this.network.sendSetupSubmit(payload as unknown as Record<string, unknown>);
   }
 
+  /** PRD §12 client-to-server example 3, §10 "Upgrades". `UpgradeTerminal`'s Buy button calls
+   * this; `action-validator.js#handlePurchaseUpgrade` is the actual authority. */
+  buyUpgrade(upgradeId: string): void {
+    this.network.sendPurchaseUpgrade(upgradeId);
+  }
+
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
@@ -243,6 +331,13 @@ export class GameClient {
       const changed =
         prompt?.targetId !== this.status.prompt?.targetId || prompt?.action !== this.status.prompt?.action;
       if (changed) this.patchStatus({ prompt });
+
+      // STORY-012. Same per-frame/patch-on-change discipline as `prompt` — the terminal shop
+      // overlay opens on proximity, not an `E` press (see `InteractionController#nearUpgradeTerminal`).
+      const nearTerminal = this.interaction.nearUpgradeTerminal(self.position);
+      if (nearTerminal !== this.status.nearUpgradeTerminal) {
+        this.patchStatus({ nearUpgradeTerminal: nearTerminal });
+      }
     }
 
     this.sinceInputSend += dt * 1000;

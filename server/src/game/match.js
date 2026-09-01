@@ -32,6 +32,7 @@ import {
   RECONNECT_GRACE_MS,
   RESTAURANT_BOUNDS,
   OWNER_SPRINT_MAX_MS,
+  OWNER_CARRY_CAPACITY,
 } from '../../../shared/constants/tuning.js';
 import { createRng } from './rng.js';
 import { catalogue, publicMarket } from './catalogue.js';
@@ -200,6 +201,10 @@ export class Match {
       carrying: [],
       pendingAction: null,
       lastInteractSequence: 0,
+      // STORY-012. `purchase_upgrade` is its own message stream, not an `interact` — a
+      // separate sequence counter so a stale/duplicate purchase can never dedup against (or be
+      // deduped by) an unrelated interact sequence number.
+      lastPurchaseSequence: 0,
     };
     this.players.set(playerId, player);
     return player;
@@ -438,7 +443,16 @@ export class Match {
       // `setup` is here and NOWHERE else: PRD §18 forbids revealing the opponent's exact menu
       // or prices during setup, and `you` is the only key that differs per viewer.
       you: viewer
-        ? { playerId: viewer.playerId, ready: viewer.ready, setup: viewer.setup ?? null }
+        ? {
+            playerId: viewer.playerId,
+            ready: viewer.ready,
+            setup: viewer.setup ?? null,
+            // STORY-012. Private for the same reason `setup` is — both are derived from this
+            // player's own menu/pricing choices. `match.upgrades` does not exist before
+            // `service` (`upgrade-system.js` attaches it on the setup->service transition).
+            cash: this.upgrades?.cashAvailable(viewer.playerId) ?? null,
+            purchasedUpgradeIds: this.upgrades?.ownedUpgrades(viewer.playerId) ?? [],
+          }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already
       // public-shaped array to `match.<name>` during its tick; this method only serializes
@@ -471,6 +485,10 @@ export class Match {
         carrying: p.carrying.map((c) => c.orderId),
         currentAction:
           p.pendingAction && this.elapsedMs < p.pendingAction.readyAtMs ? p.pendingAction.action : null,
+        // STORY-012. Public: already inferable by watching `carrying` reach 2 or 3, and the
+        // client's own InteractionController needs its OWN capacity to know when to stop
+        // offering `pickup`. WHICH upgrade produced it stays private — see `you` above.
+        carryCapacity: this.upgrades?.ownerCarryCapacity(p.playerId) ?? OWNER_CARRY_CAPACITY,
       })),
     };
   }

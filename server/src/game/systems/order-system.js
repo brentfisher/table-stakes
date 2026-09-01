@@ -132,10 +132,16 @@ function getEventEffects(match) {
 }
 
 /** Decision 12: a multiplier below 1 means FASTER. Sampled once, when the step is dispatched —
- * a grill that speeds up mid-steak does not retroactively un-cook it. */
-function stationSpeedMultiplier(match, station) {
-  const value = getEventEffects(match).stationSpeedMultipliers?.[station];
-  return Number.isFinite(value) && value > 0 ? value : 1;
+ * a grill that speeds up mid-steak does not retroactively un-cook it. Events are match-global
+ * (`event-system.js`'s own fairness contract — never per-restaurant); upgrades are the opposite,
+ * bought independently by each owner, so `match.upgradeEffects` is keyed by `restaurantId` where
+ * `match.eventEffects` is not. STORY-012. */
+function stationSpeedMultiplier(match, restaurantId, station) {
+  const eventValue = getEventEffects(match).stationSpeedMultipliers?.[station];
+  const eventMultiplier = Number.isFinite(eventValue) && eventValue > 0 ? eventValue : 1;
+  const upgradeValue = match.upgradeEffects?.[restaurantId]?.stationSpeedMultipliers?.[station];
+  const upgradeMultiplier = Number.isFinite(upgradeValue) && upgradeValue > 0 ? upgradeValue : 1;
+  return eventMultiplier * upgradeMultiplier;
 }
 
 // --- per-match state -------------------------------------------------------------------------
@@ -385,11 +391,11 @@ function enqueueTicket(match, restaurant, ticket) {
   if (station.queue.length > station.maxQueueDepth) station.maxQueueDepth = station.queue.length;
 }
 
-function startStep(match, station, ticket) {
+function startStep(match, restaurant, station, ticket) {
   ticket.stepIndex += 1;
   const step = ticket.dish.stationSteps[ticket.stepIndex];
   // THE ONLY SOURCE OF A STATION TIMING IS dishes.json. No inline constant, ever.
-  ticket.remainingMs = step.durationMs * stationSpeedMultiplier(match, station.station);
+  ticket.remainingMs = step.durationMs * stationSpeedMultiplier(match, restaurant.restaurantId, station.station);
   ticket.state = 'in_progress';
   station.active.push(ticket);
 }
@@ -477,7 +483,7 @@ function dispatchQueues(match, restaurant) {
         continue;
       }
       station.queue.splice(index, 1);
-      startStep(match, station, ticket);
+      startStep(match, restaurant, station, ticket);
     }
   }
 }
@@ -888,7 +894,7 @@ function createKitchenFacade(match, state) {
           };
         }
         station.queue.splice(index, 1);
-        startStep(match, station, ticket);
+        startStep(match, restaurant, station, ticket);
         return { ok: true };
       }
       return { ok: false, reason: 'not_queued' };

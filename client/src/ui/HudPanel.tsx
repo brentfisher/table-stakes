@@ -47,6 +47,16 @@ export function HudPanel({
         <dd>{formatCountdown(status?.timeRemainingMs ?? null)}</dd>
         <dt>Market</dt>
         <dd>{status?.market?.name ?? 'not revealed'}</dd>
+        {/* STORY-012 AC: ambient awareness of an affordable upgrade, without a trip to the
+            terminal to find out. The terminal itself (`UpgradeTerminal.tsx`) is the full §10
+            shop; the rest of the §18 HUD (cash amount, score, satisfaction, events, alerts,
+            rival summary) is STORY-015's, not this line's. */}
+        {status?.canAffordUpgrade ? (
+          <>
+            <dt>Upgrade</dt>
+            <dd className="status-open">available</dd>
+          </>
+        ) : null}
         <dt>Room</dt>
         <dd>{status?.roomId ?? '—'}</dd>
         <dt>You</dt>

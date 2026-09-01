@@ -1200,7 +1200,14 @@ function orderRequest(party) {
 
 function advanceParty(match, state, party, dtMs) {
   if (PATIENCE_DECAYING_STATES.has(party.state)) {
-    party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs);
+    // STORY-012. "Seated patience" names the states that follow being seated, not the queue —
+    // Better Seating is about giving the SERVER room to recover once a party is already at a
+    // table, not about making the initial wait for a table feel shorter.
+    const seatedPatienceMultiplier =
+      party.state !== CUSTOMER_STATES.APPROACH_OR_QUEUE
+        ? (match.upgradeEffects?.[party.restaurantId]?.seatedPatienceMultiplier ?? 1)
+        : 1;
+    party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs / seatedPatienceMultiplier);
     // STORY-008. Sticky, not a live threshold check on every read: a party that crossed into
     // "unhappy" and was never helped stays a `recoveryActions` candidate even if it recovers
     // patience crossing into its next phase (`patienceAtSeatedFrac` etc. resample per phase).

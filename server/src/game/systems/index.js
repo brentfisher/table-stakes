@@ -21,6 +21,14 @@
 //                            before it runs is discarded)
 //   workers    — STORY-007  (after inventory: same decoration trap, plus it reads the freshest
 //                            shortage state when the cook decides whether to walk to the pantry)
+//   upgrades   — STORY-012  (last of the gameplay systems: republishes `match.upgradeEffects`
+//                            fresh every tick, so the tick AFTER a purchase is the first one
+//                            other systems see it — one tick (50ms) of staleness, the same
+//                            class `inventory`/`workers` already accept. Facade calls made
+//                            directly off `match.upgrades` — the carry-capacity check in
+//                            `action-validator.js`, a purchase itself — are never stale; only
+//                            the three systems that read the republished `match.upgradeEffects`
+//                            map inside their own tick are.)
 //   scoring    — STORY-013  (last: it reads what everything else produced)
 
 import { registerSystem } from '../simulation-loop.js';
@@ -31,6 +39,7 @@ import { orderSystem } from './order-system.js';
 import { setupSystem } from './setup-system.js';
 import { inventorySystem } from './inventory-system.js';
 import { workerSystem } from './worker-system.js';
+import { upgradeSystem } from './upgrade-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -60,5 +69,7 @@ export function registerAllSystems() {
   // loads is started here and burns its first `dtMs` next tick. That is the same staleness class
   // `inventory` already documents and accepts, and it is invisible at a 10 Hz broadcast.
   registerSystem(workerSystem);
+  // `upgrades` runs last of the gameplay systems — see the header comment above.
+  registerSystem(upgradeSystem);
   // STORY-013: registerSystem(scoringSystem);
 }

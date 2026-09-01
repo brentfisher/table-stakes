@@ -77,6 +77,16 @@ export class NetworkClient {
   }
 
   /**
+   * PRD §12 client-to-server example 3, §10 "Upgrades". Same shared `sequence` counter as
+   * `sendInput`/`sendInteract` — the server tracks this stream's last-seen sequence separately
+   * too (`player.lastPurchaseSequence`).
+   */
+  sendPurchaseUpgrade(upgradeId: string): void {
+    this.sequence += 1;
+    this.send({ type: 'purchase_upgrade', sequence: this.sequence, upgradeId });
+  }
+
+  /**
    * PRD §12 client-to-server example 4. Note there is no `sequence`: this is a one-shot phase
    * submission, not a per-tick intent. The server answers either with the next snapshot
    * (carrying the accepted menu under `you.setup`) or with an `error` whose `error` is

@@ -557,7 +557,10 @@ registerSystem(setupSystem);
     'ready', 'lastSequence',
     // STORY-008: an order id being carried and the in-progress interact action, neither of
     // which names anything private — see match.js's toSnapshot().
-    'carrying', 'currentAction'];
+    'carrying', 'currentAction',
+    // STORY-012: how many orders this owner may carry — already inferable from `carrying`
+    // reaching 2 or 3, and WHICH upgrade produced it stays private under `you` instead.
+    'carryCapacity'];
   const opponentEntry = match.toSnapshot('p2').players.find((p) => p.playerId === 'p1');
   check(
     'the opponent entry carries exactly the public field allowlist, readiness included',
