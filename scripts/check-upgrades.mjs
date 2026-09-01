@@ -605,6 +605,63 @@ function cookProbe(id, { cashRemaining = 1000, startingUpgradeId = null, mains =
   );
 }
 
+// =============================================================================================
+// 12. PRD §24 affordability cadence — a rising-edge event log, not a level check
+// =============================================================================================
+{
+  const match = cookProbe('m_affordability', { cashRemaining: 0 });
+  const state = upgradeInternal.ensureState(match);
+  const restaurant = state.restaurants.get('p1');
+
+  check(
+    'starting broke, nothing is affordable yet — no event logged',
+    restaurant.affordableAtMs.length === 0,
+    JSON.stringify(restaurant.affordableAtMs),
+  );
+
+  // Simulate revenue arriving: cross the cheapest wired upgrade's cost threshold, forced
+  // directly on the ledger for determinism, exactly as section 9 forces `ledger.revenue`.
+  const cheapestCost = Math.min(
+    ...['serving_tray_1', 'faster_grill_1', 'better_seating_1', 'pantry_shelves_1'].map(
+      (id) => catalogue.upgradesById[id].cost,
+    ),
+  );
+  kitchenRestaurant(match, 'p1').ledger.revenue = cheapestCost;
+  step(match, 1);
+  check(
+    'crossing the threshold logs exactly one rising-edge affordability event',
+    restaurant.affordableAtMs.length === 1,
+    JSON.stringify(restaurant.affordableAtMs),
+  );
+
+  step(match, 10);
+  check(
+    'staying affordable for more ticks does NOT log another event — a level, not a repeat',
+    restaurant.affordableAtMs.length === 1,
+    JSON.stringify(restaurant.affordableAtMs),
+  );
+
+  standAt(match, 'p1', 'upgrade_terminal');
+  const cheapestId = ['serving_tray_1', 'faster_grill_1', 'better_seating_1', 'pantry_shelves_1'].find(
+    (id) => catalogue.upgradesById[id].cost === cheapestCost,
+  );
+  purchase(match, 'p1', cheapestId);
+  step(match, 1);
+  check(
+    'buying the only affordable thing drops back to unaffordable — no event on the way down',
+    restaurant.affordableAtMs.length === 1,
+    JSON.stringify(restaurant.affordableAtMs),
+  );
+
+  kitchenRestaurant(match, 'p1').ledger.revenue += 500;
+  step(match, 1);
+  check(
+    'affording something ELSE later logs a second rising-edge event',
+    restaurant.affordableAtMs.length === 2,
+    JSON.stringify(restaurant.affordableAtMs),
+  );
+}
+
 // --- summary ------------------------------------------------------------------------------
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed.`);

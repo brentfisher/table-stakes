@@ -38,6 +38,20 @@ function effectsAreKnown(upgrade) {
   return Object.keys(upgrade.effects).every((key) => KNOWN_EFFECT_KEYS.has(key));
 }
 
+/** The "meaningful" upgrades §24's affordability hypothesis is about — every catalogue entry
+ * this file actually wires an effect for. Derived from the catalogue rather than a second
+ * hardcoded id list, so it can never drift from `KNOWN_EFFECT_KEYS` above. */
+const WIRED_UPGRADES = Object.values(catalogue.upgradesById).filter(effectsAreKnown);
+
+/** Whether at least one wired upgrade this restaurant does not yet own — and whose tier
+ * prerequisite, if any, it already does — costs no more than `cash`. PRD §24's "a healthy
+ * restaurant can afford a MEANINGFUL upgrade", not literally any catalogue entry. */
+function canAffordSomethingNew(owned, cash) {
+  return WIRED_UPGRADES.some(
+    (u) => !owned.has(u.id) && (!u.requires || owned.has(u.requires)) && u.cost <= cash,
+  );
+}
+
 /** Folds every upgrade this restaurant owns into one resolved effects object. `ownerCarryCapacity`
  * is a capacity ceiling, not a rate, so it takes the MAX across owned tiers (serving_tray_2's 3
  * already implies serving_tray_1's 2 via `requires`, but MAX is correct even if that ever
@@ -74,7 +88,15 @@ function ensureState(match) {
   if (!match._upgradeSimState) {
     const state = { restaurants: new Map() };
     for (const player of match.players.values()) {
-      state.restaurants.set(player.playerId, { owned: new Set(), cashSpent: 0 });
+      state.restaurants.set(player.playerId, {
+        owned: new Set(),
+        cashSpent: 0,
+        // PRD §24 "a healthy restaurant can afford a meaningful upgrade roughly every 60-120
+        // seconds" — the elapsed-ms timestamp of every tick this restaurant newly became able
+        // to afford at least one wired upgrade it doesn't already own. Logged at `results`.
+        affordableAtMs: [],
+        wasAffordable: false,
+      });
     }
     match._upgradeSimState = state;
     match.upgrades = createUpgradeFacade(match, state);
@@ -158,8 +180,15 @@ export const upgradeSystem = {
   update(match) {
     const state = ensureState(match);
     const effects = {};
-    for (const restaurantId of state.restaurants.keys()) {
-      effects[restaurantId] = resolveEffects(state.restaurants.get(restaurantId).owned);
+    for (const [restaurantId, restaurant] of state.restaurants) {
+      effects[restaurantId] = resolveEffects(restaurant.owned);
+
+      // PRD §24 affordability cadence — a rising-edge sample, not a level check: a restaurant
+      // that has been able to afford something for the last ten minutes is one event, not one
+      // every tick.
+      const affordableNow = canAffordSomethingNew(restaurant.owned, match.upgrades.cashAvailable(restaurantId));
+      if (affordableNow && !restaurant.wasAffordable) restaurant.affordableAtMs.push(match.elapsedMs);
+      restaurant.wasAffordable = affordableNow;
     }
     match.upgradeEffects = effects;
   },
@@ -178,6 +207,19 @@ export const upgradeSystem = {
       return;
     }
     if (transition.to !== 'results') return;
+    if (match._upgradeSimState) {
+      for (const [restaurantId, restaurant] of match._upgradeSimState.restaurants) {
+        const events = restaurant.affordableAtMs;
+        const intervals = events.slice(1).map((t, i) => t - events[i]);
+        const meanIntervalMs =
+          intervals.length > 0 ? Math.round(intervals.reduce((a, b) => a + b, 0) / intervals.length) : null;
+        console.log(
+          `[upgrades] ${match.id} ${restaurantId} affordable-again events=${events.length} ` +
+            `at=[${events.join(',')}]ms ` +
+            `meanIntervalMs=${meanIntervalMs ?? 'n/a'} (§24 target 60000-120000ms)`,
+        );
+      }
+    }
     match._upgradeSimState = undefined;
     match.upgrades = undefined;
     match.upgradeEffects = undefined;
