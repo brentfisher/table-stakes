@@ -32,6 +32,16 @@ const STATION_COLORS: Record<string, number> = {
   plating: 0x7ac74f,
 };
 
+/** STORY-012 "Faster Grill I": a brighter, hotter-reading tint of the same station color, not
+ * a new palette entry — full state-driven visual language is STORY-016's job (see this file's
+ * header comment on `ZONE_COLORS`), this is a single targeted swap. */
+const STATION_COLORS_UPGRADED: Record<string, number> = {
+  grill: 0xff8a4a,
+};
+
+/** PRD §7 baseline before any Serving Tray upgrade. */
+const MAX_VISIBLE_CARRY_PLATES = 3;
+
 export interface RestaurantSceneOptions {
   showDebugGrid?: boolean;
   showCompetitor?: boolean;
@@ -220,11 +230,62 @@ export class RestaurantScene {
       nose.position.set(0, 1.15, 0.42);
       group.add(nose);
       group.name = `owner_${state.playerId}`;
+      // STORY-012 §10 "Serving Tray": up to 3 small plates, hidden until `setCarrying` shows
+      // as many as the owner is actually holding. Built once here, alongside the avatar, so
+      // `setCarrying` (called at snapshot cadence from `GameClient`, not every render frame)
+      // only ever toggles visibility rather than allocating geometry on the hot path.
+      for (let i = 0; i < MAX_VISIBLE_CARRY_PLATES; i += 1) {
+        const plate = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16, 0.16, 0.04, 16),
+          new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.4 }),
+        );
+        plate.name = `plate_${i}`;
+        plate.position.set(0.3, 1.35 + i * 0.12, 0);
+        plate.visible = false;
+        group.add(plate);
+      }
       this.owners.set(state.playerId, group);
       this.scene.add(group);
     }
     group.position.set(state.position.x, state.position.y, state.position.z);
     group.rotation.y = state.facing;
+  }
+
+  /** STORY-012. Public: `carrying` already is (§8 §14, PlayerSnapshot). One small plate mesh
+   * per carried order, up to `MAX_VISIBLE_CARRY_PLATES` — no upgrade currently raises capacity
+   * past that, and a 4th plate would just be lost behind the other three at this scale anyway. */
+  setCarrying(playerId: string, count: number): void {
+    const group = this.owners.get(playerId);
+    if (!group) return;
+    for (let i = 0; i < MAX_VISIBLE_CARRY_PLATES; i += 1) {
+      const plate = group.getObjectByName(`plate_${i}`);
+      if (plate) plate.visible = i < count;
+    }
+  }
+
+  /** STORY-012 "Faster Grill I": a hotter tint on the OWNER'S OWN grill mesh once purchased.
+   * Ownership can change mid-match (unlike everything `buildAll()` builds once from static
+   * layout JSON), so this is looked up by name rather than rebuilt — the one live per-entity
+   * update path this file has; see the header comment on why it stays this narrow rather than
+   * growing into a general visual-state system (that generalization is STORY-016's). */
+  setStationUpgraded(station: string, upgraded: boolean): void {
+    const mesh = this.scene.getObjectByName(`station_${station}`) as THREE.Mesh | undefined;
+    if (!mesh) return;
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    material.color.setHex(
+      upgraded ? (STATION_COLORS_UPGRADED[station] ?? STATION_COLORS[station]) : (STATION_COLORS[station] ?? 0x808890),
+    );
+  }
+
+  /** STORY-012 "Pantry Shelves": read as "more storage" with a taller box and a darker,
+   * shelf-like tint rather than modeling actual shelf geometry — see `setStationUpgraded`'s
+   * comment on scope. */
+  setPantryUpgraded(upgraded: boolean): void {
+    const mesh = this.scene.getObjectByName('pantry') as THREE.Mesh | undefined;
+    if (!mesh) return;
+    const material = mesh.material as THREE.MeshStandardMaterial;
+    material.color.setHex(upgraded ? 0x6b4f30 : 0x9c7d55);
+    mesh.scale.y = upgraded ? 1.3 : 1;
   }
 
   removeOwner(playerId: string): void {

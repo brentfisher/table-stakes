@@ -279,3 +279,44 @@ body {
 .setup-ok { margin: 8px 0 0; color: var(--ok); }
 
 .setup-column { flex: 1 1 220px; min-width: 200px; }
+
+/* STORY-012 §10 "Upgrades": a compact panel, not a full-bleed screen like `.setup-*` — this
+   opens on proximity to the physical terminal, mid-service, and the owner keeps moving around
+   it, so it stays small and to one side rather than covering the scene. */
+.upgrade-terminal {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 260px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+.upgrade-terminal h2 { margin: 0 0 4px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.upgrade-terminal-cash { margin-bottom: 8px; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.upgrade-terminal-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.upgrade-terminal-row:first-of-type { border-top: none; }
+.upgrade-terminal-row-header { display: flex; justify-content: space-between; align-items: baseline; }
+.upgrade-terminal-name { font-weight: 600; }
+.upgrade-terminal-row .why { display: block; margin: 2px 0 6px; color: var(--muted); font-size: 12px; }
+.upgrade-terminal-row button {
+  width: 100%;
+  padding: 6px 10px;
+  background: #2c4a26;
+  border: 1px solid #3f6b31;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.upgrade-terminal-row button:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
+.upgrade-terminal-row.is-owned .upgrade-terminal-name { color: var(--ok); }
+.upgrade-terminal-row.is-locked { opacity: 0.6; }

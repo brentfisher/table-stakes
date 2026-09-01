@@ -502,7 +502,7 @@ function cookProbe(id, staff) {
     'the trip is quoted by the inventory model when the cook gets there, not invented here',
     cook.task?.kind === 'restock' &&
       cook.task.phase === 'work' &&
-      cook.task.workMs === match.pantry.restockDurationMs('lettuce', cook.task.workMs > 0 ? undefined : 0) ||
+      cook.task.workMs === match.pantry.restockDurationMs('p1', 'lettuce', cook.task.workMs > 0 ? undefined : 0) ||
       (cook.task?.phase === 'work' && cook.task.workMs > 0),
     `workMs=${cook.task?.workMs} from pantry.requestRestock()`,
   );

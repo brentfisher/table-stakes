@@ -638,10 +638,11 @@ const ticketsOf = (match, restaurantId = 'p1') => {
     `bin ${midFlight}u one tick before the trip lands, ${landed}u after`,
   );
 
-  // PRD §10 "Pantry Shelves — restock travel time -25%": STORY-012's hook, read defensively.
+  // PRD §10 "Pantry Shelves — restock travel time -25%": STORY-012's hook, read defensively,
+  // keyed per restaurant since upgrades are bought independently (unlike event effects).
   inv.bins.get('prep').beef = 0;
   inv.jobs.length = 0;
-  match.upgradeEffects = { restockTravelTimeMultiplier: 0.75 };
+  match.upgradeEffects = { p1: { restockTravelTimeMultiplier: 0.75 } };
   const upgraded = match.pantry.requestRestock('p1', 'prep', 'beef', 10);
   match.upgradeEffects = undefined;
   check(
@@ -679,7 +680,7 @@ const ticketsOf = (match, restaurantId = 'p1') => {
   const card = catalogue.eventsById.ingredient_shortage;
   const neutralDurations = {};
   for (const ingredientId of ['beef', 'cheese', 'lettuce', 'bun', 'chicken', 'croutons', 'dressing']) {
-    neutralDurations[ingredientId] = match.pantry.restockDurationMs(ingredientId, 10);
+    neutralDurations[ingredientId] = match.pantry.restockDurationMs('p1', ingredientId, 10);
   }
   check(
     'with no event running, every ingredient restocks at the same speed',
@@ -719,8 +720,8 @@ const ticketsOf = (match, restaurantId = 'p1') => {
   const unaffected = ['beef', 'cheese', 'lettuce', 'bun', 'chicken', 'croutons', 'dressing'].find(
     (id) => !affected.includes(id),
   );
-  const affectedMs = match.pantry.restockDurationMs(affected[0], 10);
-  const unaffectedMs = match.pantry.restockDurationMs(unaffected, 10);
+  const affectedMs = match.pantry.restockDurationMs('p1', affected[0], 10);
+  const unaffectedMs = match.pantry.restockDurationMs('p1', unaffected, 10);
   check(
     'the affected ingredient restocks exactly `ingredientRestockDurationMultiplier` slower than an unaffected one',
     affectedMs === Math.round(unaffectedMs * card.effects.ingredientRestockDurationMultiplier) &&
@@ -751,8 +752,8 @@ const ticketsOf = (match, restaurantId = 'p1') => {
   check(
     'when the event ends the shortage clears and restocks return to their normal speed',
     match.pantry.affectedIngredientIds().length === 0 &&
-      match.pantry.restockDurationMs(affected[0], 10) === unaffectedMs,
-    `back to ${match.pantry.restockDurationMs(affected[0], 10)}ms`,
+      match.pantry.restockDurationMs('p1', affected[0], 10) === unaffectedMs,
+    `back to ${match.pantry.restockDurationMs('p1', affected[0], 10)}ms`,
   );
   void state;
 }

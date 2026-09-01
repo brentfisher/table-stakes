@@ -126,10 +126,18 @@ const inBounds =
 check('server clamps an out-of-bounds movement intent', inBounds,
   `pos=(${clamped.x.toFixed(2)}, ${clamped.z.toFixed(2)}) bounds x[${RESTAURANT_BOUNDS.minX},${RESTAURANT_BOUNDS.maxX}] z[${RESTAURANT_BOUNDS.minZ},${RESTAURANT_BOUNDS.maxZ}]`);
 
-// --- unimplemented message types are rejected, not ignored ---------------------
-p2.ws.send(JSON.stringify({ type: 'purchase_upgrade', sequence: 999, upgradeId: 'faster_grill_1' }));
+// --- an undeclared message type is rejected, not ignored ------------------------
+// STORY-012 implemented `purchase_upgrade` — the last of `CLIENT_MESSAGE_TYPES` this real-
+// socket check had left to demonstrate Decision 7's "declared but unimplemented" path with, so
+// there is no candidate left until a future story declares a new type before implementing it.
+// That narrower claim is still covered generically, at the validation layer, by
+// `check-catalogue.mjs`'s data-driven sweep of `CLIENT_MESSAGE_TYPES` minus
+// `IMPLEMENTED_CLIENT_MESSAGE_TYPES` (currently empty, so it passes vacuously). This check keeps
+// proving the OTHER half of Decision 7 over a real socket: a type nobody declared at all is
+// still rejected, not silently dropped.
+p2.ws.send(JSON.stringify({ type: 'teleport', sequence: 999 }));
 await sleep(200);
-check('unimplemented message type is explicitly rejected', p2.lastError?.error === 'not_implemented',
+check('an undeclared message type is explicitly rejected over a real socket', p2.lastError?.error === 'unknown_type',
   JSON.stringify(p2.lastError ?? null));
 
 // --- broadcast rate --------------------------------------------------------------

@@ -176,8 +176,11 @@ function resolvePickup(match, restaurantId, player, targetId) {
   const outOfRange = requireRange(player, staticTargetPosition(targetId), targetId);
   if (outOfRange) return outOfRange;
 
-  if (player.carrying.length >= OWNER_CARRY_CAPACITY) {
-    return fail('interact_rejected', 'carry_full', `capacity ${OWNER_CARRY_CAPACITY}`);
+  // STORY-012. `match.upgrades` is undefined before `service` first ticks (defensive, exactly
+  // as `match.kitchen`/`match.floor`/`match.pantry` are read elsewhere in this file).
+  const capacity = match.upgrades?.ownerCarryCapacity(restaurantId) ?? OWNER_CARRY_CAPACITY;
+  if (player.carrying.length >= capacity) {
+    return fail('interact_rejected', 'carry_full', `capacity ${capacity}`);
   }
   const [oldest] = match.kitchen.readyOrders(restaurantId);
   if (!oldest) return fail('interact_rejected', 'nothing_ready');
@@ -267,7 +270,47 @@ function resolveHandleComplaint(match, restaurantId, player, targetId) {
   return { ok: true };
 }
 
-/** Exported for `scripts/check-owner-actions.mjs` ONLY, exactly as `worker-system.js`'s
- * `_internal` is — a way to force a specific branch deterministically. No other module may
- * import it. */
+const UPGRADE_TERMINAL_ENTITY = ENTITY_BY_ID.get('upgrade_terminal');
+
+/**
+ * The authority for `purchase_upgrade` — STORY-012. A SEPARATE top-level message from
+ * `interact` (see `shared/schemas/messages.d.ts`'s `PurchaseUpgradeMessage`: `{upgradeId}`, no
+ * `targetId`), so it is not routed through `resolveAction`/`INTERACT_ACTIONS` above. The
+ * terminal names its OWN interaction radius in the layout (`interactionRadius`) rather than
+ * reusing `OWNER_INTERACT_RANGE` — it is a fixed, single, always-known target, not a family of
+ * targets a generic range constant fits.
+ */
+export function handlePurchaseUpgrade(match, playerId, message) {
+  if (!match.isServicePhase) {
+    return fail('purchase_rejected', 'wrong_phase', `purchase is only accepted in service, not ${match.phase}`);
+  }
+
+  const player = match.players.get(playerId);
+  if (!player) return fail('purchase_rejected', 'unknown_player');
+
+  if (typeof message.sequence === 'number' && message.sequence <= player.lastPurchaseSequence) {
+    return { ok: false, silent: true };
+  }
+
+  if (!match.upgrades) {
+    return fail('purchase_rejected', 'not_ready');
+  }
+
+  const terminalPosition = UPGRADE_TERMINAL_ENTITY ? vec(UPGRADE_TERMINAL_ENTITY.position) : null;
+  if (!terminalPosition) return fail('purchase_rejected', 'no_such_target', 'upgrade_terminal');
+  const radius = UPGRADE_TERMINAL_ENTITY.interactionRadius ?? OWNER_INTERACT_RANGE;
+  if (distance(player.position, terminalPosition) > radius) {
+    return fail('purchase_rejected', 'out_of_range', 'upgrade_terminal');
+  }
+
+  const restaurantId = playerId; // an owner only ever buys for their own restaurant
+  const result = match.upgrades.purchase(restaurantId, message.upgradeId);
+  if (typeof message.sequence === 'number') player.lastPurchaseSequence = message.sequence;
+  if (!result.ok) return fail('purchase_rejected', result.reason, result.detail);
+  return { ok: true };
+}
+
+/** Exported for `scripts/check-owner-actions.mjs`/`scripts/check-upgrades.mjs` ONLY, exactly as
+ * `worker-system.js`'s `_internal` is — a way to force a specific branch deterministically. No
+ * other module may import it. */
 export const _internal = { staticTargetPosition, isTableId, isStationId };

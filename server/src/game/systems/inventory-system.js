@@ -317,8 +317,10 @@ function updateAffectedIngredients(match, state) {
  *
  *   travel        the walk to the storage room and back. THE number PRD §10's "Pantry Shelves —
  *                 restock travel time -25%" scales, through `restockTravelTimeMultiplier` on
- *                 `match.upgradeEffects`, read defensively so STORY-012 publishing that object is
- *                 the whole of its integration with this file.
+ *                 `match.upgradeEffects[restaurantId]`, read defensively so STORY-012 publishing
+ *                 that object is the whole of its integration with this file. Keyed by
+ *                 restaurant, unlike the match-global event effects below it — each owner buys
+ *                 upgrades independently.
  *   handling      per unit carried, so a big top-up costs more than a small one.
  *   event         PRD §9 `ingredient_shortage`, "one ingredient restocks more slowly": the §16
  *                 `ingredientRestockDurationMultiplier`, applied ONLY to the ingredients the
@@ -326,9 +328,9 @@ function updateAffectedIngredients(match, state) {
  *                 is why an unaffected ingredient restocking at the same speed is the assertion
  *                 that proves the effect is wired up at all.
  */
-function restockDurationMs(match, state, ingredientId, units) {
+function restockDurationMs(match, state, restaurantId, ingredientId, units) {
   const fx = getEventEffects(match);
-  const travelMultiplier = match.upgradeEffects?.restockTravelTimeMultiplier;
+  const travelMultiplier = match.upgradeEffects?.[restaurantId]?.restockTravelTimeMultiplier;
   const travel =
     INVENTORY_RESTOCK_TRAVEL_MS *
     (Number.isFinite(travelMultiplier) && travelMultiplier > 0 ? travelMultiplier : 1);
@@ -368,7 +370,7 @@ function startRestock(match, state, inventory, station, ingredientId, requestedU
   // Reserved out of the pantry NOW, so two requests cannot promise the same units, and so
   // `canEverProduce` keeps counting them (through `inFlightUnits`) while they are in transit.
   inventory.pantry[ingredientId] -= units;
-  const durationMs = restockDurationMs(match, state, ingredientId, units);
+  const durationMs = restockDurationMs(match, state, inventory.restaurantId, ingredientId, units);
   const job = {
     jobId: `restock_${inventory.restaurantId}_${inventory.nextJobId++}`,
     station,
@@ -532,8 +534,8 @@ function createPantryFacade(match, state) {
 
     /** What a restock of `units` would take right now, including the §9 event and the §10
      * upgrade. Exposed so a UI can show the prompt's duration without starting the job. */
-    restockDurationMs(ingredientId, units) {
-      return restockDurationMs(match, state, ingredientId, units);
+    restockDurationMs(restaurantId, ingredientId, units) {
+      return restockDurationMs(match, state, restaurantId, ingredientId, units);
     },
 
     /** Units still in the restaurant's reserve. */

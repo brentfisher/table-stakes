@@ -19,7 +19,10 @@ import { validateClientMessage } from '../../../shared/schemas/validation.js';
 import * as connections from './connection-manager.js';
 import * as matchManager from '../game/match-manager.js';
 import { acceptSetupSubmission } from '../game/validators/setup-validator.js';
-import { handleInteract as checkInteractAuthority } from '../game/validators/action-validator.js';
+import {
+  handleInteract as checkInteractAuthority,
+  handlePurchaseUpgrade as checkPurchaseAuthority,
+} from '../game/validators/action-validator.js';
 
 export function routeMessage(ws, raw) {
   let message;
@@ -57,6 +60,8 @@ export function routeMessage(ws, raw) {
       return handleSetupSubmit(ws, record, message);
     case 'interact':
       return handleInteract(ws, record, message);
+    case 'purchase_upgrade':
+      return handlePurchaseUpgrade(ws, record, message);
     default:
       return undefined;
   }
@@ -190,6 +195,44 @@ function handleInteract(ws, record, message) {
     return;
   }
   console.log(`[ws] ${record.playerId} interact accepted: ${message.action} ${message.targetId}`);
+}
+
+/**
+ * PRD §12 client-to-server example 3, §10 "Upgrades". Same two-gate shape as `handleInteract`
+ * just above: shape first, then `action-validator.js#handlePurchaseUpgrade` for range, phase,
+ * and the purchase's own legality (cost, tier prerequisite, already owned, effect wired).
+ */
+function handlePurchaseUpgrade(ws, record, message) {
+  if (!record.roomId) return;
+  const room = matchManager.getRoom(record.roomId);
+  if (!room) {
+    connections.send(ws, { type: 'error', error: 'room_not_found', roomId: record.roomId });
+    return;
+  }
+
+  const shape = validateClientMessage(message);
+  if (!shape.ok) {
+    connections.send(ws, { type: 'error', error: shape.error, detail: shape.detail });
+    console.log(`[ws] ${record.playerId} purchase malformed: ${shape.detail}`);
+    return;
+  }
+
+  const result = checkPurchaseAuthority(room.match, record.playerId, message);
+  if (result.silent) return; // a stale/duplicate sequence, same handling as a stale interact
+  if (!result.ok) {
+    connections.send(ws, {
+      type: 'error',
+      error: result.error,
+      reason: result.reason,
+      detail: result.detail,
+    });
+    console.log(
+      `[ws] ${record.playerId} purchase rejected: ${message.upgradeId} — ` +
+        `${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
+    );
+    return;
+  }
+  console.log(`[ws] ${record.playerId} purchase accepted: ${message.upgradeId}`);
 }
 
 /**
