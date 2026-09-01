@@ -220,3 +220,17 @@ export declare const OWNER_TASK_DURATIONS_MS: OwnerTaskDurationsMs;
 export declare const OWNER_CARRY_CAPACITY: number;
 export declare const UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD: number;
 export declare const OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC: number;
+
+export declare const SCORE_POINTS_SCALE: number;
+export declare const SCORE_WEIGHT_NET_REVENUE: number;
+export declare const SCORE_WEIGHT_GUESTS_SERVED: number;
+export declare const SCORE_WEIGHT_SATISFACTION: number;
+export declare const SCORE_WEIGHT_REPUTATION: number;
+export declare const SCORE_WEIGHT_EVENT_OBJECTIVE: number;
+export declare const SCORE_NET_REVENUE_REFERENCE: number;
+export declare const SCORE_GUESTS_SERVED_REFERENCE: number;
+export declare const SCORE_PENALTY_ABANDONMENT_POINTS: number;
+export declare const SCORE_PENALTY_CANCELLED_ORDER_POINTS: number;
+export declare const SCORE_PENALTY_SEVERE_DISSATISFACTION_POINTS: number;
+export declare const SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR: number;
+export declare const SCORE_PENALTY_CRITIC_FAILURE_POINTS: number;
