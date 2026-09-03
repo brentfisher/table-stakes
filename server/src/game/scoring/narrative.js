@@ -97,13 +97,17 @@ export function pickDecidingSegment(segmentCountsByRestaurant, restaurantIds) {
  * `highestMarginDishes` slices: the fastest dish need not be a best-seller. Null when nothing
  * sold — no dish to praise.
  *
- * @param {Array<{ dishId: string, count: number, avgFulfillmentMs: number }>} dishFulfillment
+ * @param {Array<{ dishId: string, count: number, avgFulfillmentMs: number | null }>} dishFulfillment -
+ *   `avgFulfillmentMs` is null for an entry with sales but no timing sample; see the field
+ *   comment on order-system.js's own `dishFulfillment` for why that must never read as 0.
  * @returns {{ dishId: string, count: number, avgFulfillmentMs: number } | null}
  */
 export function pickBestDish(dishFulfillment) {
   let best = null;
   for (const entry of dishFulfillment) {
-    if (entry.count <= 0) continue;
+    // `avgFulfillmentMs === null` means "sold, but no real fulfillment comparison exists for
+    // it" — skipped rather than treated as an unbeatable 0ms, per Notable Pattern 9.
+    if (entry.count <= 0 || entry.avgFulfillmentMs === null || entry.avgFulfillmentMs === undefined) continue;
     if (best === null || entry.avgFulfillmentMs < best.avgFulfillmentMs) best = entry;
   }
   return best ? { dishId: best.dishId, count: best.count, avgFulfillmentMs: best.avgFulfillmentMs } : null;

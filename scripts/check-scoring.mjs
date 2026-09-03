@@ -865,6 +865,43 @@ function finishMatch(match) {
     picked?.dishId === 'fast_niche',
     JSON.stringify(picked),
   );
+
+  // Regression: a dish tallied with real sales but NO timing sample (`avgFulfillmentMs: null`
+  // — e.g. `forceOrderDishSales` below, which forces `{dishId, count, revenue}` with no
+  // fulfillment keys at all, the same shape a `dishSales` entry would have if it were ever
+  // built by anything other than `deliverOrder`) must never be treated as an unbeatable 0ms.
+  const untimedBeatsNothing = pickBestDish([
+    { dishId: 'untimed_but_sold', count: 20, avgFulfillmentMs: null },
+  ]);
+  check(
+    'pickBestDish (pure) reports null rather than crowning an untimed (avgFulfillmentMs: null) dish',
+    untimedBeatsNothing === null,
+    JSON.stringify(untimedBeatsNothing),
+  );
+  const untimedNeverBeatsTimed = pickBestDish([
+    { dishId: 'untimed_but_sold', count: 50, avgFulfillmentMs: null },
+    { dishId: 'timed_but_slower_looking', count: 1, avgFulfillmentMs: 9999 },
+  ]);
+  check(
+    'pickBestDish (pure) prefers a real (if slow) timing over an untimed null, whatever the count',
+    untimedNeverBeatsTimed?.dishId === 'timed_but_slower_looking',
+    JSON.stringify(untimedNeverBeatsTimed),
+  );
+
+  // End to end: `forceOrderDishSales` (section 7's helper, used by m_dishes below) builds a
+  // `dishSales` entry the same shape a pre-STORY-014 code path would — no fulfillment keys at
+  // all. The real `orderSummary` builder must turn that into `avgFulfillmentMs: null`, not `0`,
+  // so `bestDish` cannot crown it.
+  const untimedMatch = twoRestaurantProbe('m_best_dish_untimed');
+  forceOrderDishSales(untimedMatch, 'p1', 'smash_burger', 20, 20 * 14);
+  forceOrderLedger(untimedMatch, 'p1', { revenue: 280 });
+  forceOrderLedger(untimedMatch, 'p2', { revenue: 0 });
+  const untimedResults = finishMatch(untimedMatch).finalResults;
+  check(
+    'end to end: a dish forced onto dishSales with no fulfillment sample never becomes bestDish',
+    untimedResults.results.p1.bestDish === null,
+    JSON.stringify(untimedResults.results.p1.bestDish),
+  );
 }
 
 // =============================================================================================

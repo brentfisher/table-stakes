@@ -1145,10 +1145,17 @@ export const orderSystem = {
       // FULL per-dish list, not sliced to top-5 like the two arrays above — the fastest dish
       // need not be a best-seller or a high-margin one, so `narrative.js#pickBestDish` has to
       // see every dish this restaurant ever delivered at least one of.
+      //
+      // `avgFulfillmentMs` is `null`, NEVER `0`, when `fulfillmentSamples` is 0 — a dish tallied
+      // with sales but no timing sample (every real `deliverOrder` entry always has both, but a
+      // Map entry built any other way might not) must not silently read as an instant,
+      // record-setting 0ms and win `bestDish` by construction. Notable Pattern 9: no real
+      // comparison happened, so no number is reported.
       const dishFulfillment = [...dishSales].map((d) => ({
         dishId: d.dishId,
         count: d.count,
-        avgFulfillmentMs: d.fulfillmentSamples > 0 ? Math.round(d.fulfillmentMsSum / d.fulfillmentSamples) : 0,
+        avgFulfillmentMs:
+          d.fulfillmentSamples > 0 ? Math.round(d.fulfillmentMsSum / d.fulfillmentSamples) : null,
       }));
       return {
         restaurantId: restaurant.restaurantId,
