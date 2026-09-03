@@ -254,7 +254,14 @@ export interface RestaurantSnapshot {
       ingredientId: string | null;
     } | null;
   }>;
-  /** STORY-015 (HUD bottlenecks). */
+  /**
+   * STORY-015. `server/src/game/systems/hud-bottleneck-system.js`'s classification of THIS
+   * tick's already-published state (shortages, orders, customers, tables, queue length) into
+   * the `BottleneckKind` vocabulary, in PRD §18 alert-priority order. Present (possibly `[]`)
+   * during `service`/`final_rush`; absent otherwise, same as `shortages`/`workers` above.
+   * `equipment_failure` and `cash_opportunity` are declared members of `BottleneckKind` this
+   * array never emits — see that system file's header for why each is honestly never true yet.
+   */
   activeBottlenecks?: BottleneckKind[];
 }
 

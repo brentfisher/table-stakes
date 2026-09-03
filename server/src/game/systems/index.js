@@ -29,6 +29,11 @@
 //                            `action-validator.js`, a purchase itself — are never stale; only
 //                            the three systems that read the republished `match.upgradeEffects`
 //                            map inside their own tick are.)
+//   hud-bottlenecks — STORY-015  (after `upgrades`, before `scoring`. It only READS this tick's
+//                            already-decorated `match.restaurants[]`/`match.customers`/
+//                            `match.orders` — it needs them as fresh as every other late system
+//                            does, and it produces nothing `scoring` reads, so it must not be
+//                            registered any later than immediately before it.)
 //   scoring    — STORY-013  (last: it reads what everything else produced)
 
 import { registerSystem } from '../simulation-loop.js';
@@ -40,6 +45,7 @@ import { setupSystem } from './setup-system.js';
 import { inventorySystem } from './inventory-system.js';
 import { workerSystem } from './worker-system.js';
 import { upgradeSystem } from './upgrade-system.js';
+import { hudBottleneckSystem } from './hud-bottleneck-system.js';
 import { scoringSystem } from './scoring-system.js';
 
 export function registerAllSystems() {
@@ -72,6 +78,8 @@ export function registerAllSystems() {
   registerSystem(workerSystem);
   // `upgrades` runs last of the gameplay systems — see the header comment above.
   registerSystem(upgradeSystem);
+  // `hud-bottlenecks` — see the header comment above. Strictly between `upgrades` and `scoring`.
+  registerSystem(hudBottleneckSystem);
   // `scoring` MUST be registered LAST, after every other gameplay system. `match.districtSummary`
   // (customers), `match.orderSummary` (orders) and `match.upgradeSummary` (upgrades) are each set
   // by THEIR OWN `onPhaseChange('results')` handler, immediately before that system tears its own

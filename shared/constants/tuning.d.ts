@@ -236,3 +236,10 @@ export declare const SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR: number;
 export declare const SCORE_PENALTY_CRITIC_FAILURE_POINTS: number;
 
 export declare const RESULTS_TURNING_POINTS_MAX: number;
+
+export declare const HUD_KITCHEN_BACKLOG_QUEUED_TICKETS_THRESHOLD: number;
+export declare const HUD_LONG_ENTRY_QUEUE_THRESHOLD: number;
+export declare const HUD_EVENT_COUNTDOWN_ALERT_MS: number;
+export declare const HUD_CRITICAL_ALERTS_MAX: number;
+export declare const HUD_CASH_FEEDBACK_MIN_DELTA: number;
+export declare const HUD_CASH_FEEDBACK_DISPLAY_MS: number;

@@ -469,6 +469,17 @@ export class Match {
             // `service` (`upgrade-system.js` attaches it on the setup->service transition).
             cash: this.upgrades?.cashAvailable(viewer.playerId) ?? null,
             purchasedUpgradeIds: this.upgrades?.ownedUpgrades(viewer.playerId) ?? [],
+            // STORY-015. PRD §18 "Revenue and available cash" needs BOTH numbers, and `cash`
+            // above only ever carried the second one — `restaurants[].revenue` stays
+            // deliberately unpublished (`customer-system.js#toPublicRestaurantSnapshot`'s own
+            // comment: "neither are cash, inventory, the ledger... a later story owns"), so a
+            // rival's revenue never leaks the way a rival's cash never does. This is that later
+            // story, and `you` — already the private, per-viewer half PRD §18/Decision 16 carry
+            // `cash` in — is exactly where the viewer's OWN revenue belongs, for the same
+            // reason: it is derived from this player's own menu and pricing. Same source and
+            // same null-before-`service` guard as `cash` (`match.kitchen` does not exist before
+            // `order-system.js`'s own `onPhaseChange('service')`, and is torn down at `results`).
+            revenue: this.kitchen?.revenueFor(viewer.playerId) ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already
