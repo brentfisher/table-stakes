@@ -856,3 +856,18 @@ export const SCORE_PENALTY_CANCELLED_ORDER_POINTS = 6;
 export const SCORE_PENALTY_SEVERE_DISSATISFACTION_POINTS = 10;
 export const SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR = 0.05;
 export const SCORE_PENALTY_CRITIC_FAILURE_POINTS = 50;
+
+// --- STORY-014: results-screen narrative layer ---------------------------------------------------
+//
+// PRD §11 "Key turning points" and the results-screen narrative section. Everything here is
+// derived RETROACTIVELY at the `results` transition from `match.districtDecisions` (the §17
+// step-6 decision log, already recorded incrementally by customer-system.js) and
+// `match.eventTimeline` (already anchored by event-system.js) — see
+// `server/src/game/scoring/narrative.js`. No new per-tick sampler was added: `scoring-system.js`
+// still owns no live simulation state (see that file's own header), it just reads more of what
+// already exists once, at the end.
+
+/** How many turning points the results screen shows, ranked by the size of the swing. Three
+ * matches the AC's "key turning points" (plural, but a short list) without turning the results
+ * screen into a full match transcript. */
+export const RESULTS_TURNING_POINTS_MAX = 3;

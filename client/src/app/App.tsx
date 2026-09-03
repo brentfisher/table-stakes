@@ -8,6 +8,7 @@ import { GameClient, type GameClientStatus } from '../game/GameClient';
 import { HudPanel } from '../ui/HudPanel';
 import { SetupScreen } from '../ui/SetupScreen';
 import { UpgradeTerminal } from '../ui/UpgradeTerminal';
+import { ResultsPanel } from '../ui/ResultsPanel';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -45,6 +46,24 @@ export function App(): JSX.Element {
         <SetupScreen
           status={status}
           onSubmit={(payload) => clientRef.current?.submitSetup(payload)}
+        />
+      ) : null}
+      {/*
+        STORY-014 (PRD §11 results screen). Renders as soon as `match_complete` has arrived —
+        NOT gated on `matchPhase === 'results'` — because a disconnect-triggered end sets
+        `endReason` without ever visiting the `results` phase (see match.js's own comment on
+        `matchCompleteMessage`); the panel has to cover that path too, not just the normal one.
+        Full-bleed overlay, same `SetupScreen` pattern above it in this tree.
+      */}
+      {status?.matchComplete ? (
+        <ResultsPanel
+          status={status}
+          onRematch={() => {
+            // No `rematch` client message exists (see NetworkClient.ts) and none is added —
+            // a fresh page load re-joins room-less, which is exactly PRD §12 room-flow step 1
+            // ("create a room") and lands back in the lobby.
+            window.location.href = window.location.pathname;
+          }}
         />
       ) : null}
       {/* STORY-012. Opens on proximity, not an `E` press — see

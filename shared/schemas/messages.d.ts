@@ -339,6 +339,43 @@ export interface MatchResult {
   /** §11 "Customer-segment breakdown": party count per segment id this restaurant actually
    * served (not merely attracted or lost). */
   customerSegmentBreakdown: Record<string, number>;
+
+  // --- STORY-014 additions (results screen: score breakdown + narrative layer) ------------------
+  // PRD §11 results screen: "so a player can see which term lost them the match" and the
+  // narrative-sentence requirements. Every field below is server-computed, once, at `results` —
+  // see server/src/game/scoring/narrative.js and scoring-system.js's own header comment.
+
+  /** The composite score's own component contributions before the penalty subtraction — the
+   * same `computeCompositeScore` breakdown `scoring-system.js` already computed internally,
+   * simply no longer discarded. Each is already on the points scale (`SCORE_POINTS_SCALE`),
+   * so they sum with `penaltyBreakdown`'s total to exactly `score`. */
+  scoreBreakdown: {
+    revenueScore: number;
+    guestsServedScore: number;
+    satisfactionScore: number;
+    reputationBonus: number;
+    eventObjectiveBonus: number;
+    penaltyScore: number;
+  };
+  /** `penaltyScore`'s own five components — which specific penalty term did the damage, not
+   * just the summed total `scoreBreakdown.penaltyScore` (== `computePenaltyPoints`) carries. */
+  penaltyBreakdown: {
+    abandonmentPoints: number;
+    cancelledOrderPoints: number;
+    severeDissatisfactionPoints: number;
+    wastePoints: number;
+    criticFailurePoints: number;
+  };
+  /** The narrative "player's best-performing dish by fulfillment time": the dish this
+   * restaurant sold at least one of, with the lowest average time from order placement to that
+   * dish coming off the line. Null when nothing sold. */
+  bestDish: { dishId: string; count: number; avgFulfillmentMs: number } | null;
+  /** The narrative "largest single loss cause, tied to the event that caused it" — read off
+   * the OTHER player's `results[rivalId].largestLossCause` for "your rival lost N customers to
+   * X [after the Y event]" sentences. `eventId` is null when no single event covered a majority
+   * of that reason's occurrences (Notable Pattern 9: never fabricate a cause). Null when this
+   * restaurant never lost a party to a reasoned district decision. */
+  largestLossCause: { reason: string; count: number; eventId: string | null } | null;
 }
 
 /**
@@ -356,6 +393,40 @@ export interface MatchCompleteMessage {
   reason: MatchEndReason;
   /** Set only when `reason` is `player_disconnected`. */
   disconnectedPlayerId?: string;
+
+  // --- STORY-014 additions: match-wide narrative fields ------------------------------------------
+  // Comparative between the two restaurants, unlike everything in `MatchResult` (which is each
+  // player's own), so these sit beside `winnerPlayerId` rather than inside `results[playerId]` —
+  // same reasoning as `winnerPlayerId` itself. All three are null/empty (never a guess) on a
+  // match that never reached scoring — see match.js's own comment on this method — and on any
+  // match with other than exactly 2 restaurants, the same "no rival, nothing to compare" case
+  // `winnerPlayerId` already treats as null rather than a crash.
+
+  /** The narrative "segment that decided the match" — PRD §11's own example ("You won the lunch
+   * rush by serving 18 more office-worker parties"): the segment id with the largest served-
+   * count difference between the two restaurants, and which one led it. Null when nobody was
+   * served, or every segment tied exactly. */
+  decidingSegment: { segmentId: string; leaderRestaurantId: string; servedDifferential: number } | null;
+  /** PRD §11 "Key turning points": up to `RESULTS_TURNING_POINTS_MAX` largest swings in
+   * cumulative party-acquisition margin between the two restaurants, ranked by `swing`
+   * descending. `eventId`/`phase` name what was happening when the swing occurred; either may
+   * be null (an event-less stretch of `service` still has a phase; a match whose event system
+   * never anchored has neither). */
+  turningPoints: Array<{
+    atMs: number;
+    eventId: string | null;
+    phase: MatchPhase | null;
+    leaderRestaurantId: string;
+    swing: number;
+  }>;
+  /** PRD §11 "state tie-break resolution explicitly rather than silently". Set only when the
+   * two composite scores were exactly equal AND the §11 tie-break chain (not a genuine draw)
+   * decided the winner; null the rest of the time, including every ordinary match where the
+   * scores simply differed. */
+  tieBreakDecided: {
+    criterion: 'averageSatisfaction' | 'guestsServed' | 'netRevenue' | 'abandonedParties';
+    winnerPlayerId: string;
+  } | null;
 }
 
 export interface ErrorMessage {

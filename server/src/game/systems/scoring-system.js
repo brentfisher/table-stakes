@@ -1,12 +1,17 @@
 // PRD §11 "Scoring and win conditions". Reads what every other gameplay system produced —
-// `match.districtSummary` (customer-system.js), `match.orderSummary` (order-system.js),
-// `match.upgradeSummary` (upgrade-system.js), and each player's own `setup` — and turns it into
-// a composite score, a winner, and the full §11 "End-of-match results" payload.
+// `match.districtSummary` and `match.districtDecisions` (customer-system.js), `match.orderSummary`
+// (order-system.js), `match.upgradeSummary` (upgrade-system.js), `match.eventTimeline`
+// (event-system.js), and each player's own `setup` — and turns it into a composite score, a
+// winner, and the full §11 "End-of-match results" payload, INCLUDING (STORY-014) the results
+// screen's narrative layer: per-restaurant score/penalty breakdowns, best dish, largest loss
+// cause, and the match-wide deciding segment, turning points and tie-break explanation.
 //
 // THIS FILE OWNS NO SIMULATION STATE OF ITS OWN. It has no `match._scoringSimState`, no
 // per-tick bookkeeping, nothing to tear down. Its `update()` is required by `registerSystem`
-// but is genuinely empty: every raw number it needs was already accumulated, incrementally,
-// by the system that owns that number, and published on the match for exactly this moment.
+// but is genuinely empty: every raw number it needs — STORY-014's narrative fields included —
+// was already accumulated, incrementally, by the system that owns that number, and published on
+// the match for exactly this moment; the narrative layer is derived RETROACTIVELY, once, from
+// that already-accumulated data (see ../scoring/narrative.js's own header), not sampled live.
 //
 // REGISTRATION ORDER IS LOAD-BEARING. This system MUST be registered LAST (see
 // systems/index.js's registration comment) — every one of the three summaries above is set by
@@ -16,12 +21,26 @@
 // is guaranteed to already exist by the time its own `onPhaseChange('results')` runs.
 //
 // PURE MATH LIVES ELSEWHERE. `computeCompositeScore`, `computePenaltyPoints`,
-// `compareForTieBreak` and `determineWinner` are `../scoring/score-formula.js` — a
-// dependency-free module with no knowledge of `match`, written independently against a frozen
-// contract. This file's job is entirely translation: match state -> that module's plain-object
-// inputs -> `match.finalResults`.
+// `computePenaltyBreakdown`, `compareForTieBreak`, `explainTieBreak` and `determineWinner` are
+// `../scoring/score-formula.js`; `pickDecidingSegment`, `pickBestDish`, `pickLargestLossCause`
+// and `computeTurningPoints` are `../scoring/narrative.js`. Both are dependency-free modules
+// with no knowledge of `match`, written independently against frozen contracts. This file's job
+// is entirely translation: match state -> those modules' plain-object inputs -> `match.finalResults`.
 
-import { computeCompositeScore, computePenaltyPoints, determineWinner } from '../scoring/score-formula.js';
+import {
+  computeCompositeScore,
+  computePenaltyPoints,
+  computePenaltyBreakdown,
+  determineWinner,
+  explainTieBreak,
+} from '../scoring/score-formula.js';
+import {
+  toEventWindows,
+  pickDecidingSegment,
+  pickBestDish,
+  pickLargestLossCause,
+  computeTurningPoints,
+} from '../scoring/narrative.js';
 import { CUSTOMER_STATES } from '../../../../shared/schemas/game-state.js';
 import {
   SCORE_POINTS_SCALE,
@@ -39,6 +58,7 @@ import {
   SCORE_PENALTY_CRITIC_FAILURE_POINTS,
   DISTRICT_REPUTATION_MIN,
   DISTRICT_REPUTATION_MAX,
+  RESULTS_TURNING_POINTS_MAX,
 } from '../../../../shared/constants/tuning.js';
 
 const toCents = (value) => Math.round(value * 100) / 100;
@@ -103,7 +123,14 @@ function eventObjectiveFractionFor(orderSummary) {
   return (orderSummary.ordersDeliveredDuringEvent ?? 0) / delivered;
 }
 
-function buildRestaurantResult(match, restaurantId, districtByRestaurant, orderByRestaurant, upgradeByRestaurant) {
+function buildRestaurantResult(
+  match,
+  restaurantId,
+  districtByRestaurant,
+  orderByRestaurant,
+  upgradeByRestaurant,
+  eventWindows,
+) {
   const district = districtByRestaurant.get(restaurantId) ?? {};
   const order = orderByRestaurant.get(restaurantId) ?? {};
   const upgrade = upgradeByRestaurant.get(restaurantId) ?? {};
@@ -140,9 +167,27 @@ function buildRestaurantResult(match, restaurantId, districtByRestaurant, orderB
       criticFailurePoints: SCORE_PENALTY_CRITIC_FAILURE_POINTS,
     },
   );
+  // STORY-014 (PRD §11 results screen: "which term lost them the match"). Same five counts/
+  // weights as `penaltyPoints` above, broken out per term instead of summed to one scalar.
+  const penaltyBreakdown = computePenaltyBreakdown(
+    {
+      abandonedParties: district.abandonedParties ?? 0,
+      cancelledOrders: order.cancelledOrders ?? 0,
+      severeDissatisfactionCount: district.severelyDissatisfiedCount ?? 0,
+      wasteDollars: order.wasteDollars ?? 0,
+      criticFailures,
+    },
+    {
+      abandonmentPoints: SCORE_PENALTY_ABANDONMENT_POINTS,
+      cancelledOrderPoints: SCORE_PENALTY_CANCELLED_ORDER_POINTS,
+      severeDissatisfactionPoints: SCORE_PENALTY_SEVERE_DISSATISFACTION_POINTS,
+      wastePointsPerDollar: SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR,
+      criticFailurePoints: SCORE_PENALTY_CRITIC_FAILURE_POINTS,
+    },
+  );
 
   // --- composite score -------------------------------------------------------------------------
-  const { score } = computeCompositeScore(
+  const { score, components: scoreBreakdown } = computeCompositeScore(
     {
       netRevenue: netProfit,
       guestsServed: district.guestsServed ?? 0,
@@ -165,8 +210,21 @@ function buildRestaurantResult(match, restaurantId, districtByRestaurant, orderB
     },
   );
 
+  // --- STORY-014 narrative fields (PRD §11 results narrative) ---------------------------------
+  const bestDish = pickBestDish(order.dishFulfillment ?? []);
+  const largestLossCause = pickLargestLossCause(
+    district.lostByReason ?? {},
+    match.districtDecisions ?? [],
+    restaurantId,
+    eventWindows,
+  );
+
   return {
     score,
+    scoreBreakdown,
+    penaltyBreakdown,
+    bestDish,
+    largestLossCause,
     // The original 6 MatchResult fields (never removed, per Decision 7):
     revenue,
     guestsServed: district.guestsServed ?? 0,
@@ -210,19 +268,29 @@ export const scoringSystem = {
     const orderByRestaurant = new Map((match.orderSummary ?? []).map((o) => [o.restaurantId, o]));
     const upgradeByRestaurant = new Map((match.upgradeSummary ?? []).map((u) => [u.restaurantId, u]));
 
+    // STORY-014. Built once, shared by every restaurant's `largestLossCause` AND the match-wide
+    // `turningPoints` below — see ../scoring/narrative.js's own header for why this is safe to
+    // derive here, retroactively, rather than sampled live.
+    const eventWindows = toEventWindows(match.eventTimeline?.entries, match.eventTimeline?.anchorMs);
+
     const restaurantIds = [...match.players.keys()];
     const perRestaurant = new Map();
     for (const restaurantId of restaurantIds) {
       perRestaurant.set(
         restaurantId,
-        buildRestaurantResult(match, restaurantId, districtByRestaurant, orderByRestaurant, upgradeByRestaurant),
+        buildRestaurantResult(match, restaurantId, districtByRestaurant, orderByRestaurant, upgradeByRestaurant, eventWindows),
       );
     }
 
     // `determineWinner` is contracted for exactly 2 restaurants — the real shape of every match
     // this game ever runs. A dev/check-script match seated with only 1 player has no rival to
-    // win against; null is the honest answer, not a crash.
+    // win against; null is the honest answer, not a crash. The same guard covers every
+    // STORY-014 match-wide field below: each is inherently a COMPARISON between two restaurants,
+    // so a 1-restaurant match gets the same honest `null`/`[]` a genuine draw would.
     let winnerPlayerId = null;
+    let tieBreakDecided = null;
+    let decidingSegment = null;
+    let turningPoints = [];
     if (restaurantIds.length === 2) {
       const [aId, bId] = restaurantIds;
       const a = perRestaurant.get(aId);
@@ -231,6 +299,39 @@ export const scoringSystem = {
         { restaurantId: aId, score: a.score, tieBreak: a.tieBreak },
         { restaurantId: bId, score: b.score, tieBreak: b.tieBreak },
       ]);
+
+      // PRD §11 results screen: "state tie-break resolution explicitly rather than silently".
+      // Only meaningful when the composite scores were exactly equal AND that tie-break chain
+      // itself resolved to a winner (not a genuine draw, where `explainTieBreak` returns null
+      // too and there is nothing to explain).
+      if (a.score === b.score && winnerPlayerId !== null) {
+        const criterion = explainTieBreak(a.tieBreak, b.tieBreak);
+        if (criterion !== null) tieBreakDecided = { criterion, winnerPlayerId };
+      }
+
+      decidingSegment = pickDecidingSegment(
+        {
+          [aId]: districtByRestaurant.get(aId)?.segmentCounts ?? {},
+          [bId]: districtByRestaurant.get(bId)?.segmentCounts ?? {},
+        },
+        [aId, bId],
+      );
+
+      // `match.durations.service` is the SERVICE phase's own configured length; added to the
+      // event timeline's anchor (the exact absolute `elapsedMs` `service` began — see
+      // event-system.js's own comment on `timeline.anchorMs`), it is the absolute `elapsedMs`
+      // `final_rush` began, with no history array required to recover it after the fact.
+      const finalRushStartMs =
+        match.eventTimeline?.anchorMs === null || match.eventTimeline?.anchorMs === undefined
+          ? null
+          : match.eventTimeline.anchorMs + (match.durations?.service ?? 0);
+      turningPoints = computeTurningPoints(
+        match.districtDecisions ?? [],
+        [aId, bId],
+        eventWindows,
+        finalRushStartMs,
+        RESULTS_TURNING_POINTS_MAX,
+      );
     }
 
     const results = {};
@@ -246,10 +347,19 @@ export const scoringSystem = {
       );
     }
     console.log(`[scoring] ${match.id} winnerPlayerId=${winnerPlayerId ?? 'null (draw)'}`);
+    if (tieBreakDecided) {
+      console.log(`[scoring] ${match.id} tie-break decided on ${tieBreakDecided.criterion}`);
+    }
+    if (decidingSegment) {
+      console.log(
+        `[scoring] ${match.id} deciding segment=${decidingSegment.segmentId} ` +
+          `leader=${decidingSegment.leaderRestaurantId} margin=${decidingSegment.servedDifferential}`,
+      );
+    }
 
     // Outlives everything else's teardown, same pattern as `match.districtSummary` etc. — the
     // match is ending anyway, so nothing needs to null this back out.
-    match.finalResults = { winnerPlayerId, results };
+    match.finalResults = { winnerPlayerId, results, decidingSegment, turningPoints, tieBreakDecided };
   },
 };
 

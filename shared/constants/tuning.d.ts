@@ -234,3 +234,5 @@ export declare const SCORE_PENALTY_CANCELLED_ORDER_POINTS: number;
 export declare const SCORE_PENALTY_SEVERE_DISSATISFACTION_POINTS: number;
 export declare const SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR: number;
 export declare const SCORE_PENALTY_CRITIC_FAILURE_POINTS: number;
+
+export declare const RESULTS_TURNING_POINTS_MAX: number;
