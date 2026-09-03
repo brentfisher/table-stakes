@@ -220,6 +220,17 @@ export const upgradeSystem = {
         );
       }
     }
+    // STORY-013 (PRD §11 "Upgrades purchased"). Must outlive this system's own teardown below —
+    // same "outlives its own teardown" pattern as customer-system.js's `match.districtSummary`
+    // and order-system.js's `match.orderSummary`. `scoring-system.js`, registered last, reads
+    // this at its own `results` handler.
+    if (match._upgradeSimState) {
+      match.upgradeSummary = [...match._upgradeSimState.restaurants.keys()].map((restaurantId) => ({
+        restaurantId,
+        purchasedUpgradeIds: [...match._upgradeSimState.restaurants.get(restaurantId).owned],
+        cashSpentOnUpgrades: match._upgradeSimState.restaurants.get(restaurantId).cashSpent,
+      }));
+    }
     match._upgradeSimState = undefined;
     match.upgrades = undefined;
     match.upgradeEffects = undefined;

@@ -40,6 +40,7 @@ import { setupSystem } from './setup-system.js';
 import { inventorySystem } from './inventory-system.js';
 import { workerSystem } from './worker-system.js';
 import { upgradeSystem } from './upgrade-system.js';
+import { scoringSystem } from './scoring-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -71,5 +72,12 @@ export function registerAllSystems() {
   registerSystem(workerSystem);
   // `upgrades` runs last of the gameplay systems — see the header comment above.
   registerSystem(upgradeSystem);
-  // STORY-013: registerSystem(scoringSystem);
+  // `scoring` MUST be registered LAST, after every other gameplay system. `match.districtSummary`
+  // (customers), `match.orderSummary` (orders) and `match.upgradeSummary` (upgrades) are each set
+  // by THEIR OWN `onPhaseChange('results')` handler, immediately before that system tears its own
+  // internals down. `onPhaseChange` fires for every system, in this registration order, before
+  // any `update` runs this tick — so registered last, `scoringSystem.onPhaseChange` is guaranteed
+  // every one of those three summaries already exists. Registered anywhere earlier, it would read
+  // some of them as not-yet-populated `undefined` on the very tick the match ends.
+  registerSystem(scoringSystem);
 }

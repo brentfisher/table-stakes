@@ -816,3 +816,43 @@ export const UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD = 0.35;
  * rather than the same flat number of seconds.
  */
 export const OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC = 0.3;
+
+// --- STORY-013: scoring, penalties, tie-breakers ------------------------------------------------
+//
+// PRD §11 "Recommended score composition": Restaurant Score = Revenue Score + Guests Served
+// Score + Satisfaction Score + Reputation Bonus + Event Objective Bonus − Penalty Score. The
+// PRD gives WEIGHTS (40/20/25/10/5%) but not units — revenue is dollars, satisfaction and
+// reputation are already 0-100-ish scales, guests served is a raw count. `SCORE_POINTS_SCALE`
+// is the arbitrary total a perfect (fraction=1 on every component) restaurant scores before
+// penalties, so every component is normalized to a [0,1] fraction against a REFERENCE value
+// before its weight applies — the reference constants below are that normalization, not PRD
+// text, and are named as an interpretation of "weight" as a points contribution rather than a
+// literal percentage of an unbounded raw number.
+
+/** The perfect-restaurant point total before any penalty is subtracted. Arbitrary but fixed —
+ * only relative scores and the sign of a comparison ever matter, never this number alone. */
+export const SCORE_POINTS_SCALE = 1000;
+
+/** PRD §11's MVP weighting, verbatim. Sums to 1.0 — the point scale IS the 100%. */
+export const SCORE_WEIGHT_NET_REVENUE = 0.4;
+export const SCORE_WEIGHT_GUESTS_SERVED = 0.2;
+export const SCORE_WEIGHT_SATISFACTION = 0.25;
+export const SCORE_WEIGHT_REPUTATION = 0.1;
+export const SCORE_WEIGHT_EVENT_OBJECTIVE = 0.05;
+
+/** Net revenue (revenue minus ingredient and upgrade expenses) that earns a full 1.0 Revenue
+ * Score fraction. Above this, the fraction clamps at 1.0 rather than rewarding degenerate
+ * over-earning further — the whole point of a composite score per §11's own rationale. */
+export const SCORE_NET_REVENUE_REFERENCE = 1200;
+
+/** Guests served that earns a full 1.0 Guests Served Score fraction — the midpoint of §24's
+ * "approximately 40-90 customer parties per restaurant" hypothesis. */
+export const SCORE_GUESTS_SERVED_REFERENCE = 65;
+
+/** §11 penalties, each a fixed point deduction per occurrence (or per dollar, for waste) —
+ * data, not a hardcoded magnitude inside `scoring-system.js`. */
+export const SCORE_PENALTY_ABANDONMENT_POINTS = 8;
+export const SCORE_PENALTY_CANCELLED_ORDER_POINTS = 6;
+export const SCORE_PENALTY_SEVERE_DISSATISFACTION_POINTS = 10;
+export const SCORE_PENALTY_WASTE_POINTS_PER_DOLLAR = 0.05;
+export const SCORE_PENALTY_CRITIC_FAILURE_POINTS = 50;

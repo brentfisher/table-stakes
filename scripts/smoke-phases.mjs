@@ -205,14 +205,19 @@ async function main() {
   check('broadcast timeRemainingMs never runs backwards within a phase', monotonic,
     `${p1.snapshots.length} snapshots`);
 
+  // STORY-013: `results` is no longer empty — `scoring-system.js` populates a full `MatchResult`
+  // per player at the `results` transition. Neither client here ever plays (both just ready up
+  // and wait), so both restaurants are identically empty and genuinely tie — `winnerPlayerId`
+  // stays null for that reason, not because scoring never ran.
+  const REQUIRED_RESULT_FIELDS = ['score', 'revenue', 'guestsServed', 'averageSatisfaction', 'reputation', 'abandonedParties'];
   const envelopeOk = (m) =>
     m &&
     m.winnerPlayerId === null &&
     m.reason === 'completed' &&
     Object.keys(m.results).length === 2 &&
-    Object.values(m.results).every((r) => Object.keys(r).length === 0);
+    Object.values(m.results).every((r) => REQUIRED_RESULT_FIELDS.every((f) => f in r));
   check(
-    'match_complete reaches both clients with the PRD §12 envelope and empty results',
+    'match_complete reaches both clients with the PRD §12 envelope and a populated MatchResult per player',
     envelopeOk(p1.complete) && envelopeOk(p2.complete),
     JSON.stringify(p1.complete),
   );
