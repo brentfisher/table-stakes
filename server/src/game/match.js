@@ -421,6 +421,14 @@ export class Match {
         Object.fromEntries([...this.players.keys()].map((playerId) => [playerId, {}])),
       reason: this.endReason ?? 'completed',
       ...(this.endedPlayerId ? { disconnectedPlayerId: this.endedPlayerId } : {}),
+      // STORY-014 (PRD §11 results-screen narrative layer). Match-wide, not per-player, so they
+      // sit beside `winnerPlayerId` rather than inside each player's own `results[playerId]`
+      // entry. Same disconnect-path fallback as `results` above: when `scoringSystem` never ran
+      // (see the class comment above this method), there is nothing to explain, and the honest
+      // answer is null/empty rather than a crash.
+      decidingSegment: this.finalResults?.decidingSegment ?? null,
+      turningPoints: this.finalResults?.turningPoints ?? [],
+      tieBreakDecided: this.finalResults?.tieBreakDecided ?? null,
     };
   }
 

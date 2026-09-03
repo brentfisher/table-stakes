@@ -320,3 +320,86 @@ body {
 .upgrade-terminal-row button:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
 .upgrade-terminal-row.is-owned .upgrade-terminal-name { color: var(--ok); }
 .upgrade-terminal-row.is-locked { opacity: 0.6; }
+
+/* ------------------------------------------------------------------------------------------
+   STORY-014 (PRD §11 results screen + §5's 30-60s results window, 20s in the prototype
+   preset). A full-bleed overlay, same `.setup` pattern: the match is over, so the restaurant
+   floor behind it is a backdrop (`ResultsScene.ts`), not something the player is driving.
+   Regions wrap on a narrow viewport rather than requiring the page to scroll — the whole
+   point of fitting a 20s window is that nothing here needs a click or a scroll to be read.
+   ------------------------------------------------------------------------------------------ */
+
+.results {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow-y: auto;
+  background: rgba(10, 12, 15, 0.94);
+  pointer-events: auto;
+}
+
+.results-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.results-top-right { display: flex; align-items: center; gap: 12px; }
+
+.results-outcome { margin: 0; font-size: 26px; letter-spacing: 0.02em; }
+.results-outcome--win { color: var(--ok); }
+.results-outcome--loss { color: var(--bad); }
+.results-outcome--draw { color: var(--warn); }
+.results-reason { margin: 4px 0 0; color: var(--muted); }
+
+.results-countdown { color: var(--muted); font-variant-numeric: tabular-nums; }
+.results-rematch {
+  padding: 9px 16px;
+  background: #2c4a26;
+  border: 1px solid #3f6b31;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.results-region {
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.results-region h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.results-region h3 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.results-region ul, .results-region ol { margin: 0; padding-left: 18px; }
+.results-region li { margin: 3px 0; }
+.results-region table { width: 100%; border-collapse: collapse; }
+.results-region td { padding: 2px 0; }
+.results-region td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.results-penalty-row td { color: var(--bad); }
+
+.results-empty { color: var(--muted); }
+
+.results-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.results-stat-column { flex: 1 1 260px; min-width: 220px; }
+.results-stat-column h2 { color: var(--text); font-size: 14px; text-transform: none; letter-spacing: 0; }
+
+.results-narrative li { line-height: 1.5; }

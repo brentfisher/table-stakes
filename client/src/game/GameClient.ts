@@ -9,6 +9,7 @@ import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
 import type {
   CustomerSnapshot,
+  MatchCompleteMessage,
   MatchEndReason,
   MatchPhase,
   OrderSnapshot,
@@ -80,6 +81,13 @@ export interface GameClientStatus {
   /** Set once `match_complete` arrives; the match is over. */
   endReason: MatchEndReason | null;
   /**
+   * STORY-014. The rest of `match_complete`, verbatim — the results screen's ENTIRE data
+   * source (PRD §11's results screen AC: "nothing is recomputed client-side"). `winnerPlayerId`
+   * is null on both a genuine draw and the not-yet-arrived state; `ResultsPanel` distinguishes
+   * them by checking `matchComplete !== null`, not by `winnerPlayerId`.
+   */
+  matchComplete: MatchCompleteMessage | null;
+  /**
    * STORY-008 §8 "contextual interact prompt" — `InteractionController`'s current pick, or
    * null with nothing in range. Recomputed every render frame from interpolated position but
    * only patched into status on CHANGE, so the HUD does not re-render at frame rate.
@@ -147,6 +155,7 @@ export class GameClient {
     opponentReady: false,
     setupRejection: null,
     endReason: null,
+    matchComplete: null,
     prompt: null,
     carrying: [],
     currentAction: null,
@@ -254,11 +263,18 @@ export class GameClient {
         this.scene.restaurant.setStationUpgraded('grill', purchasedUpgradeIds.includes('faster_grill_1'));
         this.scene.restaurant.setPantryUpgraded(purchasedUpgradeIds.includes('pantry_shelves_1'));
       }
+      // STORY-014. Swap the render loop's backdrop on the `results` phase transition — see
+      // SceneManager#setActiveScene's own comment on why this is a per-snapshot, not per-frame,
+      // check.
+      const nextPhase = (message.matchPhase ?? null) as MatchPhase | null;
+      if (nextPhase !== this.status.matchPhase) {
+        this.scene.setActiveScene(nextPhase === 'results' ? 'results' : 'other');
+      }
       this.patchStatus({
         playerCount: players.length,
         serverTime: Number(message.serverTime ?? 0),
         // Rendered as received. No local clock — see GameClientStatus.
-        matchPhase: (message.matchPhase ?? null) as MatchPhase | null,
+        matchPhase: nextPhase,
         timeRemainingMs:
           typeof message.timeRemainingMs === 'number' ? message.timeRemainingMs : null,
         market: (message.market ?? null) as PublicMarket | null,
@@ -277,7 +293,12 @@ export class GameClient {
       return;
     }
     if (message.type === 'match_complete') {
-      this.patchStatus({ endReason: (message.reason ?? 'completed') as MatchEndReason });
+      // STORY-014. Stored verbatim — see `matchComplete`'s own field comment. `ResultsPanel`
+      // reads `matchComplete.results[playerId]` for a full `MatchResult`, never re-derives one.
+      this.patchStatus({
+        endReason: (message.reason ?? 'completed') as MatchEndReason,
+        matchComplete: message as unknown as MatchCompleteMessage,
+      });
       return;
     }
     if (message.type === 'error') {

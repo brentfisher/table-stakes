@@ -55,6 +55,29 @@ export function computePenaltyPoints(counts, penaltyWeights) {
 }
 
 /**
+ * STORY-014 (PRD §11 results screen: "score breakdown ... which term lost them the match").
+ * The same five products `computePenaltyPoints` sums into one scalar, returned individually so
+ * a player can see which penalty term did the damage. Deliberately a SIBLING function rather
+ * than a change to `computePenaltyPoints`'s return shape — that function is imported by
+ * `scoring-system.js` for the scalar the composite score actually subtracts, and by
+ * `scripts/check-scoring.mjs`; changing its contract would ripple into both for no reason.
+ *
+ * @param {object} counts - same shape as `computePenaltyPoints`'s `counts`
+ * @param {object} penaltyWeights - same shape as `computePenaltyPoints`'s `penaltyWeights`
+ * @returns {{ abandonmentPoints: number, cancelledOrderPoints: number, severeDissatisfactionPoints: number, wastePoints: number, criticFailurePoints: number }}
+ */
+export function computePenaltyBreakdown(counts, penaltyWeights) {
+  return {
+    abandonmentPoints: Math.max(0, counts.abandonedParties) * penaltyWeights.abandonmentPoints,
+    cancelledOrderPoints: Math.max(0, counts.cancelledOrders) * penaltyWeights.cancelledOrderPoints,
+    severeDissatisfactionPoints:
+      Math.max(0, counts.severeDissatisfactionCount) * penaltyWeights.severeDissatisfactionPoints,
+    wastePoints: Math.max(0, counts.wasteDollars) * penaltyWeights.wastePointsPerDollar,
+    criticFailurePoints: Math.max(0, counts.criticFailures) * penaltyWeights.criticFailurePoints,
+  };
+}
+
+/**
  * Compute the composite Restaurant Score per PRD §11:
  *   Revenue Score + Guests Served Score + Satisfaction Score +
  *   Reputation Bonus + Event Objective Bonus - Penalty Score
@@ -168,6 +191,29 @@ export function compareForTieBreak(a, b) {
  * @param {Array<{restaurantId: string, score: number, tieBreak: {averageSatisfaction: number, guestsServed: number, netRevenue: number, abandonedParties: number}}>} restaurants - exactly 2 entries
  * @returns {string | null} the winning restaurantId, or null for a genuine draw
  */
+/**
+ * STORY-014 (PRD §11 results screen: "state tie-break resolution explicitly rather than
+ * silently"). Names WHICH of the four `compareForTieBreak` criteria actually decided a match
+ * whose composite scores were exactly equal — the same four-step chain, walked independently
+ * so `compareForTieBreak`'s own signature (a signed comparator, already the input to
+ * `determineWinner` and to nothing else) does not have to grow a second return value nobody but
+ * this needs. Callers only get a meaningful answer when `a`/`b` come from restaurants whose
+ * scores were already found equal; this function does not check that itself; it just walks the
+ * chain and reports the first criterion that differed, or null when even the whole chain ties
+ * (a genuine draw, per `determineWinner`).
+ *
+ * @param {object} a - same shape as `compareForTieBreak`'s `a`
+ * @param {object} b - same shape as `compareForTieBreak`'s `b`
+ * @returns {'averageSatisfaction' | 'guestsServed' | 'netRevenue' | 'abandonedParties' | null}
+ */
+export function explainTieBreak(a, b) {
+  if (a.averageSatisfaction !== b.averageSatisfaction) return 'averageSatisfaction';
+  if (a.guestsServed !== b.guestsServed) return 'guestsServed';
+  if (a.netRevenue !== b.netRevenue) return 'netRevenue';
+  if (a.abandonedParties !== b.abandonedParties) return 'abandonedParties';
+  return null;
+}
+
 export function determineWinner(restaurants) {
   const [first, second] = restaurants;
 

@@ -215,7 +215,9 @@ function buildRestaurant(player) {
     },
     // STORY-013. Per-dish sales tally, keyed by dishId — PRD §11's "Best-selling dishes" and
     // "Highest-margin dishes" results fields. Populated in `deliverOrder`, over dishes that
-    // actually reached the table (never a cancelled/voided ticket).
+    // actually reached the table (never a cancelled/voided ticket). STORY-014 widens each entry
+    // with `fulfillmentMsSum`/`fulfillmentSamples` — see the field comment in `deliverOrder` —
+    // for the results screen's "best-performing dish by fulfillment time" narrative.
     dishSales: new Map(),
     // STORY-013. Absolute `match.elapsedMs` timestamps of "something went wrong" moments — here,
     // every order cancellation. See the identical field on customer-system.js's restaurant view
@@ -712,9 +714,28 @@ function deliverOrder(match, restaurant, order) {
   for (const ticket of served) {
     ticket.state = 'delivered';
     // STORY-013 (PRD §11 "Best-selling dishes" / "Highest-margin dishes").
-    const entry = restaurant.dishSales.get(ticket.dishId) ?? { dishId: ticket.dishId, count: 0, revenue: 0 };
+    const entry = restaurant.dishSales.get(ticket.dishId) ?? {
+      dishId: ticket.dishId,
+      count: 0,
+      revenue: 0,
+      // STORY-014 (PRD §11 results narrative: "best-performing dish by fulfillment time"). One
+      // dish can have several tickets across the match, each cooked at its own pace, so this is
+      // a running sum/count exactly like `qualitySum`/`qualitySamples` above — averaged in
+      // `onPhaseChange('results')` below, never per-ticket, so one slow outlier does not read as
+      // the dish's whole story.
+      fulfillmentMsSum: 0,
+      fulfillmentSamples: 0,
+    };
     entry.count += 1;
     entry.revenue = toCents(entry.revenue + ticket.price);
+    // "Fulfillment time" here is order PLACED to this specific dish coming off the line
+    // (`ticket.readyAtMs`) — the same "from the customer's ask to food in hand" meaning as
+    // `averageWaitTimeMs` uses for seating, not cook time alone (which would ignore station
+    // queue backlog, the exact bottleneck PRD §8 calls out).
+    if (ticket.readyAtMs !== null) {
+      entry.fulfillmentMsSum += Math.max(0, ticket.readyAtMs - order.placedAtMs);
+      entry.fulfillmentSamples += 1;
+    }
     restaurant.dishSales.set(ticket.dishId, entry);
   }
   restaurant.ledger.ordersDelivered += 1;
@@ -1120,6 +1141,22 @@ export const orderSystem = {
         }))
         .sort((a, b) => b.marginPerUnit - a.marginPerUnit)
         .slice(0, 5);
+      // STORY-014 (PRD §11 results narrative: "best-performing dish by fulfillment time"). The
+      // FULL per-dish list, not sliced to top-5 like the two arrays above — the fastest dish
+      // need not be a best-seller or a high-margin one, so `narrative.js#pickBestDish` has to
+      // see every dish this restaurant ever delivered at least one of.
+      //
+      // `avgFulfillmentMs` is `null`, NEVER `0`, when `fulfillmentSamples` is 0 — a dish tallied
+      // with sales but no timing sample (every real `deliverOrder` entry always has both, but a
+      // Map entry built any other way might not) must not silently read as an instant,
+      // record-setting 0ms and win `bestDish` by construction. Notable Pattern 9: no real
+      // comparison happened, so no number is reported.
+      const dishFulfillment = [...dishSales].map((d) => ({
+        dishId: d.dishId,
+        count: d.count,
+        avgFulfillmentMs:
+          d.fulfillmentSamples > 0 ? Math.round(d.fulfillmentMsSum / d.fulfillmentSamples) : null,
+      }));
       return {
         restaurantId: restaurant.restaurantId,
         revenue: l.revenue,
@@ -1130,6 +1167,7 @@ export const orderSystem = {
         ordersDeliveredDuringEvent: l.ordersDeliveredDuringEvent,
         bestSellingDishes,
         highestMarginDishes,
+        dishFulfillment,
         badMomentsMs: [...restaurant.badMomentsMs],
       };
     });
