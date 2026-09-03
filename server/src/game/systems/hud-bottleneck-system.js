@@ -128,7 +128,7 @@ export function classifyBottlenecks(restaurant, customers, orders) {
 }
 
 export const hudBottleneckSystem = {
-  id: 'hud-bottlenecks',
+  id: 'hud_bottlenecks',
   phases: ['service', 'final_rush'],
 
   update(match) {

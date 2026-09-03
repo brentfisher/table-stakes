@@ -217,11 +217,42 @@ function makeServiceMatch() {
     `you.revenue=${before.you.revenue}`,
   );
 
-  // Force a real long_entry_queue condition directly onto match.restaurants (same "force the
-  // exact number a real match would eventually produce" technique check-scoring.mjs documents
-  // and uses), then step one more tick and confirm THIS system reclassifies it.
-  const p1 = match.restaurants.find((r) => r.restaurantId === 'p1');
-  p1.queueLength = HUD_LONG_ENTRY_QUEUE_THRESHOLD + 5;
+  // Force a real long_entry_queue condition — NOT by writing `restaurant.queueLength` directly
+  // onto `match.restaurants` (customer-system.js REASSIGNS that array wholesale every tick, the
+  // same "decoration trap" inventory-system.js's own header warns about, so a direct write is
+  // silently discarded the very next tick). Instead, plant enough real probe parties into the
+  // internal queue state customer-system.js itself reads `queueLengthFor` from — the same
+  // technique check-upgrades.mjs's `plantParty` uses — so THIS system sees the number a real
+  // match would actually produce.
+  const sim = match._customerSimState;
+  for (let i = 0; i < HUD_LONG_ENTRY_QUEUE_THRESHOLD + 5; i += 1) {
+    sim.parties.set(`party_probe_queue_${i}`, {
+      customerId: `party_probe_queue_${i}`,
+      segmentId: 'office_worker',
+      partySize: 1,
+      state: 'APPROACH_OR_QUEUE',
+      restaurantId: 'p1',
+      position: { x: 0, y: 0, z: 0 },
+      tableId: null,
+      orderId: null,
+      orderOutcome: null,
+      satisfaction: null,
+      decisionReason: null,
+      patienceSeconds: 300,
+      patienceMsRemaining: 300_000,
+      budget: 999,
+      preferredTags: [],
+      dislikedTags: [],
+      spawnedAtMs: match.elapsedMs,
+      stateEnteredAtMs: match.elapsedMs,
+      patienceAtSeatedFrac: 1,
+      patienceAtOrderPlacedFrac: null,
+      patienceAtFoodDeliveredFrac: null,
+      eatingTargetMs: 10_000,
+      everUnhappy: false,
+      complaintHandled: false,
+    });
+  }
   quiet(() => stepMatch(match, TICK_MS));
   const after = match.toSnapshot('p1').restaurants.find((r) => r.restaurantId === 'p1');
   check(
