@@ -754,6 +754,13 @@ function finishMatch(match) {
       Object.keys(message.results.p1).length === 0,
     JSON.stringify(message),
   );
+  check(
+    'the three STORY-014 match-wide fields fall back honestly too — null/[], never a guess, when scoring never ran',
+    message.decidingSegment === null &&
+      Array.isArray(message.turningPoints) && message.turningPoints.length === 0 &&
+      message.tieBreakDecided === null,
+    `decidingSegment=${JSON.stringify(message.decidingSegment)} turningPoints=${JSON.stringify(message.turningPoints)} tieBreakDecided=${JSON.stringify(message.tieBreakDecided)}`,
+  );
 }
 
 // =============================================================================================
