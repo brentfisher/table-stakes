@@ -294,7 +294,14 @@ export interface EventAnnounceMessage {
   durationMs: number;
 }
 
-/** Per-player final scoring, PRD §11 "Recommended score composition". */
+/**
+ * Per-player final scoring, PRD §11 "Recommended score composition" and its "End-of-match
+ * results" field list. The original 6 fields below predate STORY-013's full payload and are
+ * never removed (Decision 7) — everything after them is that story's addition, one JSDoc tag
+ * per §11 results bullet it satisfies. "Key turning points" is the one §11 results bullet with
+ * no field here: it is narrative text, explicitly out of scope for STORY-013 (see
+ * scoring-system.js's header) and, if ever built, STORY-014's job.
+ */
 export interface MatchResult {
   score: number;
   revenue: number;
@@ -302,12 +309,44 @@ export interface MatchResult {
   averageSatisfaction: number;
   reputation: number;
   abandonedParties: number;
+
+  /** §11 "Expenses": ingredient allocation cost plus every upgrade's cost (the starting one
+   * chosen at setup, and every one bought during service). */
+  expenses: number;
+  /** §11 "Net profit" (the same number the score formula calls "net revenue" — one field
+   * doubling as both names): revenue minus `expenses`. */
+  netProfit: number;
+  /** §11 "Customers lost to rival": parties this restaurant's own district funnel recorded as
+   * CHOOSE_RIVAL — the party evaluated this restaurant and picked the opponent instead. */
+  customersLostToRival: number;
+  /** §11 "Average wait time": arrival to being seated, averaged over every seated party. */
+  averageWaitTimeMs: number;
+  /** §11 "Best-selling dishes": top dishes by units sold, at this restaurant, descending. */
+  bestSellingDishes: Array<{ dishId: string; count: number; revenue: number }>;
+  /** §11 "Highest-margin dishes": top dishes by (revenue per unit − catalogue `baseCost`),
+   * descending. */
+  highestMarginDishes: Array<{ dishId: string; marginPerUnit: number }>;
+  /** §11 "Event performance": `eventObjectiveFraction` is the 0-1 share of this restaurant's
+   * delivered orders placed while at least one event was active (the score formula's own Event
+   * Objective Bonus input); `criticFailures` is the count of `food_critic_spotted` windows
+   * during which something already-countable went wrong (a cancelled order, a party crossing
+   * into severe dissatisfaction) — see scoring-system.js's `countCriticFailures` for the exact
+   * definition and why it is structural rather than a dedicated critic-party mechanic. */
+  eventPerformance: { eventObjectiveFraction: number; criticFailures: number };
+  /** §11 "Upgrades purchased": every upgrade id this restaurant owns by match end, including
+   * its starting upgrade chosen at setup. */
+  upgradesPurchased: string[];
+  /** §11 "Customer-segment breakdown": party count per segment id this restaurant actually
+   * served (not merely attracted or lost). */
+  customerSegmentBreakdown: Record<string, number>;
 }
 
 /**
- * PRD §12 server-to-client example 3. `winnerPlayerId` is null on a draw — and until
- * STORY-013 scores a match, always null. `results` follows the §12 example literally: one
- * key per player in the match, each an empty object until STORY-013 fills it in.
+ * PRD §12 server-to-client example 3. `winnerPlayerId` is null on a draw, and also null when
+ * the match ended before `scoring-system.js` ever ran (a disconnect-triggered end skips the
+ * `results` phase transition entirely — see match.js's `#endMatch`). `results` follows the §12
+ * example literally: one key per player in the match, each a full `MatchResult` once scored, or
+ * an empty object in that early-end case.
  */
 export interface MatchCompleteMessage {
   type: 'match_complete';

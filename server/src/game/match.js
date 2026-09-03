@@ -401,15 +401,24 @@ export class Match {
   }
 
   /**
-   * PRD §12 server-to-client example 3. `results` is one empty object PER PLAYER, exactly as
-   * the §12 example writes it; STORY-013 fills each in. `winnerPlayerId` is null because
-   * nothing has scored the match yet, and messages.d.ts already documents null as legal.
+   * PRD §12 server-to-client example 3. STORY-013's `scoring-system.js` — registered last of
+   * every gameplay system — populates `this.finalResults` at the `service`/`final_rush` ->
+   * `results` transition. This reads that if it exists.
+   *
+   * It may not: `#endMatch` for any reason OTHER than `completed` sets `this.phase = 'results'`
+   * DIRECTLY (see below), which is not a phase transition `advanceClock` ever reports, so
+   * `onPhaseChange` never fires for it and `scoringSystem` never runs. A player-disconnect end
+   * during setup or market_reveal is the clearest example. The fallback below — one empty
+   * object per player, exactly as the §12 example writes it — is what keeps that path
+   * harmless rather than a crash.
    */
   matchCompleteMessage() {
     return {
       type: 'match_complete',
-      winnerPlayerId: null,
-      results: Object.fromEntries([...this.players.keys()].map((playerId) => [playerId, {}])),
+      winnerPlayerId: this.finalResults?.winnerPlayerId ?? null,
+      results:
+        this.finalResults?.results ??
+        Object.fromEntries([...this.players.keys()].map((playerId) => [playerId, {}])),
       reason: this.endReason ?? 'completed',
       ...(this.endedPlayerId ? { disconnectedPlayerId: this.endedPlayerId } : {}),
     };

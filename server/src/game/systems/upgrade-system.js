@@ -134,6 +134,14 @@ function createUpgradeFacade(match, state) {
       return restaurant ? resolveEffects(restaurant.owned).restockTravelTimeMultiplier : 1;
     },
 
+    /** STORY-013 (PRD §11 "Expenses"/"Net profit"). Cash spent on upgrades bought DURING
+     * service — distinct from `player.setup.upgradeCost`, which is the STARTING upgrade chosen
+     * at setup and is already folded into `cashRemaining` there. `scoring-system.js` adds the
+     * two together. */
+    cashSpentOnUpgrades(restaurantId) {
+      return state.restaurants.get(restaurantId)?.cashSpent ?? 0;
+    },
+
     /** Starting cash plus revenue earned so far, minus every upgrade bought. See the module
      * header — this is computed fresh every call, never stored. */
     cashAvailable(restaurantId) {
@@ -219,6 +227,17 @@ export const upgradeSystem = {
             `meanIntervalMs=${meanIntervalMs ?? 'n/a'} (§24 target 60000-120000ms)`,
         );
       }
+    }
+    // STORY-013 (PRD §11 "Upgrades purchased"). Must outlive this system's own teardown below —
+    // same "outlives its own teardown" pattern as customer-system.js's `match.districtSummary`
+    // and order-system.js's `match.orderSummary`. `scoring-system.js`, registered last, reads
+    // this at its own `results` handler.
+    if (match._upgradeSimState) {
+      match.upgradeSummary = [...match._upgradeSimState.restaurants.keys()].map((restaurantId) => ({
+        restaurantId,
+        purchasedUpgradeIds: [...match._upgradeSimState.restaurants.get(restaurantId).owned],
+        cashSpentOnUpgrades: match._upgradeSimState.restaurants.get(restaurantId).cashSpent,
+      }));
     }
     match._upgradeSimState = undefined;
     match.upgrades = undefined;

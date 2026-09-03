@@ -209,8 +209,39 @@ function buildRestaurant(player) {
       walkedOutRevenueForgone: 0,
       qualitySum: 0,
       qualitySamples: 0,
+      // STORY-013 (PRD §11 "Event Objective Bonus"). Of `ordersDelivered`, how many were PLACED
+      // while at least one event was active district-wide — see `isDuringEvent` below.
+      ordersDeliveredDuringEvent: 0,
     },
+    // STORY-013. Per-dish sales tally, keyed by dishId — PRD §11's "Best-selling dishes" and
+    // "Highest-margin dishes" results fields. Populated in `deliverOrder`, over dishes that
+    // actually reached the table (never a cancelled/voided ticket).
+    dishSales: new Map(),
+    // STORY-013. Absolute `match.elapsedMs` timestamps of "something went wrong" moments — here,
+    // every order cancellation. See the identical field on customer-system.js's restaurant view
+    // for the full explanation; `scoring-system.js` combines both to decide the §11 "failing a
+    // critic event" penalty.
+    badMomentsMs: [],
   };
+}
+
+/**
+ * STORY-013. Was any event active, by the shared district timeline, at absolute match-clock
+ * time `atMs`? `match.eventTimeline` is built once by event-system.js and — unlike
+ * `match.events`/`match.eventEffects` — is NEVER torn down at `results`, so this stays readable
+ * even after this file's own teardown runs. The anchor conversion mirrors event-system.js's own
+ * `update()`: `entries[].activateAtMs`/`endAtMs` are stored relative to `timeline.anchorMs`,
+ * which is set once, at the `service` transition.
+ *
+ * Defensive exactly like `match.dishAvailability`/`match.pantry`: with no event system
+ * registered (several check scripts run this file alone), `match.eventTimeline` is absent and
+ * this reads as "no event was ever active" rather than throwing.
+ */
+function isDuringEvent(match, atMs) {
+  const timeline = match.eventTimeline;
+  if (!timeline || timeline.anchorMs === null || timeline.anchorMs === undefined) return false;
+  const nowMs = atMs - timeline.anchorMs;
+  return timeline.entries.some((entry) => nowMs >= entry.activateAtMs && nowMs < entry.endAtMs);
 }
 
 function ensureState(match) {
@@ -678,10 +709,22 @@ function deliverOrder(match, restaurant, order) {
   order.satisfaction = scored.satisfaction;
   // Server-side, from the player's own set prices, over the dishes that ACTUALLY arrived.
   order.revenue = toCents(served.reduce((sum, t) => sum + t.price, 0));
-  for (const ticket of served) ticket.state = 'delivered';
+  for (const ticket of served) {
+    ticket.state = 'delivered';
+    // STORY-013 (PRD §11 "Best-selling dishes" / "Highest-margin dishes").
+    const entry = restaurant.dishSales.get(ticket.dishId) ?? { dishId: ticket.dishId, count: 0, revenue: 0 };
+    entry.count += 1;
+    entry.revenue = toCents(entry.revenue + ticket.price);
+    restaurant.dishSales.set(ticket.dishId, entry);
+  }
   restaurant.ledger.ordersDelivered += 1;
   restaurant.ledger.qualitySum += scored.quality;
   restaurant.ledger.qualitySamples += 1;
+  // STORY-013 (PRD §11 "Event Objective Bonus"). Cross-referenced against the order's own
+  // PLACED time, not its delivered time — the bonus asks whether the restaurant capitalized on
+  // event-driven demand it could see coming when the order went in, not whether the kitchen
+  // happened to still be plating it once the window ended.
+  if (isDuringEvent(match, order.placedAtMs)) restaurant.ledger.ordersDeliveredDuringEvent += 1;
   return true;
 }
 
@@ -706,6 +749,10 @@ function cancelOrder(restaurant, order, reason, atMs) {
   restaurant.ledger.cancelledRevenueForgone = toCents(
     restaurant.ledger.cancelledRevenueForgone + order.quotedRevenue,
   );
+  // STORY-013: a cancelled order is one of the two "something went wrong" moments
+  // `scoring-system.js` cross-references against critic-event windows. See the field comment
+  // on `restaurant.badMomentsMs` in `buildRestaurant`.
+  restaurant.badMomentsMs.push(atMs);
 }
 
 /** Drop finished orders out of the snapshot once they have been visible long enough to read. */
@@ -1050,6 +1097,42 @@ export const orderSystem = {
             .join(' ')}]`,
       );
     }
+
+    // STORY-013 (PRD §11 results payload). Must outlive this system's own teardown below — the
+    // exact same pattern customer-system.js's `match.districtSummary` uses, for the same
+    // reason: `scoring-system.js` reads this at its own `results` handler, which runs after
+    // every other gameplay system's (see systems/index.js's registration-order comment).
+    match.orderSummary = [...match._orderSimState.restaurants.values()].map((restaurant) => {
+      const l = restaurant.ledger;
+      const dishSales = [...restaurant.dishSales.values()];
+      // Best-selling: ranked by unit count. Highest-margin: revenue-per-unit minus the dish's
+      // catalogue `baseCost`. Both derived HERE, on the raw per-dish tally, rather than passed
+      // through for `scoring-system.js` to derive — it reads more cleanly to keep "what does a
+      // dish tally become" next to the tally itself.
+      const bestSellingDishes = [...dishSales]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((d) => ({ dishId: d.dishId, count: d.count, revenue: d.revenue }));
+      const highestMarginDishes = [...dishSales]
+        .map((d) => ({
+          dishId: d.dishId,
+          marginPerUnit: toCents(d.count > 0 ? d.revenue / d.count - (catalogue.dishesById[d.dishId]?.baseCost ?? 0) : 0),
+        }))
+        .sort((a, b) => b.marginPerUnit - a.marginPerUnit)
+        .slice(0, 5);
+      return {
+        restaurantId: restaurant.restaurantId,
+        revenue: l.revenue,
+        ordersDelivered: l.ordersDelivered,
+        ordersPaid: l.ordersPaid,
+        cancelledOrders: l.cancelledOrders,
+        wasteDollars: toCents(l.cancelledRevenueForgone + l.walkedOutRevenueForgone),
+        ordersDeliveredDuringEvent: l.ordersDeliveredDuringEvent,
+        bestSellingDishes,
+        highestMarginDishes,
+        badMomentsMs: [...restaurant.badMomentsMs],
+      };
+    });
 
     match.orders = [];
     match.kitchen = undefined;

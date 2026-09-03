@@ -183,6 +183,29 @@ function buildRestaurantView(playerId) {
     satisfactionSum: 0,
     abandonedParties: 0,
 
+    // STORY-013 (PRD §11 scoring). Same "accumulate on the view, expose via districtSummary"
+    // pattern as satisfactionSum/guestsServed above.
+    /** Count of parties that reached `party.everUnhappy` at least once, counted exactly once
+     * per party at the point it finally exits (served or otherwise) — this restaurant's
+     * "Severe dissatisfaction" penalty input. */
+    severelyDissatisfiedCount: 0,
+    /** Sum/sample-count for average wait time (PRD §11 results field), sampled once per party
+     * at the moment it is SEATED — arrival to being seated, the standard restaurant meaning of
+     * "wait" (see `tryToSeat`). */
+    waitMsSum: 0,
+    waitSamples: 0,
+    /** Party count per segment id this restaurant actually SERVED (PRD §11 "Customer-segment
+     * breakdown") — incremented once per party at the same REVIEW point `guestsServed` is. */
+    segmentCounts: {},
+    /**
+     * Absolute `match.elapsedMs` timestamps of "something went wrong on the floor" moments —
+     * today, only a party crossing into `everUnhappy` for the first time. `scoring-system.js`
+     * cross-references these against `match.eventTimeline`'s `food_critic_spotted` windows to
+     * decide the §11 "failing a critic event" penalty; order-system.js contributes cancelled-
+     * order moments to the same idea independently, via its own `orderSummary.badMomentsMs`.
+     */
+    badMomentsMs: [],
+
     /**
      * This restaurant's own funnel, in §8 vocabulary. `CHOOSE_RIVAL` is the one entry that is
      * NOT a party state: no party is ever in state CHOOSE_RIVAL, because the district's
@@ -1015,6 +1038,11 @@ function tryToSeat(match, state, party) {
   party.tableId = table.id;
   party.position = { x: table.position[0], y: table.position[1], z: table.position[2] };
   party.patienceAtSeatedFrac = patienceFraction(party);
+  // STORY-013 (PRD §11 "Average wait time"). Arrival-to-seated is the standard restaurant
+  // meaning of "wait" — not arrival-to-food, which would fold in ordering/kitchen time that
+  // the satisfaction formula's own wait factors already account for separately.
+  view.waitMsSum += match.elapsedMs - party.spawnedAtMs;
+  view.waitSamples += 1;
   transitionTo(match, party, CUSTOMER_STATES.SEATED);
 }
 
@@ -1147,6 +1175,11 @@ function exitParty(match, state, party, exitState, decisionReason) {
   // that failed to attract the party.
   if (view && exitState !== CUSTOMER_STATES.LEAVE_DISTRICT) {
     view.counts[exitState] += 1;
+    // STORY-013 (PRD §11 "Severe dissatisfaction" penalty). Counted exactly once per party,
+    // here at its one non-REVIEW exit point (the REVIEW exit's own count lives in
+    // advanceParty's LEAVING case below), reusing `everUnhappy` — the same sticky flag
+    // STORY-008 already defines as "this party's patience ever crossed the unhappy threshold".
+    if (party.everUnhappy) view.severelyDissatisfiedCount += 1;
     // PRD §8 step 8 and §4.2: a party that walked out of a queue, cancelled, or stormed off is
     // reputation the restaurant just lost. A party that ate and reviewed is handled where its
     // satisfaction is known (advanceParty's LEAVING case).
@@ -1211,7 +1244,14 @@ function advanceParty(match, state, party, dtMs) {
     // STORY-008. Sticky, not a live threshold check on every read: a party that crossed into
     // "unhappy" and was never helped stays a `recoveryActions` candidate even if it recovers
     // patience crossing into its next phase (`patienceAtSeatedFrac` etc. resample per phase).
-    if (patienceFraction(party) <= UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD) party.everUnhappy = true;
+    if (!party.everUnhappy && patienceFraction(party) <= UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD) {
+      party.everUnhappy = true;
+      // STORY-013: the FIRST crossing only (guarded above), so one party contributes at most
+      // one "bad moment" here — see the `badMomentsMs` field comment on `buildRestaurantView`.
+      // `party.restaurantId` is always set by this point: every PATIENCE_DECAYING_STATES member
+      // is reached only after `sendToRestaurant` has assigned one.
+      viewOf(state, party)?.badMomentsMs.push(match.elapsedMs);
+    }
   }
 
   const msInState = match.elapsedMs - party.stateEnteredAtMs;
@@ -1330,6 +1370,12 @@ function advanceParty(match, state, party, dtMs) {
           reviewed.counts[CUSTOMER_STATES.REVIEW] += 1;
           reviewed.guestsServed += 1;
           reviewed.satisfactionSum += party.satisfaction;
+          // STORY-013: this restaurant's other non-REVIEW exit point increments the same
+          // counter in `exitParty` — see the comment there.
+          if (party.everUnhappy) reviewed.severelyDissatisfiedCount += 1;
+          // PRD §11 "Customer-segment breakdown" — party count per segment id this restaurant
+          // actually served.
+          reviewed.segmentCounts[party.segmentId] = (reviewed.segmentCounts[party.segmentId] ?? 0) + 1;
           applyReview(reviewed, party.satisfaction);
         }
       }
@@ -1436,6 +1482,11 @@ function districtSummary(state) {
     counts: { ...view.counts },
     wonByReason: { ...view.wonByReason },
     lostByReason: { ...view.lostByReason },
+    // STORY-013 additions — see the field comments on `buildRestaurantView`.
+    severelyDissatisfiedCount: view.severelyDissatisfiedCount,
+    averageWaitTimeMs: view.waitSamples > 0 ? Math.round(view.waitMsSum / view.waitSamples) : 0,
+    segmentCounts: { ...view.segmentCounts },
+    badMomentsMs: [...view.badMomentsMs],
   }));
 }
 
