@@ -134,14 +134,6 @@ function createUpgradeFacade(match, state) {
       return restaurant ? resolveEffects(restaurant.owned).restockTravelTimeMultiplier : 1;
     },
 
-    /** STORY-013 (PRD §11 "Expenses"/"Net profit"). Cash spent on upgrades bought DURING
-     * service — distinct from `player.setup.upgradeCost`, which is the STARTING upgrade chosen
-     * at setup and is already folded into `cashRemaining` there. `scoring-system.js` adds the
-     * two together. */
-    cashSpentOnUpgrades(restaurantId) {
-      return state.restaurants.get(restaurantId)?.cashSpent ?? 0;
-    },
-
     /** Starting cash plus revenue earned so far, minus every upgrade bought. See the module
      * header — this is computed fresh every call, never stored. */
     cashAvailable(restaurantId) {
