@@ -39,7 +39,12 @@ import { inventorySystem } from '../server/src/game/systems/inventory-system.js'
 import { workerSystem } from '../server/src/game/systems/worker-system.js';
 import { upgradeSystem, _internal as upgradeInternal } from '../server/src/game/systems/upgrade-system.js';
 import { scoringSystem, _internal as scoringInternal } from '../server/src/game/systems/scoring-system.js';
-import { determineWinner, explainTieBreak, computePenaltyBreakdown } from '../server/src/game/scoring/score-formula.js';
+import {
+  determineWinner,
+  explainTieBreak,
+  compareForTieBreak,
+  computePenaltyBreakdown,
+} from '../server/src/game/scoring/score-formula.js';
 import {
   toEventWindows,
   eventAt,
@@ -1101,6 +1106,23 @@ function finishMatch(match) {
     'explainTieBreak (pure) agrees with compareForTieBreak/determineWinner on WHO the criterion favors',
     winner === 'p1',
     `winner=${winner}`,
+  );
+
+  // Falsify the RUNG ORDER directly: two synthetic tieBreak objects that differ on BOTH
+  // averageSatisfaction (rung 1) and guestsServed (rung 2), each favoring a DIFFERENT side —
+  // if `explainTieBreak` ever checked guestsServed before averageSatisfaction, this would name
+  // the wrong criterion and the wrong winner.
+  const orderCheckA = { averageSatisfaction: 80, guestsServed: 30, netRevenue: 500, abandonedParties: 2 };
+  const orderCheckB = { averageSatisfaction: 60, guestsServed: 50, netRevenue: 500, abandonedParties: 2 };
+  check(
+    'explainTieBreak (pure) checks averageSatisfaction (rung 1) BEFORE guestsServed (rung 2), matching §11 order',
+    explainTieBreak(orderCheckA, orderCheckB) === 'averageSatisfaction',
+    `criterion=${explainTieBreak(orderCheckA, orderCheckB)}`,
+  );
+  check(
+    'compareForTieBreak (pure) agrees — A wins on satisfaction despite trailing on guestsServed',
+    compareForTieBreak(orderCheckA, orderCheckB) < 0,
+    `compare=${compareForTieBreak(orderCheckA, orderCheckB)}`,
   );
 }
 
