@@ -68,7 +68,8 @@ export const PHASE_PRESETS = Object.freeze(Object.keys(PHASE_DURATIONS_MS));
 /**
  * PRD §12 "Mode": the initial release is 1v1. A match seats this many players; a third
  * joiner is rejected with `match_full` rather than silently seated. A development match
- * created through `POST /api/dev/match` overrides this to 1.
+ * created through `POST /api/dev/match` overrides this to 1 by default, or back to 2 (with a
+ * bot seated in the second one — STORY-017) when the request passes `{"bot": true}`.
  */
 export const PLAYERS_PER_MATCH = 2;
 
@@ -961,3 +962,77 @@ export const PATIENCE_RING_BOTTLENECK_THRESHOLD = 0.5;
  * _THRESHOLD`'s "falling behind" (orange, reused directly — see `state-color-bands.js`).
  */
 export const STATION_QUEUE_ATTENTION_THRESHOLD = 1;
+
+// ============================================================================================
+// STORY-017: bot opponent for solo and development play
+// ============================================================================================
+// PRD §12's bot fallback and §20's MVP scope, implemented as a real client
+// (`server/src/game/bot/`) that sends `setup_submit`/`player_input`/`interact` through the
+// exact same `message-router.js` -> validator path a human's browser uses — see
+// `bot-controller.js`'s header for why that split is load-bearing (conventions.md Notable
+// Pattern 1: the bot is a client from the server's point of view, not a privileged branch).
+//
+// All bot randomness is one named RNG sub-stream, `match.createRngStream(BOT_RNG_STREAM)`
+// (Decision 18) — never `Math.random()` — so a bot match is reproducible from its seed under
+// deterministic tick-stepping (see `bot-controller.js#advance`'s own note on why wall-clock
+// `setInterval` driving would NOT be reproducible the same way).
+
+/** The named RNG sub-stream every bot draw comes from. Decision 18. */
+export const BOT_RNG_STREAM = 'bot';
+
+/** The only two difficulty levels STORY-017 ships. Both run the SAME bot code
+ * (`bot-controller.js`) — difficulty is a cadence/threshold knob, never a second AI. */
+export const BOT_DIFFICULTIES = Object.freeze(['easy', 'hard']);
+export const BOT_DEFAULT_DIFFICULTY = 'easy';
+
+/**
+ * How often (game-ms, not wall-ms) the bot re-evaluates what to do next during service. A
+ * shorter interval reacts to a changing floor faster and wastes less time walking toward a
+ * target that stopped being the best choice — this is the single biggest lever on how
+ * "on top of it" the bot's restaurant looks, which is why difficulty turns on it first.
+ */
+export const BOT_DECISION_INTERVAL_MS = Object.freeze({ easy: 900, hard: 220 });
+
+/**
+ * Probability, per decision tick, that the bot does nothing that tick instead of acting —
+ * simulated imperfect attention, not a bug. `easy` misses roughly a third of its own
+ * opportunities to help (still leaves the restaurant running at the §17 worker-automation
+ * floor, per `worker-system.js`'s PRD §24 60-75% figure, which is what keeps `easy` beatable
+ * rather than broken); `hard` misses almost none, which is what "punishes idleness" means in
+ * practice — an idle human owner gets no help at all, while a hard bot owner is a near-constant
+ * second pair of hands.
+ */
+export const BOT_MISTAKE_PROBABILITY = Object.freeze({ easy: 0.35, hard: 0.05 });
+
+/** Whether the bot spends its stamina sprinting between tasks. `easy` walks; `hard` sprints
+ * whenever `movement-system.js`'s own stamina rules allow it, same as a sharp human would. */
+export const BOT_SPRINT_ENABLED = Object.freeze({ easy: false, hard: true });
+
+/** `setup_submit` menu-choice weighting (`bot/bot-setup.js`). One point per dish tag that
+ * matches the active market's `preferredTags` — the AC's named signal — plus a smaller nudge
+ * from the dish's own catalogued `marketAffinity` for this market, when it has one. Neither
+ * number is a probability; they are additive scores compared only to each other. */
+export const BOT_TAG_MATCH_WEIGHT = 1;
+export const BOT_MARKET_AFFINITY_WEIGHT = 0.5;
+
+/**
+ * Price choice within a dish's legal `priceBoundsFor()` band (`setup-rules.js`), as a lean
+ * toward the low end (`0`) or the high end (`1`) of that band, before jitter. A price-SENSITIVE
+ * market (`priceSensitivity` above the neutral value of 1) punishes a high price harder, so the
+ * bot leans lower there; an insensitive market can be pushed toward the top of its band. This
+ * is a heuristic, not the market's real demand curve — the bot has no more insight into
+ * `order-system.js`'s price-elasticity math than a human reading the same qualitative
+ * `priceGuidance()` labels would.
+ */
+export const BOT_PRICE_SENSITIVITY_LEAN = 0.2;
+/** +/- this fraction of the price band, applied after the lean, from the bot's own RNG stream —
+ * so two otherwise-identical dishes do not always land on exactly the same fraction of their
+ * band, without breaking reproducibility (still drawn from `BOT_RNG_STREAM`). */
+export const BOT_MENU_PRICE_JITTER = 0.12;
+
+/** How close (world units) the bot's owner avatar must be to a walk destination before
+ * `bot-controller.js#walkToward` calls it "arrived" and releases movement input, rather than
+ * jittering in place. The same job `worker-system.js`'s `WORKER_ARRIVAL_EPSILON` does for a
+ * worker body — kept as its own named constant rather than imported, matching this file's own
+ * `bot-controller.js` header on why cross-system values are duplicated, not shared, here. */
+export const BOT_ARRIVAL_EPSILON = 0.35;

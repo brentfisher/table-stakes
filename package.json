@@ -29,6 +29,8 @@
     "check:scoring": "node scripts/check-scoring.mjs",
     "check:hud": "node scripts/check-hud.mjs",
     "check:visual-state": "node scripts/check-visual-state.mjs",
-    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run check:orders && npm run check:district && npm run check:inventory && npm run check:workers && npm run check:owner && npm run check:upgrades && npm run check:scoring && npm run check:hud && npm run check:visual-state && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases"
+    "check:bot": "node scripts/check-bot.mjs",
+    "check:bot-smoke": "node scripts/smoke-bot.mjs",
+    "check": "npm run check:three && npm run check:data && npm run check:lifecycle && npm run check:customers && npm run check:events && npm run check:setup && npm run check:orders && npm run check:district && npm run check:inventory && npm run check:workers && npm run check:owner && npm run check:upgrades && npm run check:scoring && npm run check:hud && npm run check:visual-state && npm run check:bot && npm run build:client && npm run build:harnesses && npm run check:milestone0 && npm run check:phases && npm run check:bot-smoke"
   }
 }

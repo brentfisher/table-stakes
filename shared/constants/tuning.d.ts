@@ -247,3 +247,24 @@ export declare const HUD_CASH_FEEDBACK_DISPLAY_MS: number;
 export declare const PATIENCE_RING_ATTENTION_THRESHOLD: number;
 export declare const PATIENCE_RING_BOTTLENECK_THRESHOLD: number;
 export declare const STATION_QUEUE_ATTENTION_THRESHOLD: number;
+
+// --- STORY-017: bot opponent -----------------------------------------------------------------
+export declare const BOT_RNG_STREAM: string;
+export declare const BOT_DIFFICULTIES: readonly string[];
+export declare const BOT_DEFAULT_DIFFICULTY: string;
+export interface BotDifficultyLevels {
+  easy: number;
+  hard: number;
+}
+export declare const BOT_DECISION_INTERVAL_MS: BotDifficultyLevels;
+export declare const BOT_MISTAKE_PROBABILITY: BotDifficultyLevels;
+export interface BotSprintEnabled {
+  easy: boolean;
+  hard: boolean;
+}
+export declare const BOT_SPRINT_ENABLED: BotSprintEnabled;
+export declare const BOT_TAG_MATCH_WEIGHT: number;
+export declare const BOT_MARKET_AFFINITY_WEIGHT: number;
+export declare const BOT_PRICE_SENSITIVITY_LEAN: number;
+export declare const BOT_MENU_PRICE_JITTER: number;
+export declare const BOT_ARRIVAL_EPSILON: number;

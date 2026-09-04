@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as matchManager from '../game/match-manager.js';
 import { catalogue, publicMarket } from '../game/catalogue.js';
+import { attachBot, normalizeBotDifficulty } from '../game/bot/bot-controller.js';
 import { THREE_VERSION, PHASE_DURATIONS_MS, PHASE_PRESETS } from '../../../shared/constants/tuning.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,23 +60,38 @@ export function apiRouter() {
   });
 
   /**
-   * PRD §13 "Development-only bot/local match creation". A dev match seats ONE player, so a
-   * single developer can drive the whole PRD §5 lifecycle without a second human: the lobby
-   * ends as soon as that one player readies up. The bot that would occupy the other seat is
-   * STORY-017; when it lands it takes the second seat and `requiredPlayers` goes back to 2.
+   * PRD §13 "Development-only bot/local match creation". `bot: true` (STORY-017) seats a bot
+   * opponent in the second seat, so a single developer — or a solo player, PRD §12's other
+   * named use for this — gets a real 1v1 match without a second human. `smoke-phases.mjs` and
+   * `check-match-lifecycle.mjs` both pin the OLD default (`bot` omitted or `false`: a single
+   * seat, `requiredPlayers: 1`, lobby ends the instant that one player readies up) — that
+   * default is UNCHANGED, so this is a strictly additive, opt-in widening (design Decision 7's
+   * own append-never-rename spirit, applied to an endpoint instead of a message type).
+   *
+   * The bot itself is attached and JOINS its seat before this handler returns, through the
+   * same `join_room` -> `message-router.js` path any real client uses (`bot-controller.js`'s
+   * own header) — so by the time this response reaches the caller, `playerCount`/
+   * `connectedCount` in the body already count the bot, exactly as they would a second human
+   * who had already connected.
    */
   router.post('/dev/match', (req, res) => {
     const seed = typeof req.body?.seed === 'string' ? req.body.seed : undefined;
     const phasePreset = matchManager.normalizePhasePreset(req.body?.phasePreset);
+    const bot = req.body?.bot === true;
+    const difficulty = bot ? normalizeBotDifficulty(req.body?.difficulty) : null;
     const room = matchManager.createRoom({
       ...(seed ? { seed } : {}),
       phasePreset,
-      requiredPlayers: 1,
+      requiredPlayers: bot ? 2 : 1,
     });
+    if (bot) attachBot(room, { difficulty });
     res.status(201).json({
       ...matchManager.roomStatus(room),
-      bot: false,
-      note: 'single-seat development match; the bot opponent lands with STORY-017',
+      bot,
+      ...(bot ? { botDifficulty: difficulty } : {}),
+      note: bot
+        ? 'development match with a bot opponent seated (STORY-017)'
+        : 'single-seat development match; pass {"bot": true} for a bot opponent',
     });
   });
 
