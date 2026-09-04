@@ -100,7 +100,11 @@ interface DishData {
   ingredients: Record<string, number>;
   stationSteps: { station: Station; durationMs: number }[];
 }
-const ALL_DISHES = dishesData.dishes as DishData[];
+// `as unknown as` — dishes.json's own inferred union type has each dish's `ingredients` narrowed
+// to ITS OWN optional keys (TS infers a distinct shape per array literal entry), which no single
+// `Record<string, number>` cast satisfies directly; the JSON is trusted input, same as `layout`
+// above.
+const ALL_DISHES = dishesData.dishes as unknown as DishData[];
 // Four dishes, chosen to cover all four stations between them (every one starts at `prep`,
 // same as every dish in the catalogue — see `blockedByIngredientId`'s own schema comment on why
 // the ingredient gate only ever needs to be checked once, at a ticket's first step).
