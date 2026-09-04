@@ -243,3 +243,7 @@ export declare const HUD_EVENT_COUNTDOWN_ALERT_MS: number;
 export declare const HUD_CRITICAL_ALERTS_MAX: number;
 export declare const HUD_CASH_FEEDBACK_MIN_DELTA: number;
 export declare const HUD_CASH_FEEDBACK_DISPLAY_MS: number;
+
+export declare const PATIENCE_RING_ATTENTION_THRESHOLD: number;
+export declare const PATIENCE_RING_BOTTLENECK_THRESHOLD: number;
+export declare const STATION_QUEUE_ATTENTION_THRESHOLD: number;
