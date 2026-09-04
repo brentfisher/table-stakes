@@ -18,14 +18,16 @@
 
 import { Match } from '../server/src/game/match.js';
 import { registerAllSystems } from '../server/src/game/systems/index.js';
-import { clearSystems, stepMatch } from '../server/src/game/simulation-loop.js';
+import { clearSystems, stepMatch, registeredSystems } from '../server/src/game/simulation-loop.js';
 import { classifyBottlenecks } from '../server/src/game/systems/hud-bottleneck-system.js';
 import { buildCriticalAlerts, capCriticalAlerts, ALERT_CATEGORIES } from '../shared/game-logic/hud-alerts.js';
+import { cashFeedbackFor } from '../shared/game-logic/hud-cash-feedback.js';
 import {
   HUD_KITCHEN_BACKLOG_QUEUED_TICKETS_THRESHOLD,
   HUD_LONG_ENTRY_QUEUE_THRESHOLD,
   HUD_EVENT_COUNTDOWN_ALERT_MS,
   HUD_CRITICAL_ALERTS_MAX,
+  HUD_CASH_FEEDBACK_MIN_DELTA,
   ORDER_FRESHNESS_GRACE_MS,
 } from '../shared/constants/tuning.js';
 
@@ -280,6 +282,19 @@ function makeServiceMatch() {
     'a match still reaches results and scores with hud-bottlenecks registered ahead of scoring',
     match.finalResults !== undefined && match.finalResults !== null,
   );
+  // The check above would pass even if `hud_bottlenecks` were registered AFTER `scoring` — it
+  // only proves scoring still runs, not the ORDER. `systems/index.js`'s header requires it
+  // strictly between `upgrades` and `scoring`; pin that literally, by index, off the same
+  // `registeredSystems()` the boot log itself reads.
+  const ids = registeredSystems().map((s) => s.id);
+  const hudIndex = ids.indexOf('hud_bottlenecks');
+  const upgradesIndex = ids.indexOf('upgrades');
+  const scoringIndex = ids.indexOf('scoring');
+  check(
+    'hud_bottlenecks is registered strictly between upgrades and scoring, not just "ahead of scoring somewhere"',
+    hudIndex > upgradesIndex && hudIndex < scoringIndex,
+    `order=[${ids.join(', ')}]`,
+  );
 }
 
 // =================================================================================================
@@ -406,6 +421,36 @@ function restaurantWith(kinds, extra = {}) {
   check(
     'within customer_abandonment_imminent, the least-patience (most urgent) customers survive the cap',
     capped.filter((a) => a.category === 'customer_abandonment_imminent').every((a) => a.detail.patienceRemaining <= 0.03),
+  );
+}
+
+// =================================================================================================
+// 4. cashFeedbackFor — pure, the §14 "major moments" decision and its first-sample guard
+// =================================================================================================
+console.log('\n4. floating cash feedback (shared/game-logic/hud-cash-feedback.js)');
+
+{
+  check(
+    'null previous revenue (the very first snapshot after service starts) never fires, however large the jump',
+    cashFeedbackFor(null, 5_000, HUD_CASH_FEEDBACK_MIN_DELTA) === null,
+  );
+  check(
+    'a delta under the threshold does not fire',
+    cashFeedbackFor(100, 100 + HUD_CASH_FEEDBACK_MIN_DELTA - 1, HUD_CASH_FEEDBACK_MIN_DELTA) === null,
+  );
+  const atThreshold = cashFeedbackFor(100, 100 + HUD_CASH_FEEDBACK_MIN_DELTA, HUD_CASH_FEEDBACK_MIN_DELTA);
+  check(
+    'a delta AT the threshold fires, reporting exactly the real revenue delta',
+    atThreshold !== null && atThreshold.amount === HUD_CASH_FEEDBACK_MIN_DELTA,
+    JSON.stringify(atThreshold),
+  );
+  check(
+    'no change (a snapshot with nothing new settled) does not fire',
+    cashFeedbackFor(250, 250, HUD_CASH_FEEDBACK_MIN_DELTA) === null,
+  );
+  check(
+    'a revenue decrease (never legitimate, but not this function’s job to assert that) does not fire',
+    cashFeedbackFor(300, 280, HUD_CASH_FEEDBACK_MIN_DELTA) === null,
   );
 }
 

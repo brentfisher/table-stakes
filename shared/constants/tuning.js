@@ -908,11 +908,20 @@ export const HUD_EVENT_COUNTDOWN_ALERT_MS = 20_000;
  * bands without turning the HUD into a second results screen. */
 export const HUD_CRITICAL_ALERTS_MAX = 4;
 
-/** PRD §14 "Floating cash/tip feedback only for major moments, not every transaction". The
+/**
+ * PRD §14 "Floating cash/tip feedback only for major moments, not every transaction". The
  * viewer's own `you.revenue` (this story) has to jump by at least this many dollars between one
- * snapshot and the next for the floating feedback to fire — small single-dish sales stay silent,
- * only a payment this size or larger counts as a "moment". */
-export const HUD_CASH_FEEDBACK_MIN_DELTA = 15;
+ * snapshot and the next for the floating feedback to fire.
+ *
+ * MEASURED, not guessed (per Decision 8's "a balance claim carries a measured number"): an
+ * organic six-seed, two-menu probe match (real customer arrivals, no forced fixtures) averaged
+ * $52.27 revenue per SETTLED PARTY (`order.revenue` — a whole party's order, not one dish),
+ * ranging $31-$83 across twelve restaurant-runs. A threshold anywhere near that average would
+ * fire on most ordinary parties, exactly what "not every transaction" forbids. $100 sits clearly
+ * above the measured ceiling, so only an unusually large party (several covers, or a
+ * premium-menu order) reads as a "moment" — a routine single-dish or two-top sale stays silent.
+ */
+export const HUD_CASH_FEEDBACK_MIN_DELTA = 100;
 
 /** How long the floating cash/tip feedback stays on screen before clearing itself. */
 export const HUD_CASH_FEEDBACK_DISPLAY_MS = 2_500;

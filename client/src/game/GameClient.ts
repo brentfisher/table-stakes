@@ -27,6 +27,10 @@ import upgradesData from '../../../shared/game-data/upgrades.json';
 // why the server (`activeBottlenecks`) always decides WHETHER a category fires and this client
 // only ever picks out WHICH entity earns the alert text.
 import { buildCriticalAlerts, capCriticalAlerts, type CriticalAlert } from '../../../shared/game-logic/hud-alerts';
+// STORY-015. See that file's own header for why `cashFeedbackFor` — the "is this a major
+// moment" decision, including the null-revenue first-sample guard — is pulled out as its own
+// pure, dual-imported (client + check script) function rather than left inline here.
+import { cashFeedbackFor } from '../../../shared/game-logic/hud-cash-feedback';
 import {
   HUD_CRITICAL_ALERTS_MAX,
   HUD_CASH_FEEDBACK_MIN_DELTA,
@@ -371,21 +375,19 @@ export class GameClient {
       if (phaseChanged) this.input.setTacticalOverviewEnabled(tacticalOverviewPhase);
 
       // STORY-015 §14 "Floating cash/tip feedback only for major moments, not every
-      // transaction". Fires on a REVENUE INCREASE of at least `HUD_CASH_FEEDBACK_MIN_DELTA`
-      // between consecutive snapshots — guarded on the PREVIOUS value already being a number,
-      // not null, so the very first snapshot after `service` starts (revenue jumping from
-      // `null` to whatever it already is) never reads as one giant payment.
+      // transaction". The decision itself (including the first-sample guard) is
+      // `cashFeedbackFor` (`shared/game-logic/hud-cash-feedback.js`) — pure, and the same
+      // function `scripts/check-hud.mjs` exercises directly — so this is only the timer/patch
+      // side effect around whatever it returns.
       let cashFeedbackPatch: Partial<GameClientStatus> = {};
-      if (typeof this.status.revenue === 'number' && typeof revenue === 'number') {
-        const delta = revenue - this.status.revenue;
-        if (delta >= HUD_CASH_FEEDBACK_MIN_DELTA) {
-          if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
-          this.cashFeedbackTimeout = setTimeout(() => {
-            this.cashFeedbackTimeout = null;
-            this.patchStatus({ cashFeedback: null });
-          }, HUD_CASH_FEEDBACK_DISPLAY_MS);
-          cashFeedbackPatch = { cashFeedback: { amount: delta, atMs: Date.now() } };
-        }
+      const feedback = cashFeedbackFor(this.status.revenue, revenue, HUD_CASH_FEEDBACK_MIN_DELTA);
+      if (feedback !== null) {
+        if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
+        this.cashFeedbackTimeout = setTimeout(() => {
+          this.cashFeedbackTimeout = null;
+          this.patchStatus({ cashFeedback: null });
+        }, HUD_CASH_FEEDBACK_DISPLAY_MS);
+        cashFeedbackPatch = { cashFeedback: { amount: feedback.amount, atMs: Date.now() } };
       }
 
       this.patchStatus({
