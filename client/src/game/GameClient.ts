@@ -18,6 +18,11 @@ import type {
   SnapshotEventEntry,
   SnapshotEventForecastEntry,
 } from '../../../shared/schemas/messages';
+// STORY-016. `CustomerRenderState`/`WorkerRenderState` are the narrow shapes
+// `RestaurantScene.ts`'s own `upsertCustomer`/`upsertWorker` accept — see that file's own
+// header on why `WorkerRenderState` is extracted from `RestaurantSnapshot['workers']` rather
+// than redeclared.
+import type { CustomerRenderState, WorkerRenderState } from '../scenes/RestaurantScene';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 // STORY-015. `shared/game-logic/hud-alerts.js` (plain JS + sibling `.d.ts`, Decision 4's shape)
@@ -207,6 +212,9 @@ export class GameClient {
   private readonly interaction = new InteractionController();
 
   private sinceInputSend = 0;
+  /** STORY-016. Accumulated seconds, fed to `RestaurantScene#updateCustomerAnimations` every
+   * render frame — Three.js-side timing only, never read by React (Notable Pattern 3/11). */
+  private elapsedSeconds = 0;
   private status: GameClientStatus = {
     connection: 'closed',
     roomId: null,
@@ -262,6 +270,20 @@ export class GameClient {
         }),
       remove: (id) => this.scene.restaurant.removeOwner(id),
       ids: () => this.scene.restaurant.ownerIds(),
+    });
+
+    // STORY-016. Same seam as 'players' above: spawn/despawn entities reconciled by
+    // `EntityViewRegistry`, called once per snapshot in `handleMessage` (not per frame —
+    // customers/workers arrive at snapshot cadence, unlike interpolated player positions).
+    this.registry.register<CustomerRenderState & { id: string }>('customers', {
+      upsert: (state) => this.scene.restaurant.upsertCustomer(state),
+      remove: (id) => this.scene.restaurant.removeCustomer(id),
+      ids: () => this.scene.restaurant.customerIds(),
+    });
+    this.registry.register<WorkerRenderState & { id: string }>('workers', {
+      upsert: (state) => this.scene.restaurant.upsertWorker(state),
+      remove: (id) => this.scene.restaurant.removeWorker(id),
+      ids: () => this.scene.restaurant.workerIds(),
     });
 
     this.network.onStatusChange = (connection) => this.patchStatus({ connection });
@@ -360,6 +382,31 @@ export class GameClient {
         this.scene.restaurant.setStationUpgraded('grill', purchasedUpgradeIds.includes('faster_grill_1'));
         this.scene.restaurant.setPantryUpgraded(purchasedUpgradeIds.includes('pantry_shelves_1'));
       }
+
+      // STORY-016 PRD §4.4/§14 "visual state language". Customers and this restaurant's own
+      // workers are spawn/despawn entities reconciled through `EntityViewRegistry`, the same
+      // seam `players` above already uses — see `RestaurantScene.ts`'s own comment on why
+      // `customers` is filtered to `restaurantId === this.status.playerId` HERE, before the
+      // registry ever sees it: table ids are shared literal strings across both restaurants'
+      // own internal layouts, so an unfiltered reconcile would try to render the rival's party
+      // onto this restaurant's floor. Everything else this story adds (table badges, station
+      // queue/shortage, the food-ready icon, rival activity, the event effect) is NOT a
+      // spawn/despawn entity — those update through the single `updateFloorState` call below,
+      // which does its own restaurant-scoped filtering (see that method's own header).
+      const selfCustomers = customers.filter((c) => c.restaurantId === this.status.playerId);
+      this.registry.reconcile('customers', selfCustomers.map((c) => ({ ...c, id: c.customerId })));
+      const selfRestaurantForWorkers = restaurants.find((r) => r.restaurantId === this.status.playerId);
+      this.registry.reconcile(
+        'workers',
+        (selfRestaurantForWorkers?.workers ?? []).map((w) => ({ ...w, id: w.workerId })),
+      );
+      this.scene.restaurant.updateFloorState({
+        selfRestaurantId: this.status.playerId,
+        restaurants,
+        customers,
+        orders,
+        events,
+      });
       // STORY-014. Swap the render loop's backdrop on the `results` phase transition — see
       // SceneManager#setActiveScene's own comment on why this is a per-snapshot, not per-frame,
       // check.
@@ -482,6 +529,12 @@ export class GameClient {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
     this.registry.reconcile('players', players);
+
+    // STORY-016 PRD §4.4 "visibly look impatient" — a per-frame posture animation, not a
+    // per-snapshot one, so it stays smooth between the ~10Hz snapshots that actually move
+    // `patienceRemaining`.
+    this.elapsedSeconds += dt;
+    this.scene.restaurant.updateCustomerAnimations(this.elapsedSeconds);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (self) this.scene.cameraController.setTarget(self.position.x, self.position.z);

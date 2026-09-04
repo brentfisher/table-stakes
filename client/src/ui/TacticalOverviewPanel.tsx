@@ -17,12 +17,7 @@
 
 import type { GameClientStatus } from '../game/GameClient';
 import type { RestaurantSnapshot, BottleneckKind } from '../../../shared/schemas/game-state';
-import eventsData from '../../../shared/game-data/events.json';
-
-const EVENT_TITLES = new Map<string, string>(
-  (eventsData.events as Array<{ id: string; title: string }>).map((e) => [e.id, e.title]),
-);
-const eventTitle = (eventId: string) => EVENT_TITLES.get(eventId) ?? eventId;
+import { eventTitle } from './event-titles';
 
 /** Short badge text for a bottleneck kind — distinct from `HudPanel`'s full alert sentences,
  * since this panel shows every active kind for both restaurants at once, not a ranked top few. */

@@ -24,22 +24,18 @@
 // to be public on `restaurants[]`.
 
 import dishesData from '../../../shared/game-data/dishes.json';
-import eventsData from '../../../shared/game-data/events.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import type { GameClientStatus } from '../game/GameClient';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
+import { eventTitle } from './event-titles';
 
 const DISH_NAMES = new Map<string, string>(
   (dishesData.dishes as Array<{ id: string; name: string }>).map((d) => [d.id, d.name]),
-);
-const EVENT_TITLES = new Map<string, string>(
-  (eventsData.events as Array<{ id: string; title: string }>).map((e) => [e.id, e.title]),
 );
 const UPGRADE_NAMES = new Map<string, string>(
   (upgradesData.upgrades as Array<{ id: string; name: string }>).map((u) => [u.id, u.name]),
 );
 const dishName = (dishId: string) => DISH_NAMES.get(dishId) ?? dishId;
-const eventTitle = (eventId: string) => EVENT_TITLES.get(eventId) ?? eventId;
 const upgradeName = (upgradeId: string) => UPGRADE_NAMES.get(upgradeId) ?? upgradeId;
 
 const PHASE_LABELS: Record<string, string> = {
