@@ -4,6 +4,10 @@
 // these, that is a signal the rules/view separation has been broken.
 
 export { RestaurantScene, ZONE_COLORS } from '../../../client/src/scenes/RestaurantScene';
-export type { OwnerRenderState, RestaurantSceneOptions } from '../../../client/src/scenes/RestaurantScene';
+export type {
+  OwnerRenderState,
+  RestaurantSceneOptions,
+  CustomerRenderState,
+} from '../../../client/src/scenes/RestaurantScene';
 export { CameraController, DEFAULT_CAMERA } from '../../../client/src/game/CameraController';
 export type { CameraSettings } from '../../../client/src/game/CameraController';
