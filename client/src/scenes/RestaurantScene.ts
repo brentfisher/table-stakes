@@ -89,16 +89,21 @@ const WORKER_ROLE_GLYPHS: Record<string, string> = {
   host: 'H',
 };
 
-/** PRD §17's closed `WorkerTaskKind` vocabulary, one short glyph each — the current-job
- * indicator AC. Distinct glyph set again from both tables and roles. */
+/** PRD §17's closed `WorkerTaskKind` vocabulary, one SINGLE-CHARACTER glyph each — a live
+ * legibility check on the first cut of this file used two-character codes (`ST`, `TK`, `CL`,
+ * `PY`) and found them genuinely hard to read at the default camera height even zoomed in for a
+ * screenshot (roughly 6px per character at ~32 units away, fov 46): "legible from the default
+ * camera height without zooming" is this story's own AC, not a nice-to-have. One character per
+ * task, all seven mutually distinct (collisions with `WORKER_ROLE_GLYPHS` are fine — the two
+ * vocabularies render at different heights above the worker and are never read as one glyph). */
 const WORKER_TASK_GLYPHS: Record<string, string> = {
   tend_station: 'K',
   restock: 'R',
   deliver_order: 'D',
-  seat_party: 'ST',
-  take_order: 'TK',
-  clear_table: 'CL',
-  collect_payment: 'PY',
+  seat_party: 'A',
+  take_order: 'T',
+  clear_table: 'X',
+  collect_payment: '$',
 };
 
 /** How many queued-ticket boxes a station's indicator shows before it just reads "a lot" —
@@ -559,19 +564,21 @@ export class RestaurantScene {
       );
       body.position.y = 0.8;
       group.add(body);
-      const roleGlyph = createGlyphSprite(WORKER_ROLE_GLYPHS[state.role] ?? '?', color, 0.4);
+      // 0.6, not 0.4 — see WORKER_TASK_GLYPHS's own comment on the live legibility check that
+      // caught these reading too small at the default camera height.
+      const roleGlyph = createGlyphSprite(WORKER_ROLE_GLYPHS[state.role] ?? '?', color, 0.6);
       roleGlyph.position.set(0, 1.55, 0);
       group.add(roleGlyph);
       // One glyph per possible task kind, plus one "needs help", all built once and toggled —
       // see this method's own header on why only one is ever visible at a time.
       for (const kind of Object.keys(WORKER_TASK_GLYPHS)) {
-        const jobGlyph = createGlyphSprite(WORKER_TASK_GLYPHS[kind], STATE_COLORS.opportunity, 0.4);
+        const jobGlyph = createGlyphSprite(WORKER_TASK_GLYPHS[kind], STATE_COLORS.opportunity, 0.6);
         jobGlyph.position.set(0, 1.95, 0);
         jobGlyph.visible = false;
         jobGlyph.name = `job_${kind}`;
         group.add(jobGlyph);
       }
-      const helpGlyph = createGlyphSprite('!', STATE_COLORS.bottleneck, 0.45);
+      const helpGlyph = createGlyphSprite('!', STATE_COLORS.bottleneck, 0.6);
       helpGlyph.position.set(0, 1.95, 0);
       helpGlyph.visible = false;
       helpGlyph.name = 'job_help';

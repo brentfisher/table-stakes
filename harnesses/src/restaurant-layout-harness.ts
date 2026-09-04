@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import type { SceneHarness } from './harness-shell';
 import { RestaurantScene, CameraController, DEFAULT_CAMERA } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
-import { mockOwner, orbitOwner } from './shared/test-entities';
+import { mockOwner, orbitOwner, mockShortageVsQueueDemo } from './shared/test-entities';
 
 export const restaurantLayoutHarness: SceneHarness = createRestaurantLayoutHarness();
 
@@ -87,6 +87,21 @@ function createRestaurantLayoutHarness(): SceneHarness {
       panel.addToggle('Dining zone', true, (v) => { if (dining) dining.visible = v; });
       panel.addToggle('Spawn staff', false, (v) => { if (staff) staff.visible = v; });
       panel.addToggle('Blocked path probes', false, (v) => { if (blockers) blockers.visible = v; });
+
+      // STORY-016 PRD §8 "distinct signals for each" bottleneck — see
+      // `mockShortageVsQueueDemo`'s own header on why a harness fixture, not a live match, is
+      // the right instrument for this specific comparison.
+      panel.addToggle('Shortage vs queue demo (prep backlog, grill shortage)', false, (v) => {
+        if (!scene) return;
+        const demo = mockShortageVsQueueDemo('harness_owner');
+        scene.updateFloorState({
+          selfRestaurantId: 'harness_owner',
+          restaurants: v ? demo.restaurants : [],
+          customers: [],
+          orders: v ? demo.orders : [],
+          events: [],
+        });
+      });
 
       let orbiting = false;
       panel.addToggle('Owner walks a circle', false, (v) => { orbiting = v; });
