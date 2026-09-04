@@ -24,7 +24,14 @@ import {
   STATION_QUEUE_ATTENTION_THRESHOLD,
 } from '../../../shared/constants/tuning';
 import { patienceColorBand, stationQueueColorBand } from '../../../shared/game-logic/state-color-bands';
-import { STATE_COLORS, colorForBand, WORKER_ROLE_COLORS, WORKER_ROLE_COLOR_FALLBACK } from '../game/state-colors';
+import {
+  STATE_COLORS,
+  colorForBand,
+  WORKER_ROLE_COLORS,
+  WORKER_ROLE_COLOR_FALLBACK,
+  CUSTOMER_SEGMENT_COLORS,
+  CUSTOMER_SEGMENT_COLOR_FALLBACK,
+} from '../game/state-colors';
 import { createGlyphSprite, setGlyphSpriteColor } from './icon-sprites';
 
 export interface OwnerRenderState {
@@ -45,6 +52,9 @@ export interface CustomerRenderState {
   position: { x: number; y: number; z: number };
   patienceRemaining: number;
   unhappy: boolean;
+  /** §14 MVP entity table "segment-cued customers" — an id in customer-segments.json, tinting
+   * the body (see `state-colors.ts#CUSTOMER_SEGMENT_COLORS`); independent of the patience ring. */
+  segmentId: string;
 }
 export type WorkerRenderState = NonNullable<RestaurantSnapshot['workers']>[number];
 
@@ -459,12 +469,17 @@ export class RestaurantScene {
     });
     const ringColor = colorForBand(band);
 
+    // §14 MVP "segment-cued customers" — a fixed identity tint for the party's whole visit,
+    // independent of the patience band above (see `CUSTOMER_SEGMENT_COLORS`'s own comment on
+    // why this is a second, separate visual channel rather than folded into the ring color).
+    const segmentColor = CUSTOMER_SEGMENT_COLORS[state.segmentId] ?? CUSTOMER_SEGMENT_COLOR_FALLBACK;
+
     let group = this.customers.get(state.customerId);
     if (!group) {
       group = new THREE.Group();
       const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.26, 0.55, 5, 10),
-        new THREE.MeshStandardMaterial({ color: 0xd7c9b0, roughness: 0.7 }),
+        new THREE.MeshStandardMaterial({ color: segmentColor, roughness: 0.7 }),
       );
       body.position.y = 0.62;
       body.name = 'body';

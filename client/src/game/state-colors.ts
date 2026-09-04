@@ -51,3 +51,22 @@ export const WORKER_ROLE_COLORS: Record<string, number> = {
 /** Fallback for a role this map has not been told about (WORKER_ROLES may grow). Neutral gray,
  * never one of the six state colors — an unrecognized role is not itself a state signal. */
 export const WORKER_ROLE_COLOR_FALLBACK = 0x8a8f96;
+
+/**
+ * §14 MVP entity table: "segment-cued customers". A per-SEGMENT identity tint on the customer's
+ * own body — distinct in kind from the patience ring beneath them (a segment is fixed for the
+ * party's whole visit; patience depletes). Two independent visual channels on one entity, the
+ * same split `upsertWorker` already makes between its role-colored body and its state-colored
+ * task/needsHelp glyph. Ids come from `shared/game-data/customer-segments.json`.
+ */
+export const CUSTOMER_SEGMENT_COLORS: Record<string, number> = {
+  office_worker: 0x7c8a99,
+  affluent_couple: 0xc9a15a,
+  event_fan: 0xd9574a,
+  tourist: 0x5ac9a0,
+  neighborhood_regular: 0xb08a5e,
+};
+
+/** Fallback for a segment id this map has not been told about (the catalogue may grow). Neutral
+ * tan, matching the body color STORY-016 shipped with before segment cueing existed. */
+export const CUSTOMER_SEGMENT_COLOR_FALLBACK = 0xd7c9b0;
