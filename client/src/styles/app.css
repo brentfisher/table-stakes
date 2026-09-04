@@ -441,7 +441,10 @@ body {
 
 .hud-scoreboard {
   position: absolute;
-  top: 12px;
+  /* STORY-016: `.event-banner` claims the true top-center strip (top: 12px) — pushed down a
+     fixed amount so the two never overlap, whether or not an event happens to be active right
+     now (a layout that only shifts WHEN an event fires would be its own distracting jump). */
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   width: 300px;
