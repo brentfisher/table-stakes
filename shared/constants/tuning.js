@@ -925,3 +925,39 @@ export const HUD_CASH_FEEDBACK_MIN_DELTA = 100;
 
 /** How long the floating cash/tip feedback stays on screen before clearing itself. */
 export const HUD_CASH_FEEDBACK_DISPLAY_MS = 2_500;
+
+// --- STORY-016: 3D visual state language color bands ---------------------------------------
+//
+// PRD §4.4 / §14 "visual state language". These are the CUTOFFS that turn a 0..1 or integer
+// signal into one of the six §14 state colors — the colors themselves are hex values and live
+// in `client/src/game/state-colors.ts` (a rendering concern), not here (a threshold concern).
+// The pure functions that apply these cutoffs live in `shared/game-logic/state-color-bands.js`
+// so `scripts/check-visual-state.mjs` can exercise them without a browser, the same split
+// `hud-bottleneck-system.js` (thresholds here) / `hud-alerts.js` (pure logic in shared/) already
+// established for STORY-015.
+
+/**
+ * `CustomerSnapshot.patienceRemaining` at or below this fraction crosses from "healthy" (green)
+ * into "attention soon" (yellow) on the patience ring. Deliberately ABOVE
+ * `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD`: the ring's yellow band is an early, ambient warning a
+ * player can catch before the party is even the HUD's "unhappy" — full patience always reads
+ * green, and this is simply where the party is more than a third of the way to being uncomfortable.
+ */
+export const PATIENCE_RING_ATTENTION_THRESHOLD = 0.7;
+
+/**
+ * `patienceRemaining` at or below this fraction crosses from "attention soon" (yellow) into
+ * "active bottleneck" (orange) — visibly getting close, but not yet the red "about to walk out"
+ * state. Sits strictly between `PATIENCE_RING_ATTENTION_THRESHOLD` and
+ * `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD`, which is what the ring's red band reuses directly (see
+ * `state-color-bands.js`'s own comment on why red is never a second, independently-tuned cutoff).
+ */
+export const PATIENCE_RING_BOTTLENECK_THRESHOLD = 0.5;
+
+/**
+ * A station with at least this many QUEUED, not-shortage-blocked tickets crosses from "healthy"
+ * (green) into "attention soon" (yellow) on its queue indicator — the first ticket waiting in
+ * line is already worth a glance, well before it is `HUD_KITCHEN_BACKLOG_QUEUED_TICKETS
+ * _THRESHOLD`'s "falling behind" (orange, reused directly — see `state-color-bands.js`).
+ */
+export const STATION_QUEUE_ATTENTION_THRESHOLD = 1;

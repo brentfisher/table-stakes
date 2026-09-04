@@ -10,6 +10,7 @@ import { SetupScreen } from '../ui/SetupScreen';
 import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
+import { EventBanner } from '../ui/EventBanner';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -37,6 +38,9 @@ export function App(): JSX.Element {
   return (
     <div className="app">
       <div className="scene" ref={sceneRef} />
+      {/* STORY-016 PRD §14 "event banner top-centre with a district-level visual effect" — the
+          scene-wide light tint is `RestaurantScene#updateEventEffect`; this is the text half. */}
+      <EventBanner status={status} />
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
       {/*
         PRD §18's setup screen is a full-bleed overlay, mounted only during `setup`. It is
