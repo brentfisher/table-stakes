@@ -243,6 +243,13 @@ export interface SnapshotViewer {
    */
   cash: number | null;
   /**
+   * STORY-015. PRD §18 "Revenue and available cash" — the other half `cash` alone does not
+   * carry. Private for the same reason `cash` is (Decision 16): `restaurants[]` is the one
+   * array both players receive identically, and a rival's revenue is no more public than their
+   * cash on hand. Null before `service` (before `match.kitchen` exists), same as `cash`.
+   */
+  revenue: number | null;
+  /**
    * STORY-012. Upgrade ids this restaurant owns, including any `startingUpgradeId` chosen at
    * setup. Private, unlike the public `carryCapacity` it helps produce — which SPECIFIC
    * upgrades a player owns is competitive information the same way their menu is.

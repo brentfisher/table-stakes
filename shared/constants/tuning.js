@@ -871,3 +871,57 @@ export const SCORE_PENALTY_CRITIC_FAILURE_POINTS = 50;
  * matches the AC's "key turning points" (plural, but a short list) without turning the results
  * screen into a full match transcript. */
 export const RESULTS_TURNING_POINTS_MAX = 3;
+
+// --- STORY-015: HUD critical-alert prioritization ------------------------------------------------
+//
+// PRD §18 "Alert prioritization": "Limit critical alerts to prevent alarm fatigue." These are
+// UI-noise thresholds, not balance numbers — they decide when a real, already-published signal
+// is worth a player's attention, not how the simulation behaves. Where an existing constant
+// already means the same thing (a ready dish's freshness grace, the unhappy-customer patience
+// line, the §7 event-teaser window), it is reused directly rather than duplicated under a new
+// name, so the alert rule and the system it describes can never quietly disagree.
+//
+// `hud-bottleneck-system.js` is the ONE place these thresholds turn a raw count into a
+// `BottleneckKind`; `shared/game-logic/hud-alerts.js` (client AND `scripts/check-hud.mjs`) never
+// re-derives the same judgment from a lower-level number — it only asks "did the server already
+// flag this restaurant?" and, if so, picks out WHICH entity earns the alert text.
+
+/** More than this many `queued`, not-ingredient-blocked tickets sitting at this restaurant's
+ * stations at once is a kitchen that cannot keep pace, not just momentary queuing — PRD §8's
+ * `kitchen_backlog` row. A single queued ticket is normal service; this is the line past it. */
+export const HUD_KITCHEN_BACKLOG_QUEUED_TICKETS_THRESHOLD = 3;
+
+/** A queue this long at the door is PRD §8's `long_entry_queue` row — long enough that a
+ * passerby would notice, not just the ordinary handful waiting for a table to turn. */
+export const HUD_LONG_ENTRY_QUEUE_THRESHOLD = 4;
+
+/** PRD §18 alert-priority item 5, "Event countdown": telegraphed by the same 10-20s window §7
+ * gives the event teaser itself (`SnapshotEventEntry.startsInMs`, already published by
+ * `event-system.js`) — an event more than this far out is still just the forecast, not yet
+ * something to interrupt the player over. */
+export const HUD_EVENT_COUNTDOWN_ALERT_MS = 20_000;
+
+/** PRD §18 "Limit critical alerts to prevent alarm fatigue" (§23's workload-exhaustion risk).
+ * The MAXIMUM number of critical alerts shown at once, across every priority band — lower-
+ * priority alerts are suppressed once this many higher-priority ones are already showing, never
+ * queued behind them. Four is enough to name the worst thing in each of the two most urgent
+ * bands without turning the HUD into a second results screen. */
+export const HUD_CRITICAL_ALERTS_MAX = 4;
+
+/**
+ * PRD §14 "Floating cash/tip feedback only for major moments, not every transaction". The
+ * viewer's own `you.revenue` (this story) has to jump by at least this many dollars between one
+ * snapshot and the next for the floating feedback to fire.
+ *
+ * MEASURED, not guessed (per Decision 8's "a balance claim carries a measured number"): an
+ * organic six-seed, two-menu probe match (real customer arrivals, no forced fixtures) averaged
+ * $52.27 revenue per SETTLED PARTY (`order.revenue` — a whole party's order, not one dish),
+ * ranging $31-$83 across twelve restaurant-runs. A threshold anywhere near that average would
+ * fire on most ordinary parties, exactly what "not every transaction" forbids. $100 sits clearly
+ * above the measured ceiling, so only an unusually large party (several covers, or a
+ * premium-menu order) reads as a "moment" — a routine single-dish or two-top sale stays silent.
+ */
+export const HUD_CASH_FEEDBACK_MIN_DELTA = 100;
+
+/** How long the floating cash/tip feedback stays on screen before clearing itself. */
+export const HUD_CASH_FEEDBACK_DISPLAY_MS = 2_500;
