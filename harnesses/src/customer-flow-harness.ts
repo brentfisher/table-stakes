@@ -119,7 +119,14 @@ function routePlanFor(
   laneSeed: number,
   tablePosition: Vec3 | null,
 ): { position: Vec3; paths: Vec3[][]; lineColor: number } {
-  const lane = laneSeed % 7;
+  // `* 3` (coprime with the modulus 7), not a bare `laneSeed % 7` — consecutively spawned
+  // parties have consecutive `laneSeed`s, and forcing two of them into the SAME state (a
+  // realistic manual-testing pattern: spawn, force a state, inspect; spawn another, force the
+  // same state again) is exactly when a bare modulo puts them one lane apart — closer than the
+  // label sprite's own 2.2-unit width, so the two labels still overlapped in a live check even
+  // after widening the multipliers below. This permutes lane order (0,3,6,2,5,1,4,0,3,…) so
+  // adjacent seeds land 3 lanes apart instead of 1.
+  const lane = (laneSeed * 3) % 7;
   const spread = (lane - 3) * 1.3;
 
   switch (state) {
@@ -159,7 +166,12 @@ function routePlanFor(
       return { position, paths: [[position, PLAYER_DOOR]], lineColor: STATE_COLORS.opportunity };
     }
     case 'REVIEW': {
-      const position: Vec3 = { ...PLAYER_DOOR };
+      // `spread` here, not a bare copy of `PLAYER_DOOR` — an earlier pass had every REVIEW
+      // party stack on the exact same point (no lane term at all), the same collision the
+      // ABANDON_QUEUE case above already had to fix once. A live check with two REVIEW parties
+      // found even `spread * 0.3` still too tight — labels overlapped at this camera distance —
+      // so this uses the full, unscaled spread.
+      const position: Vec3 = { x: PLAYER_DOOR.x + spread, y: 0, z: PLAYER_DOOR.z };
       return { position, paths: [[position, DISTRICT_ENTRY]], lineColor: STATE_COLORS.opportunity };
     }
     case 'CHOOSE_RIVAL': {
@@ -179,11 +191,17 @@ function routePlanFor(
       return { position, paths: [[position, DISTRICT_ENTRY]], lineColor: STATE_COLORS.critical };
     }
     case 'CANCEL_ORDER': {
-      const position = tablePosition ?? HOST_STAND;
+      // NOT an at-table state (see `syncCustomer`'s `atTable` set) — `tablePosition` is always
+      // null here, so `tableFallback ?? HOST_STAND` alone would put every CANCEL_ORDER party on
+      // the identical point. The spread term is load-bearing, not decoration (a live check with
+      // a partial multiplier still let two adjacent-lane parties' labels overlap, the same
+      // lesson REVIEW above learned — this uses the full spread now); z is nudged apart from
+      // LEAVE_ANGRY below so the two exits don't collide with EACH OTHER either.
+      const position: Vec3 = tablePosition ?? { x: HOST_STAND.x + spread, y: 0, z: HOST_STAND.z - 0.8 };
       return { position, paths: [[position, PLAYER_DOOR]], lineColor: STATE_COLORS.critical };
     }
     case 'LEAVE_ANGRY': {
-      const position = tablePosition ?? HOST_STAND;
+      const position: Vec3 = tablePosition ?? { x: HOST_STAND.x + spread, y: 0, z: HOST_STAND.z + 0.8 };
       return { position, paths: [[position, PLAYER_DOOR]], lineColor: STATE_COLORS.critical };
     }
     default: {
