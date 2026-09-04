@@ -15,9 +15,23 @@ import type {
   OrderSnapshot,
   PublicMarket,
   RestaurantSnapshot,
+  SnapshotEventEntry,
+  SnapshotEventForecastEntry,
 } from '../../../shared/schemas/messages';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 import upgradesData from '../../../shared/game-data/upgrades.json';
+// STORY-015. `shared/game-logic/hud-alerts.js` (plain JS + sibling `.d.ts`, Decision 4's shape)
+// is the ONE place PRD §18's alert priority order and alarm-fatigue cap are implemented — the
+// same module `scripts/check-hud.mjs` imports directly, so the ranking this HUD shows and the
+// ranking the check chain verifies can never quietly diverge. See that file's own header for
+// why the server (`activeBottlenecks`) always decides WHETHER a category fires and this client
+// only ever picks out WHICH entity earns the alert text.
+import { buildCriticalAlerts, capCriticalAlerts, type CriticalAlert } from '../../../shared/game-logic/hud-alerts';
+import {
+  HUD_CRITICAL_ALERTS_MAX,
+  HUD_CASH_FEEDBACK_MIN_DELTA,
+  HUD_CASH_FEEDBACK_DISPLAY_MS,
+} from '../../../shared/constants/tuning';
 
 interface UpgradeInfo {
   id: string;
@@ -113,20 +127,69 @@ export interface GameClientStatus {
    * not duplicated server-side.
    */
   canAffordUpgrade: boolean;
+  /** STORY-015. Which affordable upgrade `canAffordUpgrade` found, first in `WIRED_UPGRADE_IDS`
+   * order — lets the HUD's priority-6 "upgrade available" alert name the upgrade instead of
+   * just flagging that one exists. Null exactly when `canAffordUpgrade` is false. */
+  affordableUpgradeId: string | null;
+  /**
+   * STORY-015. PRD §18 "Revenue and available cash" — straight off the private `you.revenue`
+   * (see `match.js#toSnapshot`'s own comment on why it lives under `you`, same as `cash`).
+   * Null before `service`, same as `cash`.
+   */
+  revenue: number | null;
+  /** STORY-015. `match_snapshot.restaurants[]`, verbatim — the HUD's own restaurant AND the
+   * compact rival summary both read out of this one array; nothing here is recomputed. */
+  restaurants: RestaurantSnapshot[];
+  /** STORY-015. `match_snapshot.customers[]`, verbatim — the source for the "customer
+   * abandonment imminent" alert's specifics (which party, how much patience is left). */
+  customers: CustomerSnapshot[];
+  /** STORY-015. `match_snapshot.orders[]`, verbatim — the source for "food ready but
+   * undelivered" and for cross-referencing `carrying`'s dish name(s), per `PlayerSnapshot
+   * .carrying`'s own field comment. */
+  orders: OrderSnapshot[];
+  /** STORY-015. `match_snapshot.events[]`, verbatim — "current active event" and the
+   * "event countdown" alert both read this directly; see `event-system.js`'s own header. */
+  events: SnapshotEventEntry[];
+  /** STORY-015. `match_snapshot.eventForecast[]`, verbatim — PRD §18 "upcoming event warning". */
+  eventForecast: SnapshotEventForecastEntry[];
+  /**
+   * STORY-015. PRD §18 "Critical alerts", already ranked in §18 priority order AND capped to
+   * `HUD_CRITICAL_ALERTS_MAX` — see `shared/game-logic/hud-alerts.js`. Computed once per
+   * snapshot here, not in the render tree, so `HudPanel` only ever maps over an already-final
+   * list; this is what makes "updates at panel cadence, not per frame" true for the alert list
+   * specifically, the same way `prompt`'s patch-on-change discipline makes it true for the
+   * contextual prompt.
+   */
+  criticalAlerts: CriticalAlert[];
+  /**
+   * STORY-015. PRD §14 "Floating cash/tip feedback only for major moments, not every
+   * transaction". Set for `HUD_CASH_FEEDBACK_DISPLAY_MS` when `revenue` jumps by at least
+   * `HUD_CASH_FEEDBACK_MIN_DELTA` between two snapshots, then cleared — see
+   * `handleMessage`'s own comment on the guard against firing on the FIRST real value.
+   */
+  cashFeedback: { amount: number; atMs: number } | null;
+  /** STORY-015. PRD §8 `Tab`: the tactical overview panel — see `InputController
+   * #tacticalOverviewEnabled`'s own comment on why it is only reachable during
+   * `service`/`final_rush`. */
+  showTacticalOverview: boolean;
 }
 
-/** STORY-012 AC: an ambient "something is worth buying" signal, computed from public catalogue
- * data — never a second copy of `action-validator.js#handlePurchaseUpgrade`'s own legality
- * checks, just the subset a HUD indicator needs (unaffordable/owned/locked all read the same). */
-function canAffordAnyUpgrade(cash: number | null, owned: string[]): boolean {
-  if (cash === null) return false;
-  return WIRED_UPGRADE_IDS.some((id) => {
-    if (owned.includes(id)) return false;
-    const upgrade = UPGRADE_BY_ID.get(id);
-    if (!upgrade) return false;
-    if (upgrade.requires && !owned.includes(upgrade.requires)) return false;
-    return upgrade.cost <= cash;
-  });
+/** STORY-012 AC / STORY-015: the ambient "something is worth buying" signal, computed from
+ * public catalogue data — never a second copy of `action-validator.js#handlePurchaseUpgrade`'s
+ * own legality checks, just the subset a HUD indicator (and now the priority-6 alert) needs
+ * (unaffordable/owned/locked all read the same). Returns the first affordable id in
+ * `WIRED_UPGRADE_IDS` order, or null — `canAffordUpgrade` is simply `!== null` on the result. */
+function pickAffordableUpgrade(cash: number | null, owned: string[]): string | null {
+  if (cash === null) return null;
+  return (
+    WIRED_UPGRADE_IDS.find((id) => {
+      if (owned.includes(id)) return false;
+      const upgrade = UPGRADE_BY_ID.get(id);
+      if (!upgrade) return false;
+      if (upgrade.requires && !owned.includes(upgrade.requires)) return false;
+      return upgrade.cost <= cash;
+    }) ?? null
+  );
 }
 
 const INPUT_SEND_HZ = 20;
@@ -163,7 +226,19 @@ export class GameClient {
     purchasedUpgradeIds: [],
     nearUpgradeTerminal: false,
     canAffordUpgrade: false,
+    affordableUpgradeId: null,
+    revenue: null,
+    restaurants: [],
+    customers: [],
+    orders: [],
+    events: [],
+    eventForecast: [],
+    criticalAlerts: [],
+    cashFeedback: null,
+    showTacticalOverview: false,
   };
+
+  private cashFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /** Called at panel cadence, not per frame — React subscribes here. */
   onStatus: ((status: GameClientStatus) => void) | null = null;
@@ -199,6 +274,12 @@ export class GameClient {
     this.input.onSecondary = () => {
       if (this.status.carrying.length > 0) this.network.sendInteract('self', 'drop_carry');
     };
+    // STORY-015 §8 "Tab: tactical overview panel". `InputController` already gates WHEN this
+    // fires (`setTacticalOverviewEnabled`, updated below on every phase change); this is only
+    // the toggle itself.
+    this.input.onToggleOverview = () => {
+      this.patchStatus({ showTacticalOverview: !this.status.showTacticalOverview });
+    };
   }
 
   start(roomId?: string): void {
@@ -233,6 +314,7 @@ export class GameClient {
             ready?: boolean;
             setup?: AcceptedSetup | null;
             cash?: number | null;
+            revenue?: number | null;
             purchasedUpgradeIds?: string[];
           }
         | null;
@@ -240,21 +322,32 @@ export class GameClient {
       const self = players.find((p) => p.playerId === this.status.playerId) as
         | (PlayerState & { carrying?: string[]; currentAction?: string | null; carryCapacity?: number })
         | undefined;
+      // STORY-015. Read once, reused below by `InteractionController`, the critical-alert
+      // ranking, AND `GameClientStatus` itself, so there is exactly one cast site per array
+      // rather than three independent ones drifting out of sync.
+      const restaurants = (message.restaurants ?? []) as RestaurantSnapshot[];
+      const customers = (message.customers ?? []) as CustomerSnapshot[];
+      const orders = (message.orders ?? []) as OrderSnapshot[];
+      const events = (message.events ?? []) as SnapshotEventEntry[];
+      const eventForecast = (message.eventForecast ?? []) as SnapshotEventForecastEntry[];
+
       // STORY-008. `InteractionController` is refreshed here (once per snapshot, ~10 Hz), not
       // in `handleFrame` (per render frame) — the candidates it reads (orders/customers/
       // restaurants) only change at snapshot cadence, and re-deriving them at frame rate would
       // be pure waste. `resolve()` itself still runs per frame, against interpolated position.
       this.interaction.setSnapshot({
         restaurantId: this.status.playerId,
-        restaurants: (message.restaurants ?? []) as RestaurantSnapshot[],
-        orders: (message.orders ?? []) as OrderSnapshot[],
-        customers: (message.customers ?? []) as CustomerSnapshot[],
+        restaurants,
+        orders,
+        customers,
         carrying: self?.carrying ?? [],
         matchPhase: (message.matchPhase ?? null) as string | null,
         carryCapacity: self?.carryCapacity ?? 1,
       });
       const cash = you?.cash ?? null;
+      const revenue = you?.revenue ?? null;
       const purchasedUpgradeIds = you?.purchasedUpgradeIds ?? [];
+      const affordableUpgradeId = pickAffordableUpgrade(cash, purchasedUpgradeIds);
       // STORY-012 "Faster Grill I" / "Pantry Shelves": only the OWNER'S OWN restaurant has
       // these station/pantry meshes at all (the competitor is a simplified shell — see
       // `RestaurantScene#buildCompetitor`), and ownership rarely changes, so this only touches
@@ -267,9 +360,34 @@ export class GameClient {
       // SceneManager#setActiveScene's own comment on why this is a per-snapshot, not per-frame,
       // check.
       const nextPhase = (message.matchPhase ?? null) as MatchPhase | null;
-      if (nextPhase !== this.status.matchPhase) {
+      const phaseChanged = nextPhase !== this.status.matchPhase;
+      if (phaseChanged) {
         this.scene.setActiveScene(nextPhase === 'results' ? 'results' : 'other');
       }
+      // STORY-015 §8: Tab only does anything during `service`/`final_rush` — see
+      // `InputController#tacticalOverviewEnabled`'s own comment. Leaving those phases also
+      // force-closes the panel so it cannot survive into `results` showing stale data.
+      const tacticalOverviewPhase = nextPhase === 'service' || nextPhase === 'final_rush';
+      if (phaseChanged) this.input.setTacticalOverviewEnabled(tacticalOverviewPhase);
+
+      // STORY-015 §14 "Floating cash/tip feedback only for major moments, not every
+      // transaction". Fires on a REVENUE INCREASE of at least `HUD_CASH_FEEDBACK_MIN_DELTA`
+      // between consecutive snapshots — guarded on the PREVIOUS value already being a number,
+      // not null, so the very first snapshot after `service` starts (revenue jumping from
+      // `null` to whatever it already is) never reads as one giant payment.
+      let cashFeedbackPatch: Partial<GameClientStatus> = {};
+      if (typeof this.status.revenue === 'number' && typeof revenue === 'number') {
+        const delta = revenue - this.status.revenue;
+        if (delta >= HUD_CASH_FEEDBACK_MIN_DELTA) {
+          if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
+          this.cashFeedbackTimeout = setTimeout(() => {
+            this.cashFeedbackTimeout = null;
+            this.patchStatus({ cashFeedback: null });
+          }, HUD_CASH_FEEDBACK_DISPLAY_MS);
+          cashFeedbackPatch = { cashFeedback: { amount: delta, atMs: Date.now() } };
+        }
+      }
+
       this.patchStatus({
         playerCount: players.length,
         serverTime: Number(message.serverTime ?? 0),
@@ -287,8 +405,31 @@ export class GameClient {
         carrying: self?.carrying ?? [],
         currentAction: self?.currentAction ?? null,
         cash,
+        revenue,
         purchasedUpgradeIds,
-        canAffordUpgrade: canAffordAnyUpgrade(cash, purchasedUpgradeIds),
+        canAffordUpgrade: affordableUpgradeId !== null,
+        affordableUpgradeId,
+        restaurants,
+        customers,
+        orders,
+        events,
+        eventForecast,
+        // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
+        // once per snapshot — see `criticalAlerts`'s own field comment on why.
+        criticalAlerts: capCriticalAlerts(
+          buildCriticalAlerts({
+            selfRestaurantId: this.status.playerId,
+            restaurants,
+            customers,
+            orders,
+            events,
+            canAffordUpgrade: affordableUpgradeId !== null,
+            affordableUpgradeId,
+          }),
+          HUD_CRITICAL_ALERTS_MAX,
+        ),
+        ...(phaseChanged && !tacticalOverviewPhase ? { showTacticalOverview: false } : {}),
+        ...cashFeedbackPatch,
       });
       return;
     }
@@ -374,6 +515,7 @@ export class GameClient {
   }
 
   dispose(): void {
+    if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
     this.input.dispose();
     this.network.disconnect();
     this.interpolator.clear();

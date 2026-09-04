@@ -9,6 +9,7 @@ import { HudPanel } from '../ui/HudPanel';
 import { SetupScreen } from '../ui/SetupScreen';
 import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
+import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -74,6 +75,13 @@ export function App(): JSX.Element {
           purchasedUpgradeIds={status.purchasedUpgradeIds}
           onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
         />
+      ) : null}
+      {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
+          #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
+          false`) on leaving `service`/`final_rush`, so the phase check here is a display guard,
+          not the only thing preventing a stale panel. */}
+      {status?.showTacticalOverview && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <TacticalOverviewPanel status={status} />
       ) : null}
       <div className="scope-note">
         <strong>Match lifecycle</strong> — the PRD §5 phase clock runs on the server; both
