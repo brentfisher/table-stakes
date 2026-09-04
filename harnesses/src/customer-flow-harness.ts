@@ -142,7 +142,7 @@ function routePlanFor(
       };
     }
     case 'APPROACH_OR_QUEUE': {
-      const position: Vec3 = { x: QUEUE_POS.x + spread * 0.4, y: 0, z: QUEUE_POS.z };
+      const position: Vec3 = { x: QUEUE_POS.x + spread * 0.6, y: 0, z: QUEUE_POS.z };
       const destination = tablePosition ?? HOST_STAND;
       return { position, paths: [[position, HOST_STAND, destination]], lineColor: STATE_COLORS.opportunity };
     }
@@ -171,7 +171,11 @@ function routePlanFor(
       return { position, paths: [[position, DISTRICT_ENTRY]], lineColor: STATE_COLORS.attention };
     }
     case 'ABANDON_QUEUE': {
-      const position: Vec3 = { x: QUEUE_POS.x + spread * 0.4, y: 0, z: QUEUE_POS.z };
+      // A touch further back (z) than APPROACH_OR_QUEUE's own spot, and a wider spread — an
+      // abandoning party has stepped OUT of the queue line proper, and the two states'
+      // labels/lines would otherwise collide at the default camera angle since both cluster
+      // around the same queue entity.
+      const position: Vec3 = { x: QUEUE_POS.x + spread * 0.9 - 1.2, y: 0, z: QUEUE_POS.z - 1.4 };
       return { position, paths: [[position, DISTRICT_ENTRY]], lineColor: STATE_COLORS.critical };
     }
     case 'CANCEL_ORDER': {
