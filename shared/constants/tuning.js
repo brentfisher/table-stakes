@@ -1029,3 +1029,10 @@ export const BOT_PRICE_SENSITIVITY_LEAN = 0.2;
  * so two otherwise-identical dishes do not always land on exactly the same fraction of their
  * band, without breaking reproducibility (still drawn from `BOT_RNG_STREAM`). */
 export const BOT_MENU_PRICE_JITTER = 0.12;
+
+/** How close (world units) the bot's owner avatar must be to a walk destination before
+ * `bot-controller.js#walkToward` calls it "arrived" and releases movement input, rather than
+ * jittering in place. The same job `worker-system.js`'s `WORKER_ARRIVAL_EPSILON` does for a
+ * worker body — kept as its own named constant rather than imported, matching this file's own
+ * `bot-controller.js` header on why cross-system values are duplicated, not shared, here. */
+export const BOT_ARRIVAL_EPSILON = 0.35;

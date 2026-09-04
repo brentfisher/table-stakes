@@ -124,11 +124,17 @@ export class BotController {
     this.setupSent = false;
     this.decisionAccumulatorMs = 0;
     this.stopped = false;
+    // What `#reselectTarget()` last chose; `#pursueTarget()` walks toward and acts on this
+    // EVERY tick, independent of the (slower) reselection cadence — see `advance()`'s header
+    // comment for why this split exists (a real overshoot bug this story found and fixed).
+    this.currentTarget = null;
     // Instrumentation ONLY — never read by any gameplay code, never serialized, exactly the
     // class `worker-system.js`'s own `travelMs`/`workMs`/`idleMs` counters are in ("never
     // serialized, never gameplay"). `scripts/check-bot.mjs` reads this to MEASURE the
-    // difficulty knob (accepted-interacts/minute) rather than assert it holds.
-    this.stats = { interactsSent: 0, interactsRejected: 0, decisionsSkipped: 0 };
+    // difficulty knob (accepted-interacts/minute) rather than assert it holds, and
+    // `rejectedByReason` is what let this story's overshoot bug be DIAGNOSED rather than
+    // guessed at (it was almost entirely `out_of_range`, confirming the mechanism before the fix).
+    this.stats = { interactsSent: 0, interactsRejected: 0, decisionsSkipped: 0, rejectedByReason: {} };
 
     this.socket = new BotSocket((raw) => this.#handleServerMessage(JSON.parse(raw)));
     // A seat-scoped, named sub-stream (Decision 18): `${BOT_RNG_STREAM}:${seatIndex}` rather
@@ -174,7 +180,11 @@ export class BotController {
       // exceptional. The next decision tick simply re-evaluates and tries something else,
       // exactly as a human who mistimed a keypress would. Logged only so a genuinely broken
       // bot (every action rejected) is visible in the server log rather than silently idle.
-      if (msg.error === 'interact_rejected') this.stats.interactsRejected += 1;
+      if (msg.error === 'interact_rejected') {
+        this.stats.interactsRejected += 1;
+        const reason = msg.reason ?? 'unknown';
+        this.stats.rejectedByReason[reason] = (this.stats.rejectedByReason[reason] ?? 0) + 1;
+      }
       console.warn(
         `[bot] ${this.room.id} ${this.playerId ?? '(unjoined)'} rejected: ${msg.error}` +
           `${msg.reason ? ` reason=${msg.reason}${msg.detail ? ` (${msg.detail})` : ''}` : ''}`,
@@ -197,11 +207,34 @@ export class BotController {
     }
     if (phase !== 'service' && phase !== 'final_rush') return;
 
+    // TWO SEPARATE CADENCES, on purpose — this split exists because of a real bug this story
+    // found and fixed. WHAT to pursue (`#reselectTarget`) is difficulty-gated
+    // (`BOT_DECISION_INTERVAL_MS`); WALKING toward whatever was already chosen
+    // (`#pursueTarget`) runs on EVERY tick regardless of difficulty. Reselecting and steering on
+    // the SAME slow cadence (the first version of this file did that) meant the easy bot's own
+    // momentum could carry it straight through and past `OWNER_INTERACT_RANGE` before its next
+    // re-aim: at `BOT_DECISION_INTERVAL_MS.easy` = 900ms and `OWNER_MOVE_SPEED` = 4.2 units/s,
+    // one held direction travels ~3.78 units between re-aims, well past the 2.2-unit interact
+    // range — measured as a 95% interact-rejection rate for `easy` (vs 10% for `hard`, which
+    // re-aims every 220ms/~0.92 units, safely inside range). Worse than merely wasted motion: a
+    // `pickup` that then can't converge on its table HOLDS `order.claimedBy` — the exact pool
+    // `kitchen.readyOrders()` the server worker also reads (action-validator.js's own
+    // "ARBITRATION WITH THE AI SERVER" note) — aging the plate past freshness with no worker able
+    // to rescue it. That is what put `easy`'s score BELOW a genuinely idle opponent's.
+    //
+    // Steering precision was never the intended difficulty axis — `BOT_DECISION_INTERVAL_MS`'s
+    // own tuning.js comment calls it "how on top of it the bot's restaurant looks", i.e.
+    // attentiveness, not motor control. `#pursueTarget` running every tick removes overshoot for
+    // BOTH difficulties equally; `#reselectTarget`'s gated cadence plus `BOT_MISTAKE_PROBABILITY`
+    // remain the real knobs — how quickly a bot notices a better task exists, and how often it
+    // flubs the decision outright.
     this.decisionAccumulatorMs += dtMs;
     const interval = BOT_DECISION_INTERVAL_MS[this.difficulty];
-    if (this.decisionAccumulatorMs < interval) return;
-    this.decisionAccumulatorMs -= interval;
-    this.#serviceTick();
+    if (this.decisionAccumulatorMs >= interval) {
+      this.decisionAccumulatorMs -= interval;
+      this.#reselectTarget();
+    }
+    this.#pursueTarget();
   }
 
   #ensureReady() {
@@ -237,34 +270,52 @@ export class BotController {
     this.setupSent = true;
   }
 
-  #serviceTick() {
-    // Difficulty's imperfection — see `BOT_MISTAKE_PROBABILITY`'s own comment in tuning.js.
+  /**
+   * The SLOW, difficulty-gated half: decide WHAT to pursue next. Difficulty's imperfection —
+   * see `BOT_MISTAKE_PROBABILITY`'s own comment in tuning.js — means "sometimes don't even
+   * reconsider", not "sometimes act on stale information": a missed reselection simply leaves
+   * `this.currentTarget` (and therefore `#pursueTarget`'s walk) exactly as it was.
+   */
+  #reselectTarget() {
     if (this.#mistake()) {
       this.stats.decisionsSkipped += 1;
       return;
     }
+    this.currentTarget = this.#chooseTarget();
+  }
 
-    const target = this.#chooseTarget();
+  /**
+   * The FAST, every-tick half: walk toward `this.currentTarget` and interact the instant it is
+   * in range. Never picks a NEW target itself — that is `#reselectTarget`'s job, on its own
+   * difficulty-gated cadence. See `advance()`'s own header comment for why this split exists.
+   */
+  #pursueTarget() {
     const player = this.match.players.get(this.playerId);
     if (!player) return;
 
-    if (!target) {
+    if (!this.currentTarget) {
       this.#walkToward(HOST_STAND_POSITION);
       return;
     }
 
-    if (distance(player.position, target.position) <= OWNER_INTERACT_RANGE) {
+    if (distance(player.position, this.currentTarget.position) <= OWNER_INTERACT_RANGE) {
       this.sequence += 1;
       this.stats.interactsSent += 1;
       this.#send({
         type: 'interact',
         sequence: this.sequence,
-        targetId: target.targetId,
-        action: target.action,
+        targetId: this.currentTarget.targetId,
+        action: this.currentTarget.action,
       });
+      // Sent once, then cleared: without this, a stationary bot whose action just resolved (or
+      // whose target just stopped being legal) would resend the IDENTICAL interact every tick
+      // until the next reselection, spamming rejections instead of going idle-and-waiting like a
+      // person who just acted would. The next `#reselectTarget()` picks up wherever the
+      // restaurant actually needs it next.
+      this.currentTarget = null;
       return;
     }
-    this.#walkToward(target.position);
+    this.#walkToward(this.currentTarget.position);
   }
 
   #mistake() {
