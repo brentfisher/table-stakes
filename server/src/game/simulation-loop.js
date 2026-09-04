@@ -112,6 +112,28 @@ function runsInPhase(system, phase) {
 }
 
 /**
+ * Advance one ROOM by `dtMs`: `stepMatch()` (below), then any bot controllers seated in it
+ * (STORY-017). Exported so `startSimulationLoop`'s own per-room tick and
+ * `scripts/check-bot.mjs`'s synthetic-`dtMs` loop call the exact same function — one drive
+ * path, not two independently-ordered ones (see `worker-system.js`'s own header on what a
+ * split like that has cost this repo before: a broken seam hidden for three merges).
+ *
+ * Bots advance AFTER `stepMatch`, so a bot's decision this tick acts on state already updated
+ * by every system this tick, and whatever `player_input`/`interact` it sends lands in
+ * `match.players`/the validators immediately but is INTEGRATED (movement) or its EFFECT
+ * observed (an interact's target state) starting next tick — the same one-tick latency class
+ * `systems/index.js`'s own registration-order comments already document and accept elsewhere.
+ *
+ * `room.bots` is an array (usually 0 or 1 entry; `scripts/check-bot.mjs` uses 2 for a
+ * bot-vs-bot balance run) so this stays correct with none, one, or several seated.
+ */
+export function stepRoom(room, dtMs, { onOutbound } = {}) {
+  const result = stepMatch(room.match, dtMs, { onOutbound });
+  for (const bot of room.bots ?? []) bot.advance(dtMs);
+  return result;
+}
+
+/**
  * Advance one match by `dtMs`: clock first, then phase-change hooks, then systems, then the
  * outbox. Exported so a script can step a match deterministically without sockets or a timer.
  */
@@ -150,7 +172,7 @@ export function startSimulationLoop({ broadcast, broadcastPerViewer }) {
     lastTick = now;
 
     for (const room of store.listRooms()) {
-      stepMatch(room.match, dtMs, {
+      stepRoom(room, dtMs, {
         onOutbound: (message) => {
           if (room.sockets.size > 0) broadcast(room, message);
         },
