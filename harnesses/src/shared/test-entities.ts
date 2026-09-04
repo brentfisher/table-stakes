@@ -84,7 +84,10 @@ export function mockShortageVsQueueDemo(restaurantId: string): {
     guestsServed: 0,
     averageSatisfaction: 0,
     abandonedParties: 0,
-    tables: [],
+    // A dirty table alongside the shortage/backlog fixtures above — cheap to include here and
+    // renders the fourth table-badge state (`dirty`, orange) in the same demo toggle, rather
+    // than leaving it as the one badge kind never exercised outside a live match.
+    tables: [{ id: 'table_1', seats: 4, occupiedBy: null, dirty: true }],
     shortages: [
       { station: 'grill', ingredientId: 'ground_beef', blockedTickets: 2, restocking: false, exhausted: false },
     ],
