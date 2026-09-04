@@ -46,6 +46,11 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .dev-controls .row.column { flex-direction: column; align-items: stretch; gap: 2px; }
 .dev-controls .row.column span { color: var(--muted); font-size: 12px; }
 .dev-controls input[type="range"] { width: 100%; }
+.dev-controls select {
+  width: 100%; padding: 5px 6px; background: #232b33; color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: inherit;
+}
+.dev-controls hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .dev-controls button {
   width: 100%; margin-top: 8px; padding: 7px 10px; background: #232b33; color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: inherit;

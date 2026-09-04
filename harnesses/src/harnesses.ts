@@ -5,6 +5,7 @@
 // live match. STORY-020 (event visualization) and STORY-021 (upgrade preview) follow.
 
 import { restaurantLayoutHarness } from './restaurant-layout-harness';
+import { customerFlowHarness } from './customer-flow-harness';
 import type { SceneHarness } from './harness-shell';
 
-export const harnesses: SceneHarness[] = [restaurantLayoutHarness];
+export const harnesses: SceneHarness[] = [restaurantLayoutHarness, customerFlowHarness];
