@@ -57,6 +57,7 @@ import { catalogue } from '../catalogue.js';
 import { STATIONS } from '../../../../shared/schemas/messages.js';
 import layout from '../../../../shared/game-data/restaurant-layout.json' with { type: 'json' };
 import {
+  BOT_ARRIVAL_EPSILON,
   BOT_DECISION_INTERVAL_MS,
   BOT_DEFAULT_DIFFICULTY,
   BOT_DIFFICULTIES,
@@ -330,8 +331,9 @@ export class BotController {
     const dz = position.z - player.position.z;
     const len = Math.hypot(dx, dz);
     this.sequence += 1;
-    if (len < 0.05) {
-      // Already there — release the input rather than jittering in place.
+    if (len < BOT_ARRIVAL_EPSILON) {
+      // Already there — release the input rather than jittering in place. Same job
+      // `worker-system.js#stepToward`'s `WORKER_ARRIVAL_EPSILON` does for a worker body.
       this.#send({
         type: 'player_input',
         sequence: this.sequence,

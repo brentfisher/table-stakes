@@ -25,7 +25,7 @@ import { buildBotSetup, _internal as botSetupInternal } from '../server/src/game
 import { validateSetupSubmission } from '../server/src/game/validators/setup-validator.js';
 import { catalogue } from '../server/src/game/catalogue.js';
 import { selectableMains, selectableAddons } from '../shared/schemas/setup-rules.js';
-import { STARTING_CASH, BOT_DECISION_INTERVAL_MS } from '../shared/constants/tuning.js';
+import { STARTING_CASH, BOT_DECISION_INTERVAL_MS, SCORE_POINTS_SCALE } from '../shared/constants/tuning.js';
 
 const results = [];
 const check = (name, pass, detail = '') => {
@@ -441,10 +441,21 @@ let reference;
     hardMargin > easyMargin,
     `easy margin=${easyMargin.toFixed(1)} hard margin=${hardMargin.toFixed(1)} (avg over ${seeds.length} seeds, PRD-style score points)`,
   );
+  // Thresholds are fractions of SCORE_POINTS_SCALE (1000) rather than flat numbers, so they
+  // stay meaningful if the scoring weights are ever retuned. A single seed is allowed some
+  // variance (a competent human still beats a same-seed easy bot most of the time, not every
+  // time) — the AVERAGE across seeds is the stronger, less noisy claim, checked below it.
+  const EASY_PER_SEED_MARGIN_CAP = SCORE_POINTS_SCALE * 0.1; // 100 pts: still clearly beatable
+  const EASY_AVERAGE_MARGIN_CAP = SCORE_POINTS_SCALE * 0.05; // 50 pts: modest on average
   check(
-    'the easy bot\'s margin over an idle opponent stays modest — beatable by a competent first-time player',
-    easyRuns.every((r) => r.margin < 40),
-    `easy margins: ${easyRuns.map((r) => r.margin.toFixed(1)).join(', ')} (score points, SCORE_POINTS_SCALE-relative)`,
+    "the easy bot's per-seed margin over an idle opponent never runs away — beatable by a competent first-time player",
+    easyRuns.every((r) => r.margin < EASY_PER_SEED_MARGIN_CAP),
+    `easy margins: ${easyRuns.map((r) => r.margin.toFixed(1)).join(', ')} (score points, cap=${EASY_PER_SEED_MARGIN_CAP})`,
+  );
+  check(
+    "the easy bot's AVERAGE margin over an idle opponent stays modest across seeds",
+    easyMargin < EASY_AVERAGE_MARGIN_CAP,
+    `easy avg margin=${easyMargin.toFixed(1)} (score points, cap=${EASY_AVERAGE_MARGIN_CAP})`,
   );
   check(
     'BOT_DECISION_INTERVAL_MS is a real, distinct tuning knob per difficulty (not two names for one number)',

@@ -267,3 +267,4 @@ export declare const BOT_TAG_MATCH_WEIGHT: number;
 export declare const BOT_MARKET_AFFINITY_WEIGHT: number;
 export declare const BOT_PRICE_SENSITIVITY_LEAN: number;
 export declare const BOT_MENU_PRICE_JITTER: number;
+export declare const BOT_ARRIVAL_EPSILON: number;
