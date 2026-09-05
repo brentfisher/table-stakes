@@ -83,6 +83,7 @@ import { STATE_COLORS } from '../../client/src/game/state-colors';
 import dishesData from '../../shared/game-data/dishes.json';
 import segmentsData from '../../shared/game-data/customer-segments.json';
 import { STATIONS, type Station } from '../../shared/schemas/messages';
+import { ADDON_CATEGORIES } from '../../shared/schemas/setup-rules';
 import type {
   CustomerState,
   RestaurantSnapshot,
@@ -263,6 +264,22 @@ function setWireframe(root: THREE.Object3D, value: boolean): void {
   });
 }
 
+/** Disposes every geometry/material under `root` — the same two lines `RestaurantScene#dispose`
+ * itself runs per object, reused here because `removeOwner`/`removeCustomer`/`removeWorker`
+ * only detach (see `teardownCategoryEntities`'s own comment). Deliberately does NOT touch
+ * `Sprite.material.map` — `icon-sprites.ts`'s glyph textures are cached at module scope and
+ * shared by every `RestaurantScene` instance, including other harnesses'; disposing one here
+ * would break every future sprite requesting that same glyph, anywhere. */
+function disposeSubtree(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    mesh.geometry?.dispose();
+    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(material)) material.forEach((m) => m.dispose());
+    else material?.dispose();
+  });
+}
+
 const FOCUSED_CAMERA = { height: 2.6, distance: 3.8, angle: 0.6, fov: 42 };
 
 export const assetShowcaseHarness: SceneHarness = createAssetShowcaseHarness();
@@ -369,21 +386,50 @@ function createAssetShowcaseHarness(): SceneHarness {
         setCamFov(settings.fov);
       }
 
+      /** Focused mode's whole point is inspecting ONE asset at a time, and the showcase spans a
+       * 0.3-unit plate through an 18×4 zone plane — a single fixed camera distance/height can
+       * frame a customer and crop a zone (or vice versa). So the focused camera is derived from
+       * `currentTarget`'s own world-space bounding box (the same `Box3` `applyBounds` already
+       * computes) rather than a constant: distance/height scale with the asset's footprint and
+       * height, and the look-at target is the box's CENTER, not the object's origin — the origin
+       * alone crops anything whose geometry sits mostly above it (a table's badge sprite at
+       * y≈1.7-1.95, a worker's role/task glyphs). Composed mode keeps the fixed `DEFAULT_CAMERA`
+       * restaurant-layout-harness already established — it needs to show the whole floor, not
+       * one asset. */
+      function focusedCameraForTarget(target: THREE.Object3D): { height: number; distance: number; angle: number; fov: number } {
+        const box = new THREE.Box3().setFromObject(target);
+        const size = box.getSize(new THREE.Vector3());
+        const groundSpan = Math.max(size.x, size.z, 0.5);
+        const verticalSpan = Math.max(size.y, 0.5);
+        const clamp = (v: number) => Math.min(34, Math.max(1, v));
+        return {
+          // The `groundSpan * 0.35` term matters for near-flat wide objects (a zone plane has
+          // ~zero `size.y`, so without it `box.max.y * 1.15 + 0.6` alone clamps to the 1-unit
+          // floor — a camera at ground level looking almost edge-on across an 18-unit-wide
+          // plane, which reads as a thin sliver rather than the zone).
+          height: clamp(Math.max(box.max.y * 1.15 + 0.6, verticalSpan * 0.9, groundSpan * 0.35)),
+          distance: clamp(Math.max(groundSpan * 1.3 + verticalSpan * 0.4, verticalSpan * 1.8, groundSpan * 1.8)),
+          angle: FOCUSED_CAMERA.angle,
+          fov: FOCUSED_CAMERA.fov,
+        };
+      }
+
       function applyCameraForMode(): void {
         if (!camera) return;
         if (composed) {
           camera.setSettings(DEFAULT_CAMERA);
           camera.setTarget(0, -1);
           syncCameraSliders(DEFAULT_CAMERA);
+        } else if (currentTarget) {
+          const box = new THREE.Box3().setFromObject(currentTarget);
+          const center = box.getCenter(new THREE.Vector3());
+          const settings = focusedCameraForTarget(currentTarget);
+          camera.setSettings(settings);
+          camera.setTarget(center.x, center.z);
+          syncCameraSliders(settings);
         } else {
           camera.setSettings(FOCUSED_CAMERA);
-          if (currentTarget) {
-            const worldPos = new THREE.Vector3();
-            currentTarget.getWorldPosition(worldPos);
-            camera.setTarget(worldPos.x, worldPos.z);
-          } else {
-            camera.setTarget(0, -1);
-          }
+          camera.setTarget(0, -1);
           syncCameraSliders(FOCUSED_CAMERA);
         }
       }
@@ -676,9 +722,28 @@ function createAssetShowcaseHarness(): SceneHarness {
 
       function teardownCategoryEntities(): void {
         if (!scene) return;
-        for (const ownerId of spawnedOwnerIds) scene.removeOwner(ownerId);
-        for (const customerId of spawnedCustomerIds) scene.removeCustomer(customerId);
-        for (const workerId of spawnedWorkerIds) scene.removeWorker(workerId);
+        // `RestaurantScene#removeOwner/removeCustomer/removeWorker` only detach the group from
+        // the scene graph — unlike `dispose()` (which traverses the WHOLE scene once, at harness
+        // teardown), they never free geometry/materials, because nothing in production calls
+        // them more than once per entity's whole lifetime. This harness calls them every category
+        // switch, so it disposes each entity's own subtree itself first (geometry + material
+        // only — never the glyph sprites' textures, which `icon-sprites.ts` caches at MODULE
+        // scope and shares across every `RestaurantScene` instance, including other harnesses').
+        for (const ownerId of spawnedOwnerIds) {
+          const group = scene.scene.getObjectByName(`owner_${ownerId}`);
+          if (group) disposeSubtree(group);
+          scene.removeOwner(ownerId);
+        }
+        for (const customerId of spawnedCustomerIds) {
+          const group = scene.scene.getObjectByName(`customer_${customerId}`);
+          if (group) disposeSubtree(group);
+          scene.removeCustomer(customerId);
+        }
+        for (const workerId of spawnedWorkerIds) {
+          const group = scene.scene.getObjectByName(`worker_${workerId}`);
+          if (group) disposeSubtree(group);
+          scene.removeWorker(workerId);
+        }
         spawnedOwnerIds = [];
         spawnedCustomerIds = [];
         spawnedWorkerIds = [];
@@ -818,6 +883,15 @@ function createAssetShowcaseHarness(): SceneHarness {
         dishSection,
       );
       setDishInfo(`$${DISHES[0].suggestedPrice} · steps: ${DISHES[0].stationSteps.map((s) => s.station).join(' → ')}`);
+      const addonDishNames = DISHES.filter((d) => (ADDON_CATEGORIES as readonly string[]).includes(d.category)).map((d) => d.name);
+      const addonNote = document.createElement('p');
+      addonNote.className = 'muted';
+      addonNote.textContent =
+        `This list includes ${addonDishNames.length ? addonDishNames.join(', ') : 'the'} — the ` +
+        `${ADDON_CATEGORIES.join('/')} add-on categories per setup-rules.js's own ADDON_CATEGORIES ` +
+        '— alongside every main course. Every add-on is selectable here for coverage and renders ' +
+        'exactly as identically as every entree does: no add-on-specific mesh exists either.';
+      dishSection.appendChild(addonNote);
 
       // --- panel: Restaurant Models section --------------------------------------------------------
 
@@ -931,7 +1005,20 @@ function createAssetShowcaseHarness(): SceneHarness {
             mesh.receiveShadow = v;
           }
           const light = obj as THREE.DirectionalLight;
-          if (light.isDirectionalLight) light.castShadow = v;
+          if (light.isDirectionalLight) {
+            light.castShadow = v;
+            // THREE.DirectionalLight's default shadow camera is an orthographic ±5 box centered
+            // on the light's target — far smaller than `restaurant-layout.json`'s 18×24 floor
+            // (`bounds`), so most of the floor would silently receive no shadow at all. Widen it
+            // once to cover the real footprint with margin, rather than shipping a toggle that
+            // only visibly does anything near the origin.
+            const cam = light.shadow.camera;
+            cam.left = -16;
+            cam.right = 16;
+            cam.top = 16;
+            cam.bottom = -16;
+            cam.updateProjectionMatrix();
+          }
         });
       });
       panel.addToggle('Wireframe (selected asset)', false, (v) => {
