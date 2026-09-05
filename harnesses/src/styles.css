@@ -68,3 +68,23 @@ body { margin: 0; background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: inherit;
 }
 .dev-controls button:hover { border-color: var(--accent); }
+
+/* STORY-026 asset showcase harness — a multi-line diagnostics readout (DevControls#addDiagnostics),
+   distinct from the single-line `.row` readout: loading-failure/missing-texture/unsupported-
+   animation/invalid-fixture notes are sentence-length, and several can apply at once. */
+.dev-controls .diagnostics-box { gap: 6px; }
+.dev-controls .diagnostics-body {
+  background: #10151a; border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; color: var(--accent);
+}
+.dev-controls .diagnostics-body p { margin: 0 0 6px; }
+.dev-controls .diagnostics-body p:last-child { margin-bottom: 0; }
+.dev-controls .diagnostics-body p.muted { color: var(--muted); }
+
+/* STORY-026 asset showcase harness — one heading per showcase category (Player/Dish/Restaurant
+   Models), grouping each category's variant select + secondary controls inside one
+   `DevControls#section()` container that the category switcher shows/hides as a unit. */
+.dev-controls h3.section-heading {
+  margin: 14px 0 6px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--accent);
+}
