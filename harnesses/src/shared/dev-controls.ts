@@ -16,7 +16,27 @@ export class DevControls {
     this.element.appendChild(this.body);
   }
 
-  addToggle(label: string, initial: boolean, onChange: (value: boolean) => void): void {
+  /** STORY-026. A grouping container appended into `body` that a caller can hide/show as a
+   * unit (via `.hidden`) — e.g. one section per showcase category, only one of which is ever
+   * visible. Every `addX` method below still defaults to appending straight into `body` when no
+   * `container` is given, so this is purely additive: every existing call site across the other
+   * five harnesses is unaffected. */
+  section(): HTMLDivElement {
+    const el = document.createElement('div');
+    this.body.appendChild(el);
+    return el;
+  }
+
+  /** STORY-026. Returns a setter, matching `addSlider`/`addSelect`/`addReadout` — a caller that
+   * re-points this toggle at a different underlying entity (e.g. switching which worker/owner
+   * is being inspected) needs to re-sync the checkbox to THAT entity's own current flag without
+   * firing `onChange` and re-mutating state that is already correct. */
+  addToggle(
+    label: string,
+    initial: boolean,
+    onChange: (value: boolean) => void,
+    container: HTMLElement = this.body,
+  ): (value: boolean) => void {
     const row = document.createElement('label');
     row.className = 'row';
     const input = document.createElement('input');
@@ -24,7 +44,10 @@ export class DevControls {
     input.checked = initial;
     input.addEventListener('change', () => onChange(input.checked));
     row.append(input, document.createTextNode(label));
-    this.body.appendChild(row);
+    container.appendChild(row);
+    return (value: boolean) => {
+      input.checked = value;
+    };
   }
 
   /** Returns a setter so a caller can re-sync the slider's displayed value when the thing it
@@ -36,6 +59,7 @@ export class DevControls {
     label: string,
     { min, max, step, value }: { min: number; max: number; step: number; value: number },
     onChange: (value: number) => void,
+    container: HTMLElement = this.body,
   ): (value: number) => void {
     const row = document.createElement('label');
     row.className = 'row column';
@@ -55,18 +79,18 @@ export class DevControls {
       onChange(next);
     });
     row.append(caption, input);
-    this.body.appendChild(row);
+    container.appendChild(row);
     return (next: number) => {
       input.value = String(next);
       readout.textContent = next.toFixed(2);
     };
   }
 
-  addButton(label: string, onClick: () => void): void {
+  addButton(label: string, onClick: () => void, container: HTMLElement = this.body): void {
     const button = document.createElement('button');
     button.textContent = label;
     button.addEventListener('click', onClick);
-    this.body.appendChild(button);
+    container.appendChild(button);
   }
 
   /** A plain `<select>` — used where the option set is a small closed vocabulary (a customer
@@ -79,6 +103,7 @@ export class DevControls {
     label: string,
     options: { value: string; label: string }[],
     onChange: (value: string) => void,
+    container: HTMLElement = this.body,
   ): (options: { value: string; label: string }[], selected?: string) => void {
     const row = document.createElement('label');
     row.className = 'row column';
@@ -87,7 +112,7 @@ export class DevControls {
     const select = document.createElement('select');
     select.addEventListener('change', () => onChange(select.value));
     row.append(caption, select);
-    this.body.appendChild(row);
+    container.appendChild(row);
 
     const populate = (opts: { value: string; label: string }[], selected?: string) => {
       const previous = selected ?? select.value;
@@ -108,20 +133,52 @@ export class DevControls {
    * (spawn config, selected-party controls, queue simulation, display toggles) that an
    * unbroken list of rows reads as one undifferentiated pile; a few `<hr>`s cost nothing and
    * make the panel scannable. */
-  addSeparator(): void {
-    this.body.appendChild(document.createElement('hr'));
+  addSeparator(container: HTMLElement = this.body): void {
+    container.appendChild(document.createElement('hr'));
   }
 
-  addReadout(label: string): (value: string) => void {
+  addReadout(label: string, container: HTMLElement = this.body): (value: string) => void {
     const row = document.createElement('div');
     row.className = 'row';
     const caption = document.createElement('span');
     caption.textContent = `${label} `;
     const value = document.createElement('b');
     row.append(caption, value);
-    this.body.appendChild(row);
+    container.appendChild(row);
     return (next: string) => {
       value.textContent = next;
+    };
+  }
+
+  /** STORY-026. A multi-line diagnostics readout — `addReadout`'s `<b>` is a single inline
+   * span, wrong for the "loading failures, missing textures, unsupported animations, invalid
+   * fixture metadata surface as visible diagnostics" requirement, which routinely needs several
+   * sentence-long, independent notes at once. Returns a setter taking a list of lines (each its
+   * own paragraph); an empty list renders a neutral placeholder rather than a blank box, so "no
+   * diagnostics" always reads as an intentional state, not a missing readout. */
+  addDiagnostics(label: string, container: HTMLElement = this.body): (lines: string[]) => void {
+    const wrap = document.createElement('div');
+    wrap.className = 'row column diagnostics-box';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const body = document.createElement('div');
+    body.className = 'diagnostics-body';
+    wrap.append(caption, body);
+    container.appendChild(wrap);
+    return (lines: string[]) => {
+      body.replaceChildren();
+      if (lines.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = 'No diagnostics for this selection.';
+        body.appendChild(p);
+        return;
+      }
+      for (const line of lines) {
+        const p = document.createElement('p');
+        p.textContent = line;
+        body.appendChild(p);
+      }
     };
   }
 }

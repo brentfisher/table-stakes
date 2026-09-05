@@ -1,0 +1,1027 @@
+// STORY-026 Entity model showcase harness.
+//
+// Purpose: a standalone showcase for player, dish and restaurant models/entities, for visual
+// styling work independent of a live match — Player Models, Dish Models, Restaurant Models,
+// each in both a focused single-asset inspection mode and a composed in-context scene mode.
+//
+// SCOPE REALITY-CHECK (read before touching this file). The PRD's source document for this
+// story envisions "model loaders", "missing textures", "unsupported animations", "hot-swapping
+// assets" — a full asset-loading pipeline. THIS CODEBASE HAS NONE OF THAT, anywhere, in
+// production or in any of the other five harnesses: every visual in `RestaurantScene.ts` is a
+// procedural THREE.js primitive (boxes, capsules, spheres, planes) with a solid-color material,
+// built directly in code from `restaurant-layout.json` — no `GLTFLoader`, no textures, no
+// skeletal animation, nothing to hot-swap. Building a model/texture/animation-loading system
+// here would contradict conventions.md Decision 1 (Three.js is CDN-only, pinned — no bundled
+// loader dependency) and would have no precedent in any of restaurant-layout/customer-flow/
+// kitchen-bottleneck/event-visualization/upgrade-preview-harness. So this harness does NOT
+// invent one. Instead:
+//
+//   - The three categories map onto what is ACTUALLY reusable: `RestaurantScene`'s real
+//     owner/worker/customer render states (`upsertOwner`/`upsertWorker`/`upsertCustomer`) for
+//     Player Models, and its zone/table/station/pantry/pass/terminal/competitor visuals for
+//     Restaurant Models.
+//   - Dish Models has NO per-dish visual asset to showcase — every dish (`smash_burger`,
+//     `caesar_salad`, …) renders as the exact same generic plate mesh regardless of `dishId`.
+//     This category is built around what IS real instead: the plate's three production
+//     placements (carried by the owner, the food-ready icon at the pass, the table badge), plus
+//     an honest accounting of which `OrderState` values ('queued', 'ready') have ANY visual at
+//     all and which ('placed', 'in_progress', 'delivered', 'cancelled') have none.
+//   - Wherever a requested preview has no production view to map onto — `OwnerRenderState.
+//     sprinting` (carried on the wire, never rendered), `CustomerSnapshot.state`/exit states (no
+//     visual beyond the patience ring), `equipment_failure`/`StationSnapshot.broken` (declared
+//     in `game-state.d.ts`, never rendered anywhere, and `stations[]` is never even published —
+//     see `key-files.md`), or a non-`grill` station's "upgraded" tint (`STATION_COLORS_UPGRADED`
+//     only has a `grill` entry) — the Diagnostics box says so in plain language instead of
+//     inventing a look this codebase has never shipped. That is this file's answer to the AC's
+//     "loading failures, missing textures, unsupported animations, invalid fixture metadata
+//     surface as visible diagnostics, not silent failures": there is no loader to fail, so the
+//     diagnostic is "this fixture/control has no visual effect in production", which is the
+//     honest analogue.
+//   - `kitchen-bottleneck-harness.ts` already invented its OWN bespoke "broken station" glyph
+//     for its own timing-comparison purposes (see its header) — that is a harness-local
+//     invention, not a reusable production view, so it is deliberately NOT duplicated here.
+//
+// FOCUSED VS COMPOSED, BOTH ON THE SAME `RestaurantScene` INSTANCE. There is exactly one
+// `RestaurantScene` per mount, reused for both modes and shared across all three categories —
+// never a private copy. "Composed" shows the whole restaurant, exactly as `restaurant-layout-
+// harness` does. "Focused" hides every top-level scene child except the one object currently
+// being inspected (so the inspected asset fills the frame, product-shot style) — implemented as
+// a visibility pass over `scene.scene.children`, not a second scene graph. Swapping the
+// inspected asset or toggling modes is therefore just a visibility + camera-target change, never
+// a rebuild — satisfying "swapping the inspected asset does not require a page reload" for free.
+//
+// MOCKED FIXTURES MATCH PRODUCTION SHAPES. `./shared/test-entity-fixtures.ts` builds
+// `OwnerRenderState`/`WorkerRenderState`/`CustomerRenderState`/`RestaurantSnapshot`/
+// `CustomerSnapshot`/`OrderSnapshot` values using the real interfaces from `scene-primitives.ts`
+// and `shared/schemas/game-state`, not ad hoc objects that happen to render.
+
+import * as THREE from 'three';
+import type { SceneHarness } from './harness-shell';
+import {
+  RestaurantScene,
+  CameraController,
+  DEFAULT_CAMERA,
+  type OwnerRenderState,
+  type WorkerRenderState,
+} from './shared/scene-primitives';
+import { DevControls } from './shared/dev-controls';
+import {
+  SHOWCASE_RESTAURANT_ID,
+  SHOWCASE_OWNER_ID,
+  SHOWCASE_RIVAL_OWNER_ID,
+  layoutTableIds,
+  defaultTables,
+  mockOwner,
+  mockWorker,
+  mockCustomerRenderState,
+  mockSelfRestaurantSnapshot,
+  mockRivalRestaurantSnapshot,
+  mockOrder,
+  mockDiningCustomer,
+} from './shared/test-entity-fixtures';
+import { STATE_COLORS } from '../../client/src/game/state-colors';
+import dishesData from '../../shared/game-data/dishes.json';
+import segmentsData from '../../shared/game-data/customer-segments.json';
+import { STATIONS, type Station } from '../../shared/schemas/messages';
+import type {
+  CustomerState,
+  RestaurantSnapshot,
+  CustomerSnapshot,
+  OrderSnapshot,
+  WorkerRole,
+  WorkerTaskKind,
+} from '../../shared/schemas/game-state';
+import {
+  ORDER_FRESHNESS_GRACE_MS,
+  PATIENCE_RING_ATTENTION_THRESHOLD,
+  PATIENCE_RING_BOTTLENECK_THRESHOLD,
+  UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD,
+} from '../../shared/constants/tuning';
+
+type Category = 'player' | 'dish' | 'restaurant';
+
+interface DishDef {
+  id: string;
+  name: string;
+  category: string;
+  suggestedPrice: number;
+  stationSteps: { station: Station; durationMs: number }[];
+}
+const DISHES = dishesData.dishes as unknown as DishDef[];
+
+interface SegmentDef {
+  id: string;
+  name: string;
+}
+const SEGMENTS = segmentsData.segments as unknown as SegmentDef[];
+
+// --- Player Models: static preview positions/defs (independent of any one scene instance) -----
+
+const OWNER_SELF_POS = { x: 0, z: -3 } as const;
+const OWNER_RIVAL_POS = { x: 2.4, z: -3 } as const;
+const WORKER_ROW_Z = 6.6;
+const CUSTOMER_ROW_Z = -6.4;
+
+const WORKER_TASK_KINDS: WorkerTaskKind[] = [
+  'tend_station',
+  'restock',
+  'deliver_order',
+  'seat_party',
+  'take_order',
+  'clear_table',
+  'collect_payment',
+];
+const WORKER_TASK_SELECT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'idle', label: 'Idle (no task)' },
+  { value: 'needs_help', label: 'Needs help (blocked)' },
+  ...WORKER_TASK_KINDS.map((k) => ({ value: k, label: k })),
+];
+
+/** Turns one `WORKER_TASK_SELECT_OPTIONS` value into the `task`/`needsHelp` pair
+ * `RestaurantScene#upsertWorker` reads — the "THREE STATES, NOT TWO" shape `game-state.d.ts`
+ * documents on `RestaurantSnapshot.workers[]` itself. */
+function taskOptionToTaskAndHelp(
+  value: string,
+): { task: WorkerRenderState['task']; needsHelp: WorkerRenderState['needsHelp'] } {
+  if (value === 'idle') return { task: null, needsHelp: null };
+  if (value === 'needs_help') {
+    return { task: null, needsHelp: { reason: 'blocked_on_ingredients', station: 'grill', ingredientId: 'ground_beef' } };
+  }
+  return {
+    task: { kind: value as WorkerTaskKind, phase: 'work', targetId: null, station: null, remainingMs: 0 },
+    needsHelp: null,
+  };
+}
+
+interface WorkerPreviewDef {
+  /** Scene object name is `worker_${workerId}` — see `RestaurantScene#upsertWorker`. */
+  workerId: string;
+  role: WorkerRole;
+  post: string;
+  x: number;
+  initialTaskOption: string;
+  /** Whether `restaurant-layout.json`'s MVP `staff.roster` actually assigns this role today. */
+  rostered: boolean;
+}
+const WORKER_PREVIEWS: WorkerPreviewDef[] = [
+  { workerId: 'cook', role: 'cook', post: 'grill', x: -6, initialTaskOption: 'tend_station', rostered: true },
+  { workerId: 'server', role: 'server', post: 'dining_room', x: -2, initialTaskOption: 'deliver_order', rostered: true },
+  { workerId: 'prep_worker', role: 'prep_worker', post: 'prep', x: 2, initialTaskOption: 'idle', rostered: false },
+  { workerId: 'host', role: 'host', post: 'host_stand', x: 6, initialTaskOption: 'seat_party', rostered: false },
+];
+
+/** Representative `patienceRemaining` values for the four §14 ring bands, derived from the same
+ * thresholds `RestaurantScene#upsertCustomer` classifies against (`patienceColorBand`) rather
+ * than invented cutoffs — the midpoint of each band's own range. */
+const PATIENCE_BAND_VALUES: { id: string; label: string; value: number }[] = [
+  { id: 'healthy', label: 'Healthy (green)', value: (PATIENCE_RING_ATTENTION_THRESHOLD + 1) / 2 },
+  {
+    id: 'attention',
+    label: 'Attention (yellow)',
+    value: (PATIENCE_RING_BOTTLENECK_THRESHOLD + PATIENCE_RING_ATTENTION_THRESHOLD) / 2,
+  },
+  {
+    id: 'bottleneck',
+    label: 'Bottleneck (orange)',
+    value: (UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD + PATIENCE_RING_BOTTLENECK_THRESHOLD) / 2,
+  },
+  { id: 'critical', label: 'Critical (red)', value: UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD / 2 },
+];
+
+function customerXFor(customerId: string): number {
+  const segmentId = customerId.replace('customer_', '');
+  const idx = SEGMENTS.findIndex((s) => s.id === segmentId);
+  return -8 + Math.max(0, idx) * 4;
+}
+
+const PLAYER_VARIANT_DEFS: { id: string; label: string; kind: 'owner' | 'worker' | 'customer' }[] = [
+  { id: 'owner_self', label: 'Owner (self)', kind: 'owner' },
+  { id: 'owner_rival', label: 'Owner (rival)', kind: 'owner' },
+  ...WORKER_PREVIEWS.map((w) => ({ id: `worker_${w.workerId}`, label: `Worker: ${w.role}`, kind: 'worker' as const })),
+  ...SEGMENTS.map((s) => ({ id: `customer_${s.id}`, label: `Customer: ${s.name}`, kind: 'customer' as const })),
+];
+
+// --- Dish Models: static variant list (see this file's header on why there is no per-dish mesh)
+
+const DISH_VARIANT_DEFS: { id: string; label: string }[] = [
+  { id: 'carried_1', label: 'Carried by owner — 1 plate' },
+  { id: 'carried_2', label: 'Carried by owner — 2 plates' },
+  { id: 'carried_3', label: 'Carried by owner — 3 plates (max)' },
+  { id: 'table_order_taken', label: 'On table — order taken' },
+  { id: 'table_meal_delivered', label: 'On table — meal delivered' },
+  { id: 'table_paying', label: 'On table — paying' },
+  { id: 'table_dirty', label: 'On table — dirty (cleanup)' },
+  { id: 'pass_ready_fresh', label: 'At the pass — ready, fresh' },
+  { id: 'pass_ready_stale', label: 'At the pass — ready, stale' },
+  { id: 'kitchen_queued_low', label: 'In kitchen — queued (1 ticket)' },
+  { id: 'kitchen_queued_high', label: 'In kitchen — queued (4 tickets)' },
+  { id: 'state_placed', label: "Order state 'placed' (no visual)" },
+  { id: 'state_in_progress', label: "Order state 'in_progress' (no visual)" },
+  { id: 'state_delivered', label: "Order state 'delivered' (no visual)" },
+  { id: 'state_cancelled', label: "Order state 'cancelled' (no visual)" },
+];
+
+// --- Restaurant Models: static variant list, one entry per reusable production entity view ----
+
+const PASS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'fresh', label: 'Ready — fresh' },
+  { value: 'stale', label: 'Ready — stale' },
+];
+
+const RESTAURANT_VARIANT_DEFS: { id: string; label: string }[] = [
+  { id: 'zone_street', label: 'Zone: Street / Entry' },
+  { id: 'zone_dining', label: 'Zone: Dining Room' },
+  { id: 'zone_pass', label: 'Zone: Service Pass' },
+  { id: 'zone_kitchen', label: 'Zone: Kitchen' },
+  ...layoutTableIds().map((tid) => ({ id: tid, label: `Table (${tid})` })),
+  ...STATIONS.map((s) => ({ id: `station_${s}`, label: `Kitchen station: ${s}` })),
+  { id: 'pantry', label: 'Pantry' },
+  { id: 'dishwashing', label: 'Dishwashing' },
+  { id: 'host_stand', label: 'Host stand' },
+  { id: 'upgrade_terminal', label: 'Upgrade terminal' },
+  { id: 'queue_line', label: 'Queue line' },
+  { id: 'service_pass', label: 'Service pass' },
+  { id: 'competitor_restaurant', label: 'Competitor restaurant (rival shell)' },
+  { id: 'gap_equipment_failure', label: 'Equipment failure / broken station (no production view)' },
+];
+
+/** Toggles `.wireframe` on every material under `root` — applied only to the currently focused
+ * asset (never the whole scene), so it reads as "highlight this one object" in composed mode. */
+function setWireframe(root: THREE.Object3D, value: boolean): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    if (!material) return;
+    for (const m of Array.isArray(material) ? material : [material]) {
+      if ('wireframe' in m) (m as THREE.MeshStandardMaterial).wireframe = value;
+    }
+  });
+}
+
+const FOCUSED_CAMERA = { height: 2.6, distance: 3.8, angle: 0.6, fov: 42 };
+
+export const assetShowcaseHarness: SceneHarness = createAssetShowcaseHarness();
+
+function createAssetShowcaseHarness(): SceneHarness {
+  let renderer: THREE.WebGLRenderer | null = null;
+  let scene: RestaurantScene | null = null;
+  let camera: CameraController | null = null;
+  let frame = 0;
+  let observer: ResizeObserver | null = null;
+
+  return {
+    id: 'asset-showcase',
+    title: 'Asset Showcase',
+    description:
+      'Player, dish and restaurant models/entities — reused from the real RestaurantScene, ' +
+      'focused single-asset and composed in-context modes, with honest diagnostics where no ' +
+      'production view exists for a category.',
+
+    mount(container: HTMLElement): void {
+      const viewport = document.createElement('div');
+      viewport.className = 'harness-viewport';
+      const panel = new DevControls('Asset showcase controls');
+      container.append(viewport, panel.element);
+
+      scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: false, night: false });
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
+      viewport.appendChild(renderer.domElement);
+
+      camera = new CameraController(viewport.clientWidth / Math.max(1, viewport.clientHeight));
+
+      // --- harness-local mutable state, fresh every mount ------------------------------------
+      let category: Category = 'player';
+      let composed = false;
+      let wireframeOn = false;
+      let boundsOn = false;
+      let currentTarget: THREE.Object3D | null = null;
+      let boundsHelper: THREE.Box3Helper | null = null;
+      const homePosition = new THREE.Vector3();
+      let homeScale = 1;
+
+      let spawnedOwnerIds: string[] = [];
+      let spawnedCustomerIds: string[] = [];
+      let spawnedWorkerIds: string[] = [];
+      let activeOwnerState: OwnerRenderState | null = null;
+      let activeWorkerDef: WorkerPreviewDef | null = null;
+      let activeCustomerId: string | null = null;
+      let activeRestaurantVariantId: string | null = null;
+      let rivalFraction = 0;
+      let rivalQueueLength = 0;
+
+      // --- shared floor-state helper (Dish/Restaurant categories) ----------------------------
+      function applyFloorState(opts: {
+        selfOverrides?: Partial<RestaurantSnapshot>;
+        rivalOverrides?: Partial<RestaurantSnapshot>;
+        customers?: CustomerSnapshot[];
+        orders?: OrderSnapshot[];
+      }): void {
+        if (!scene) return;
+        scene.updateFloorState({
+          selfRestaurantId: SHOWCASE_RESTAURANT_ID,
+          restaurants: [mockSelfRestaurantSnapshot(opts.selfOverrides), mockRivalRestaurantSnapshot(opts.rivalOverrides)],
+          customers: opts.customers ?? [],
+          orders: opts.orders ?? [],
+          events: [],
+        });
+      }
+
+      // --- visibility / bounds / camera: the focused-vs-composed mechanism -------------------
+      function applyVisibility(): void {
+        if (!scene) return;
+        for (const child of scene.scene.children) {
+          if (child instanceof THREE.Light) continue;
+          if (child instanceof THREE.GridHelper) continue;
+          if (child.name === 'competitor_restaurant') continue;
+          if (boundsHelper && child === boundsHelper) continue;
+          child.visible = composed ? true : currentTarget !== null && child === currentTarget;
+        }
+        const showCompetitor =
+          currentTarget !== null && currentTarget.name === 'competitor_restaurant'
+            ? true
+            : composed && category === 'restaurant';
+        scene.setCompetitorVisible(showCompetitor);
+      }
+
+      function applyBounds(): void {
+        if (!scene) return;
+        if (boundsHelper) {
+          scene.scene.remove(boundsHelper);
+          boundsHelper = null;
+        }
+        if (!boundsOn || !currentTarget) return;
+        const box = new THREE.Box3().setFromObject(currentTarget);
+        boundsHelper = new THREE.Box3Helper(box, new THREE.Color(STATE_COLORS.opportunity));
+        scene.scene.add(boundsHelper);
+      }
+
+      function syncCameraSliders(settings: { height: number; distance: number; angle: number; fov: number }): void {
+        setCamHeight(settings.height);
+        setCamDistance(settings.distance);
+        setCamAngle(settings.angle);
+        setCamFov(settings.fov);
+      }
+
+      function applyCameraForMode(): void {
+        if (!camera) return;
+        if (composed) {
+          camera.setSettings(DEFAULT_CAMERA);
+          camera.setTarget(0, -1);
+          syncCameraSliders(DEFAULT_CAMERA);
+        } else {
+          camera.setSettings(FOCUSED_CAMERA);
+          if (currentTarget) {
+            const worldPos = new THREE.Vector3();
+            currentTarget.getWorldPosition(worldPos);
+            camera.setTarget(worldPos.x, worldPos.z);
+          } else {
+            camera.setTarget(0, -1);
+          }
+          syncCameraSliders(FOCUSED_CAMERA);
+        }
+      }
+
+      /** The single entry point every category's "select a variant" handler calls once it has
+       * applied its own scene-state changes. Resets the transform sliders to neutral (a stale
+       * offset from the PREVIOUS asset must never silently apply to this one), and clears
+       * wireframe off the outgoing target before it (possibly) becomes invisible or reused. */
+      function focusOn(target: THREE.Object3D | null, diagnostics: string[]): void {
+        if (currentTarget) setWireframe(currentTarget, false);
+        currentTarget = target;
+        if (target) {
+          homePosition.copy(target.position);
+          homeScale = target.scale.x || 1;
+          setWireframe(target, wireframeOn);
+        } else {
+          homePosition.set(0, 0, 0);
+          homeScale = 1;
+        }
+        setPosX(0);
+        setPosY(0);
+        setPosZ(0);
+        setScaleSlider(1);
+        applyVisibility();
+        applyBounds();
+        applyCameraForMode();
+        setDiagnostics(diagnostics);
+      }
+
+      // --- Player Models ----------------------------------------------------------------------
+
+      function selectPlayerVariant(id: string): void {
+        if (!scene) return;
+        const def = PLAYER_VARIANT_DEFS.find((d) => d.id === id);
+        if (!def) return;
+        ownerControls.hidden = def.kind !== 'owner';
+        workerControls.hidden = def.kind !== 'worker';
+        customerControls.hidden = def.kind !== 'customer';
+
+        let diagnostics: string[] = [];
+        let targetName = id;
+
+        if (def.kind === 'owner') {
+          const isSelf = id === 'owner_self';
+          const ownerId = isSelf ? SHOWCASE_OWNER_ID : SHOWCASE_RIVAL_OWNER_ID;
+          targetName = `owner_${ownerId}`;
+          activeOwnerState = isSelf
+            ? mockOwner(SHOWCASE_OWNER_ID, OWNER_SELF_POS.x, OWNER_SELF_POS.z, true)
+            : mockOwner(SHOWCASE_RIVAL_OWNER_ID, OWNER_RIVAL_POS.x, OWNER_RIVAL_POS.z, false, Math.PI);
+          setCarrySlider(0);
+          setSprintingToggle(false);
+          scene.setCarrying(ownerId, 0);
+          diagnostics = [
+            "OwnerRenderState.sprinting is carried on the wire and by this fixture's own shape, " +
+              'but RestaurantScene#upsertOwner never reads it — there is no run-cycle animation ' +
+              "for the owner avatar in production. Toggling 'Sprinting' below changes state, not " +
+              'pixels; that is the honest result of this control, not a bug.',
+          ];
+        } else if (def.kind === 'worker') {
+          activeWorkerDef = WORKER_PREVIEWS.find((w) => `worker_${w.workerId}` === id) ?? null;
+          if (activeWorkerDef) {
+            setTaskSelect(WORKER_TASK_SELECT_OPTIONS, activeWorkerDef.initialTaskOption);
+            const { task, needsHelp } = taskOptionToTaskAndHelp(activeWorkerDef.initialTaskOption);
+            scene.upsertWorker(
+              mockWorker(activeWorkerDef.workerId, activeWorkerDef.role, activeWorkerDef.post, activeWorkerDef.x, WORKER_ROW_Z, task, needsHelp),
+            );
+            if (!activeWorkerDef.rostered) {
+              diagnostics = [
+                `'${activeWorkerDef.role}' is declared in WORKER_ROLES and fully renderable here ` +
+                  "(role color + glyph), but restaurant-layout.json's MVP staff.roster only ever " +
+                  "assigns 'cook' and 'server' — a live match never actually spawns this role yet. " +
+                  'Shown here for visual coverage, not as evidence it appears in a real match.',
+              ];
+            }
+          }
+        } else {
+          activeCustomerId = id;
+          const segmentId = id.replace('customer_', '');
+          setPatienceSelect(
+            PATIENCE_BAND_VALUES.map((b) => ({ value: b.id, label: b.label })),
+            'healthy',
+          );
+          scene.upsertCustomer(mockCustomerRenderState(id, segmentId, customerXFor(id), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
+          diagnostics = [
+            'CustomerSnapshot.state (SEATED/EATING/PAYING/LEAVING, exit states like ' +
+              "CHOOSE_RIVAL, …) has no visual on the customer's own body — only patienceRemaining " +
+              '(the ring color/band) and segmentId (the body tint) are ever rendered per-customer. ' +
+              "See Dish Models > table placements for the table's own badge instead.",
+          ];
+        }
+
+        focusOn(scene.scene.getObjectByName(targetName) ?? null, diagnostics);
+      }
+
+      function populatePlayerCategory(): void {
+        if (!scene) return;
+        scene.upsertOwner(mockOwner(SHOWCASE_OWNER_ID, OWNER_SELF_POS.x, OWNER_SELF_POS.z, true));
+        scene.upsertOwner(mockOwner(SHOWCASE_RIVAL_OWNER_ID, OWNER_RIVAL_POS.x, OWNER_RIVAL_POS.z, false, Math.PI));
+        spawnedOwnerIds = [SHOWCASE_OWNER_ID, SHOWCASE_RIVAL_OWNER_ID];
+
+        for (const w of WORKER_PREVIEWS) {
+          const { task, needsHelp } = taskOptionToTaskAndHelp(w.initialTaskOption);
+          scene.upsertWorker(mockWorker(w.workerId, w.role, w.post, w.x, WORKER_ROW_Z, task, needsHelp));
+          spawnedWorkerIds.push(w.workerId);
+        }
+
+        for (const s of SEGMENTS) {
+          const id = `customer_${s.id}`;
+          scene.upsertCustomer(mockCustomerRenderState(id, s.id, customerXFor(id), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
+          spawnedCustomerIds.push(id);
+        }
+
+        selectPlayerVariant(PLAYER_VARIANT_DEFS[0].id);
+      }
+
+      // --- Dish Models --------------------------------------------------------------------------
+
+      function selectDishVariant(id: string): void {
+        if (!scene) return;
+        applyFloorState({});
+        for (const station of STATIONS) scene.setStationUpgraded(station, false);
+
+        let target: THREE.Object3D | null = null;
+        let diagnostics: string[] = [];
+
+        const noVisualNote = (state: string) =>
+          `OrderState '${state}' has no distinct visual anywhere in this codebase. ` +
+          "RestaurantScene only ever visually distinguishes 'queued' (a station's queue-box " +
+          "stack) and 'ready' (the food-ready icon at the pass) — 'placed', 'in_progress', " +
+          "'delivered' and 'cancelled' render as nothing beyond the station/table's own static " +
+          'geometry. Nothing is spawned for this selection; that is the honest result, not a bug.';
+
+        if (id === 'carried_1' || id === 'carried_2' || id === 'carried_3') {
+          const count = Number(id.split('_')[1]);
+          scene.setCarrying(SHOWCASE_OWNER_ID, count);
+          target = scene.scene.getObjectByName(`owner_${SHOWCASE_OWNER_ID}`);
+          diagnostics = [
+            'No standalone dish/plate model exists in this codebase — the plate mesh above is a ' +
+              "fixed child of the owner avatar (RestaurantScene#upsertOwner's carry-plate loop), " +
+              'built once per owner and only ever toggled visible/hidden. The dish selected below ' +
+              'has no effect on it — every carried dish renders identically.',
+          ];
+        } else if (id.startsWith('table_')) {
+          const tableId = layoutTableIds()[0];
+          const dirty = id === 'table_dirty';
+          const stateByBadge: Record<string, CustomerState> = {
+            table_order_taken: 'ORDERING',
+            table_meal_delivered: 'EATING',
+            table_paying: 'PAYING',
+          };
+          applyFloorState({
+            selfOverrides: {
+              tables: defaultTables().map((t) => (t.id === tableId ? { ...t, occupiedBy: dirty ? null : 'showcase_customer', dirty } : t)),
+            },
+            customers: dirty ? [] : [mockDiningCustomer('showcase_customer', { tableId, state: stateByBadge[id] })],
+          });
+          target = scene.scene.getObjectByName(tableId);
+          diagnostics = [
+            dirty
+              ? "'Dirty' is a cleanup state, not an order state — it is included here because it " +
+                "is the table's 4th real badge and the natural end of a dish's lifecycle at the " +
+                'table.'
+              : 'The table badge glyph (O/F/$) is the only production visual for this order-state ' +
+                'transition — no plated-dish mesh is ever placed on the table itself.',
+          ];
+        } else if (id === 'pass_ready_fresh' || id === 'pass_ready_stale') {
+          const stale = id === 'pass_ready_stale';
+          applyFloorState({
+            orders: [
+              mockOrder('showcase_pass_order', DISHES[0].id, {
+                state: 'ready',
+                readyAgeMs: stale ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
+              }),
+            ],
+          });
+          target = scene.scene.getObjectByName('service_pass');
+          diagnostics = [
+            "The food-ready icon at the pass is the only production visual for OrderState " +
+              "'ready' — there is no per-dish mesh at the pass either; every ready ticket shows " +
+              'the same glyph, tinted healthy or bottleneck by how long it has sat past ' +
+              'ORDER_FRESHNESS_GRACE_MS.',
+          ];
+        } else if (id === 'kitchen_queued_low' || id === 'kitchen_queued_high') {
+          const depth = id === 'kitchen_queued_low' ? 1 : 4;
+          const orders = Array.from({ length: depth }, (_, i) =>
+            mockOrder(`showcase_queue_${i}`, DISHES[0].id, { state: 'queued', station: 'grill' }),
+          );
+          applyFloorState({ orders });
+          target = scene.scene.getObjectByName('station_grill');
+          diagnostics = [
+            'The colored box stack represents how many queued tickets (any dish) are waiting at ' +
+              "this station — a per-station count, not a per-dish shape. OrderState 'in_progress' " +
+              '(a ticket actively being worked) has no visual distinct from the station simply ' +
+              'existing.',
+          ];
+        } else if (id.startsWith('state_')) {
+          diagnostics = [noVisualNote(id.replace('state_', ''))];
+        }
+
+        focusOn(target, diagnostics);
+      }
+
+      function populateDishCategory(): void {
+        if (!scene) return;
+        scene.upsertOwner(mockOwner(SHOWCASE_OWNER_ID, OWNER_SELF_POS.x, OWNER_SELF_POS.z, true));
+        spawnedOwnerIds = [SHOWCASE_OWNER_ID];
+        selectDishVariant(DISH_VARIANT_DEFS[0].id);
+      }
+
+      // --- Restaurant Models --------------------------------------------------------------------
+
+      function selectRestaurantVariant(id: string): void {
+        if (!scene) return;
+        activeRestaurantVariantId = id;
+
+        for (const station of STATIONS) scene.setStationUpgraded(station, false);
+        scene.setPantryUpgraded(false);
+        rivalFraction = 0;
+        rivalQueueLength = 0;
+        applyFloorState({});
+
+        const isStation = id.startsWith('station_');
+        const isTable = layoutTableIds().includes(id);
+        stationControls.hidden = !isStation;
+        pantryControls.hidden = id !== 'pantry';
+        servicePassControls.hidden = id !== 'service_pass';
+        competitorControls.hidden = id !== 'competitor_restaurant';
+        tableControls.hidden = !isTable;
+
+        if (isStation) {
+          setStationUpgradedToggle(false);
+          setStationQueueSlider(0);
+        }
+        if (id === 'service_pass') setPassSelect(PASS_OPTIONS, 'none');
+        if (id === 'competitor_restaurant') {
+          setCompetitorFractionSlider(0);
+          setCompetitorQueueSlider(0);
+        }
+        if (isTable) setTableDirtyToggle(false);
+
+        let target: THREE.Object3D | null = null;
+        let diagnostics: string[] = [];
+
+        if (id === 'gap_equipment_failure') {
+          diagnostics = [
+            "BottleneckKind 'equipment_failure' and StationSnapshot.broken are both declared in " +
+              'shared/schemas/game-state.d.ts, but RestaurantScene has no production visual for a ' +
+              'broken/malfunctioning station, and the server never publishes stations[] at all (a ' +
+              "per-station view is a later story's, per module-map.md). kitchen-bottleneck-" +
+              "harness.ts already invented its own bespoke glyph badge for a 'broken' state, but " +
+              "that is that harness's own instrumentation for timing comparisons, not a reusable " +
+              'production view — per this story\'s own Notes, the gap is flagged here rather than ' +
+              'duplicating or inventing a look this codebase has never shipped.',
+          ];
+        } else {
+          target = scene.scene.getObjectByName(id);
+          if (isStation) {
+            const station = id.replace('station_', '');
+            if (station !== 'grill') {
+              diagnostics = [
+                `No upgraded tint is defined for '${station}' — STATION_COLORS_UPGRADED only has ` +
+                  "a 'grill' entry (STORY-012's Faster Grill I). The 'Upgraded tint' toggle below " +
+                  'will have no visible effect on this station.',
+              ];
+            }
+          } else if (id === 'dishwashing' || id === 'host_stand' || id === 'queue_line') {
+            diagnostics = [
+              `No RestaurantSnapshot field publishes live state for '${id}' — the static box ` +
+                'above is the entirety of its production representation; nothing here is being ' +
+                'simplified for this showcase.',
+            ];
+          } else if (id === 'upgrade_terminal') {
+            diagnostics = [
+              "The terminal's interaction-range ring and purchase flow are upgrade-preview-" +
+                "harness's own scope (PRD §15.5) — this view shows only the static terminal " +
+                'fixture, not duplicated here.',
+            ];
+          }
+        }
+
+        focusOn(target, diagnostics);
+      }
+
+      function populateRestaurantCategory(): void {
+        selectRestaurantVariant(RESTAURANT_VARIANT_DEFS[0].id);
+      }
+
+      // --- category switching -------------------------------------------------------------------
+
+      function teardownCategoryEntities(): void {
+        if (!scene) return;
+        for (const ownerId of spawnedOwnerIds) scene.removeOwner(ownerId);
+        for (const customerId of spawnedCustomerIds) scene.removeCustomer(customerId);
+        for (const workerId of spawnedWorkerIds) scene.removeWorker(workerId);
+        spawnedOwnerIds = [];
+        spawnedCustomerIds = [];
+        spawnedWorkerIds = [];
+        activeOwnerState = null;
+        activeWorkerDef = null;
+        activeCustomerId = null;
+        activeRestaurantVariantId = null;
+        for (const station of STATIONS) scene.setStationUpgraded(station, false);
+        scene.setPantryUpgraded(false);
+        rivalFraction = 0;
+        rivalQueueLength = 0;
+        applyFloorState({});
+      }
+
+      function setCategory(next: Category): void {
+        teardownCategoryEntities();
+        category = next;
+        playerSection.hidden = category !== 'player';
+        dishSection.hidden = category !== 'dish';
+        restaurantSection.hidden = category !== 'restaurant';
+        if (category === 'player') populatePlayerCategory();
+        else if (category === 'dish') populateDishCategory();
+        else populateRestaurantCategory();
+      }
+
+      // --- panel: global controls ----------------------------------------------------------------
+
+      panel.addSelect(
+        'Category',
+        [
+          { value: 'player', label: 'Player Models' },
+          { value: 'dish', label: 'Dish Models' },
+          { value: 'restaurant', label: 'Restaurant Models' },
+        ],
+        (v) => setCategory(v as Category),
+      );
+
+      panel.addToggle('Composed scene (in context) — off is focused single-asset mode', false, (v) => {
+        composed = v;
+        applyVisibility();
+        applyCameraForMode();
+      });
+
+      panel.addSeparator();
+
+      // --- panel: Player Models section -----------------------------------------------------------
+
+      const playerSection = panel.section();
+      const playerHeading = document.createElement('h3');
+      playerHeading.className = 'section-heading';
+      playerHeading.textContent = 'Player Models';
+      playerSection.appendChild(playerHeading);
+
+      panel.addSelect(
+        'Asset / variant',
+        PLAYER_VARIANT_DEFS.map((d) => ({ value: d.id, label: d.label })),
+        selectPlayerVariant,
+        playerSection,
+      );
+
+      const ownerControls = document.createElement('div');
+      playerSection.appendChild(ownerControls);
+      const setCarrySlider = panel.addSlider(
+        'Carried plates',
+        { min: 0, max: 3, step: 1, value: 0 },
+        (v) => {
+          if (activeOwnerState) scene?.setCarrying(activeOwnerState.playerId, Math.round(v));
+        },
+        ownerControls,
+      );
+      const setSprintingToggle = panel.addToggle(
+        'Sprinting (state flag — no visual in production)',
+        false,
+        (v) => {
+          if (activeOwnerState && scene) {
+            activeOwnerState = { ...activeOwnerState, sprinting: v };
+            scene.upsertOwner(activeOwnerState);
+          }
+        },
+        ownerControls,
+      );
+
+      const workerControls = document.createElement('div');
+      playerSection.appendChild(workerControls);
+      const setTaskSelect = panel.addSelect(
+        'Task / state',
+        WORKER_TASK_SELECT_OPTIONS,
+        (v) => {
+          if (!activeWorkerDef || !scene) return;
+          const { task, needsHelp } = taskOptionToTaskAndHelp(v);
+          scene.upsertWorker(
+            mockWorker(activeWorkerDef.workerId, activeWorkerDef.role, activeWorkerDef.post, activeWorkerDef.x, WORKER_ROW_Z, task, needsHelp),
+          );
+        },
+        workerControls,
+      );
+
+      const customerControls = document.createElement('div');
+      playerSection.appendChild(customerControls);
+      const setPatienceSelect = panel.addSelect(
+        'Patience band',
+        PATIENCE_BAND_VALUES.map((b) => ({ value: b.id, label: b.label })),
+        (v) => {
+          if (!activeCustomerId || !scene) return;
+          const band = PATIENCE_BAND_VALUES.find((b) => b.id === v);
+          if (!band) return;
+          const segmentId = activeCustomerId.replace('customer_', '');
+          scene.upsertCustomer(mockCustomerRenderState(activeCustomerId, segmentId, customerXFor(activeCustomerId), CUSTOMER_ROW_Z, band.value));
+        },
+        customerControls,
+      );
+
+      // --- panel: Dish Models section --------------------------------------------------------------
+
+      const dishSection = panel.section();
+      const dishHeading = document.createElement('h3');
+      dishHeading.className = 'section-heading';
+      dishHeading.textContent = 'Dish Models';
+      dishSection.appendChild(dishHeading);
+
+      panel.addSelect(
+        'Asset / variant',
+        DISH_VARIANT_DEFS.map((d) => ({ value: d.id, label: d.label })),
+        selectDishVariant,
+        dishSection,
+      );
+
+      panel.addSeparator(dishSection);
+      const setDishInfo = panel.addReadout('Dish details', dishSection);
+      panel.addSelect(
+        'Dish (informational only — no visual effect; see Diagnostics)',
+        DISHES.map((d) => ({ value: d.id, label: `${d.name} (${d.category})` })),
+        (v) => {
+          const dish = DISHES.find((d) => d.id === v);
+          if (dish) setDishInfo(`$${dish.suggestedPrice} · steps: ${dish.stationSteps.map((s) => s.station).join(' → ')}`);
+        },
+        dishSection,
+      );
+      setDishInfo(`$${DISHES[0].suggestedPrice} · steps: ${DISHES[0].stationSteps.map((s) => s.station).join(' → ')}`);
+
+      // --- panel: Restaurant Models section --------------------------------------------------------
+
+      const restaurantSection = panel.section();
+      const restaurantHeading = document.createElement('h3');
+      restaurantHeading.className = 'section-heading';
+      restaurantHeading.textContent = 'Restaurant Models';
+      restaurantSection.appendChild(restaurantHeading);
+
+      panel.addSelect(
+        'Asset / variant',
+        RESTAURANT_VARIANT_DEFS.map((d) => ({ value: d.id, label: d.label })),
+        selectRestaurantVariant,
+        restaurantSection,
+      );
+
+      const stationControls = document.createElement('div');
+      restaurantSection.appendChild(stationControls);
+      const setStationUpgradedToggle = panel.addToggle(
+        'Upgraded tint',
+        false,
+        (v) => {
+          if (!scene || !activeRestaurantVariantId?.startsWith('station_')) return;
+          scene.setStationUpgraded(activeRestaurantVariantId.replace('station_', '') as Station, v);
+        },
+        stationControls,
+      );
+      const setStationQueueSlider = panel.addSlider(
+        'Queue depth (tickets)',
+        { min: 0, max: 4, step: 1, value: 0 },
+        (v) => {
+          if (!activeRestaurantVariantId?.startsWith('station_')) return;
+          const station = activeRestaurantVariantId.replace('station_', '') as Station;
+          const orders = Array.from({ length: Math.round(v) }, (_, i) => mockOrder(`showcase_rq_${i}`, DISHES[0].id, { state: 'queued', station }));
+          applyFloorState({ orders });
+        },
+        stationControls,
+      );
+
+      const pantryControls = document.createElement('div');
+      restaurantSection.appendChild(pantryControls);
+      panel.addToggle('Upgraded (Pantry Shelves)', false, (v) => scene?.setPantryUpgraded(v), pantryControls);
+
+      const servicePassControls = document.createElement('div');
+      restaurantSection.appendChild(servicePassControls);
+      const setPassSelect = panel.addSelect(
+        'Food-ready icon',
+        PASS_OPTIONS,
+        (v) => {
+          if (v === 'none') {
+            applyFloorState({});
+            return;
+          }
+          applyFloorState({
+            orders: [mockOrder('showcase_pass_order', DISHES[0].id, { state: 'ready', readyAgeMs: v === 'stale' ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0 })],
+          });
+        },
+        servicePassControls,
+      );
+
+      const competitorControls = document.createElement('div');
+      restaurantSection.appendChild(competitorControls);
+      function applyCompetitorState(): void {
+        applyFloorState({ rivalOverrides: { seatsTotal: 12, seatsAvailable: Math.round(12 * (1 - rivalFraction)), queueLength: rivalQueueLength } });
+      }
+      const setCompetitorFractionSlider = panel.addSlider(
+        'Occupied fraction',
+        { min: 0, max: 1, step: 0.1, value: 0 },
+        (v) => {
+          rivalFraction = v;
+          applyCompetitorState();
+        },
+        competitorControls,
+      );
+      const setCompetitorQueueSlider = panel.addSlider(
+        'Queue length',
+        { min: 0, max: 6, step: 1, value: 0 },
+        (v) => {
+          rivalQueueLength = Math.round(v);
+          applyCompetitorState();
+        },
+        competitorControls,
+      );
+
+      const tableControls = document.createElement('div');
+      restaurantSection.appendChild(tableControls);
+      const setTableDirtyToggle = panel.addToggle(
+        'Dirty',
+        false,
+        (v) => {
+          if (!activeRestaurantVariantId) return;
+          applyFloorState({
+            selfOverrides: { tables: defaultTables().map((t) => (t.id === activeRestaurantVariantId ? { ...t, dirty: v } : t)) },
+          });
+        },
+        tableControls,
+      );
+
+      panel.addSeparator();
+      const setDiagnostics = panel.addDiagnostics('Diagnostics');
+
+      panel.addSeparator();
+      panel.addToggle('Debug grid', false, (v) => scene?.setDebugGrid(v));
+      panel.addToggle('Night lighting', false, (v) => scene?.setNight(v));
+      panel.addToggle('Shadows', false, (v) => {
+        if (renderer) renderer.shadowMap.enabled = v;
+        scene?.scene.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.castShadow = v;
+            mesh.receiveShadow = v;
+          }
+          const light = obj as THREE.DirectionalLight;
+          if (light.isDirectionalLight) light.castShadow = v;
+        });
+      });
+      panel.addToggle('Wireframe (selected asset)', false, (v) => {
+        wireframeOn = v;
+        if (currentTarget) setWireframe(currentTarget, v);
+      });
+      panel.addToggle('Bounds box (selected asset)', false, (v) => {
+        boundsOn = v;
+        applyBounds();
+      });
+
+      panel.addSeparator();
+      const setPosX = panel.addSlider('Position offset X', { min: -4, max: 4, step: 0.1, value: 0 }, (v) => {
+        if (currentTarget) currentTarget.position.x = homePosition.x + v;
+      });
+      const setPosY = panel.addSlider('Position offset Y', { min: -2, max: 3, step: 0.1, value: 0 }, (v) => {
+        if (currentTarget) currentTarget.position.y = homePosition.y + v;
+      });
+      const setPosZ = panel.addSlider('Position offset Z', { min: -4, max: 4, step: 0.1, value: 0 }, (v) => {
+        if (currentTarget) currentTarget.position.z = homePosition.z + v;
+      });
+      const setScaleSlider = panel.addSlider('Scale', { min: 0.3, max: 2.5, step: 0.1, value: 1 }, (v) => {
+        if (currentTarget) currentTarget.scale.setScalar(homeScale * v);
+      });
+      panel.addButton('Reset transform', () => {
+        setPosX(0);
+        setPosY(0);
+        setPosZ(0);
+        setScaleSlider(1);
+        if (currentTarget) {
+          currentTarget.position.copy(homePosition);
+          currentTarget.scale.setScalar(homeScale);
+        }
+      });
+
+      panel.addSeparator();
+      const setCamHeight = panel.addSlider('Camera height', { min: 1, max: 34, step: 0.5, value: FOCUSED_CAMERA.height }, (v) => camera?.setSettings({ height: v }));
+      const setCamDistance = panel.addSlider('Camera distance', { min: 1, max: 34, step: 0.5, value: FOCUSED_CAMERA.distance }, (v) => camera?.setSettings({ distance: v }));
+      const setCamAngle = panel.addSlider('Camera angle', { min: -Math.PI, max: Math.PI, step: 0.02, value: FOCUSED_CAMERA.angle }, (v) => camera?.setSettings({ angle: v }));
+      const setCamFov = panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: FOCUSED_CAMERA.fov }, (v) => camera?.setSettings({ fov: v }));
+      panel.addButton('Reset camera', () => applyCameraForMode());
+
+      const fpsReadout = panel.addReadout('FPS');
+
+      // --- resize + render loop -------------------------------------------------------------------
+
+      const resize = () => {
+        const w = viewport.clientWidth;
+        const h = Math.max(1, viewport.clientHeight);
+        renderer?.setSize(w, h);
+        camera?.setAspect(w / h);
+      };
+      observer = new ResizeObserver(resize);
+      observer.observe(viewport);
+
+      setCategory('player');
+
+      let elapsedTotal = 0;
+      let last = performance.now();
+      let fpsAccum = 0;
+      let fpsFrames = 0;
+
+      const loop = (now: number) => {
+        frame = requestAnimationFrame(loop);
+        const dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        elapsedTotal += dt;
+
+        fpsAccum += dt;
+        fpsFrames += 1;
+        if (fpsAccum >= 0.5) {
+          fpsReadout((fpsFrames / fpsAccum).toFixed(0));
+          fpsAccum = 0;
+          fpsFrames = 0;
+        }
+
+        if (scene && camera) {
+          scene.updateCustomerAnimations(elapsedTotal);
+          if (boundsOn && boundsHelper && currentTarget) boundsHelper.box.setFromObject(currentTarget);
+          camera.update(dt);
+          renderer?.render(scene.scene, camera.camera);
+        }
+      };
+      frame = requestAnimationFrame(loop);
+    },
+
+    dispose(): void {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      observer = null;
+      scene?.dispose();
+      scene = null;
+      renderer?.dispose();
+      renderer = null;
+      camera = null;
+    },
+  };
+}
