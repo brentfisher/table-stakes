@@ -269,3 +269,6 @@ export declare const BOT_MARKET_AFFINITY_WEIGHT: number;
 export declare const BOT_PRICE_SENSITIVITY_LEAN: number;
 export declare const BOT_MENU_PRICE_JITTER: number;
 export declare const BOT_ARRIVAL_EPSILON: number;
+
+// --- STORY-024: private invite lobby ----------------------------------------------------------
+export declare const INVITE_TOKEN_EXPIRY_MS: number;

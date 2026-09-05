@@ -59,8 +59,22 @@ export class Match {
    * @param {string} options.seed               fixed at creation; drives every deterministic draw
    * @param {string} [options.phasePreset]      a key of PHASE_DURATIONS_MS
    * @param {number} [options.requiredPlayers]  seats; 1 for a `POST /api/dev/match` match
+   * @param {boolean} [options.holdLobbySeatsDuringGrace] STORY-024. A drop during `lobby`
+   *   normally frees the seat instantly (see `removePlayer`'s own comment) — nothing is under
+   *   way to abandon, and the bare dev/bot room this class already served has no invite to
+   *   protect. A private-invite room is different: a host or guest who blips mid-invite-flow
+   *   should get the SAME reconnect grace everyone already gets mid-match, not lose their seat
+   *   to a third party who happens to load the join link in that window. Defaults false so
+   *   every existing caller — `check-match-lifecycle.mjs`'s own "a drop during lobby releases
+   *   the seat instead of holding it" among them — is unaffected.
    */
-  constructor({ id, seed, phasePreset = 'prototype', requiredPlayers = PLAYERS_PER_MATCH }) {
+  constructor({
+    id,
+    seed,
+    phasePreset = 'prototype',
+    requiredPlayers = PLAYERS_PER_MATCH,
+    holdLobbySeatsDuringGrace = false,
+  }) {
     if (!PHASE_DURATIONS_MS[phasePreset]) {
       throw new Error(
         `unknown phasePreset "${phasePreset}" — expected one of ${Object.keys(PHASE_DURATIONS_MS).join(', ')}`,
@@ -71,6 +85,7 @@ export class Match {
     this.seed = seed;
     this.phasePreset = phasePreset;
     this.requiredPlayers = requiredPlayers;
+    this.holdLobbySeatsDuringGrace = holdLobbySeatsDuringGrace;
     this.durations = PHASE_DURATIONS_MS[phasePreset];
     this.createdAt = Date.now();
 
@@ -228,8 +243,11 @@ export class Match {
   /**
    * A socket closed. PRD §13 "Server responsibilities": handle reconnect grace. The player is
    * HELD, not removed — the match keeps running, and `advanceClock` ends it only once the
-   * grace period expires. A drop during `lobby` is different: nothing is under way, so the
-   * seat is released for somebody else.
+   * grace period expires. A drop during `lobby` is normally different: nothing is under way,
+   * so the seat is released immediately for somebody else — UNLESS this is a STORY-024
+   * private-invite room (`holdLobbySeatsDuringGrace`), where the seat is held through the same
+   * grace window instead and `advanceClock`'s `#releaseLobbySeatsPastGrace` frees it only once
+   * that window actually elapses.
    */
   removePlayer(playerId) {
     const player = this.players.get(playerId);
@@ -239,7 +257,7 @@ export class Match {
     player.input = { x: 0, z: 0, sprint: false };
     player.disconnectedAtMs = this.elapsedMs;
     this.logEvent('player_connection', { playerId, action: 'disconnected' });
-    if (this.phase === 'lobby') this.players.delete(playerId);
+    if (this.phase === 'lobby' && !this.holdLobbySeatsDuringGrace) this.players.delete(playerId);
   }
 
   #withinGrace(player) {
@@ -300,6 +318,11 @@ export class Match {
     if (this.ended) return [];
     this.elapsedMs += dtMs;
 
+    // STORY-024. Only reachable when `holdLobbySeatsDuringGrace` — see `removePlayer`'s own
+    // comment. Ordinary dev/bot rooms free a lobby seat the instant it drops and never reach
+    // here, matching their pre-STORY-024 behaviour exactly.
+    if (this.phase === 'lobby' && this.holdLobbySeatsDuringGrace) this.#releaseLobbySeatsPastGrace();
+
     const expired = this.#playerPastGrace();
     if (expired) {
       this.#endMatch('player_disconnected', this.elapsedMs, expired.playerId);
@@ -359,6 +382,22 @@ export class Match {
       if (!player.connected && !this.#withinGrace(player)) return player;
     }
     return null;
+  }
+
+  /**
+   * STORY-024. `lobby`'s equivalent of `#playerPastGrace`, but freeing the seat rather than
+   * ending the match — nothing was under way for a lobby drop to abandon, so the honest outcome
+   * of a grace window running out here is "somebody else can take that seat now", not
+   * `player_disconnected`. Iterates a snapshot of `this.players.values()` because deleting a
+   * key mid-iteration over the live Map is undefined behaviour in the general case.
+   */
+  #releaseLobbySeatsPastGrace() {
+    for (const player of [...this.players.values()]) {
+      if (!player.connected && !this.#withinGrace(player)) {
+        this.players.delete(player.playerId);
+        this.logEvent('player_connection', { playerId: player.playerId, action: 'seat_released' });
+      }
+    }
   }
 
   #enterPhase(to, atMs) {

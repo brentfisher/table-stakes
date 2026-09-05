@@ -59,12 +59,19 @@ export class NetworkClient {
    * `playerId` is the reconnect token from a previous `joined` message. The server honours it
    * only for a player who dropped and is still inside the reconnect grace window; a fresh
    * client omits it. Reconnect *UX* — when to retry, what to show meanwhile — is STORY-022.
+   *
+   * `inviteToken` (STORY-024) is required for a FRESH join against a private-invite room — see
+   * `match-manager.js#validateInvite`'s own header. Sending it on every `join_room` call
+   * (reconnect included) is harmless: the server only ever consults it for a fresh seat, never
+   * for a reconnect redeeming its own `playerId` (see that same header's reconnect bypass), so
+   * there is no need for this method to know which case it is in.
    */
-  joinRoom(roomId?: string, playerId?: string): void {
+  joinRoom(roomId?: string, playerId?: string, inviteToken?: string): void {
     this.send({
       type: 'join_room',
       ...(roomId ? { roomId } : {}),
       ...(playerId ? { playerId } : {}),
+      ...(inviteToken ? { inviteToken } : {}),
     });
   }
 

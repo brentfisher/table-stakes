@@ -79,6 +79,21 @@ function handleJoinRoom(ws, record, message) {
   const requestedPlayerId =
     typeof message.playerId === 'string' && message.playerId.length > 0 ? message.playerId : null;
 
+  // STORY-024. A room created with `mode: 'private_human'` gates a FRESH seat behind its
+  // `inviteToken` — see `matchManager.validateInvite`'s own header for the full reasoning,
+  // including the reconnect bypass. A room with no `inviteToken` (every pre-existing dev/bot
+  // caller) always passes here unconditionally, so nothing about this check can regress them.
+  const inviteToken =
+    typeof message.inviteToken === 'string' && message.inviteToken.length > 0
+      ? message.inviteToken
+      : null;
+  const invite = matchManager.validateInvite(room, { inviteToken, requestedPlayerId });
+  if (!invite.ok) {
+    connections.send(ws, { type: 'error', error: invite.error, roomId: room.id });
+    console.log(`[ws] ${record.playerId} refused invite for ${room.id}: ${invite.error}`);
+    return;
+  }
+
   const result = room.match.join({ requestedPlayerId, fallbackPlayerId: record.playerId });
   if (!result.ok) {
     // STORY-022. `match_ended` carries `reason` (a MATCH_END_REASONS member) — the same

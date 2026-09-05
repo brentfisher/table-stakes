@@ -110,6 +110,22 @@ export const ERROR_CODES = Object.freeze([
   // Carries `reason`, a MATCH_END_REASONS member, so a reconnect that arrived just past the
   // grace window can say why instead of leaving the client to guess.
   'match_ended',
+  // STORY-024. A fresh (non-reconnect) `join_room`/`GET /api/rooms/by-invite/:token` against a
+  // private-invite room, refused for one of these reasons — see `match-manager.js
+  // #validateInvite`'s own header for why each gets its own code rather than a shared
+  // `invite_rejected` the way `setup_rejected` uses one code plus a `reason` field: unlike that
+  // case, this error has no structured payload to hang a second field off, so the distinction
+  // has to live in `error` itself.
+  'invite_token_mismatch',
+  'invite_expired',
+  'invite_canceled',
+  // A room whose match has left `lobby` — the guest arrived after the host (or a bot/dev
+  // flow) already started. Distinct from `match_full`: a full-but-still-in-lobby room is a
+  // capacity fact, this is a timing fact, and the two deserve different client copy.
+  'already_started',
+  // No room owns the presented token at all — a mistyped or garbled link, never a real invite
+  // gone bad the way the other four are.
+  'invite_not_found',
 ]);
 
 /**

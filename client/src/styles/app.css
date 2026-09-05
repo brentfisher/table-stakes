@@ -703,6 +703,7 @@ body {
 
 .main-menu-footer { text-align: center; min-height: 1.2em; }
 .main-menu-backend-error { color: var(--bad); }
+.main-menu-invite-error { margin: -4px 0 0; color: var(--bad); font-size: 13px; }
 .main-menu-retry {
   margin-left: 6px;
   padding: 2px 9px;
@@ -857,3 +858,86 @@ body {
   color: var(--text);
   font: inherit;
 }
+
+/* STORY-024. `.lobby`/`.join-invite` share the `.setup`/`.results` full-bleed
+   pattern (see `SetupScreen`'s own header): centered panel over the live scene/backdrop,
+   `z-index: 2` — the same tier as `.setup`, since `lobby` and `setup` are mutually exclusive
+   PRD §5 phases and never render at once. */
+.lobby,
+.join-invite {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 15, 19, 0.94);
+  pointer-events: auto;
+}
+
+.lobby-panel,
+.join-invite-panel {
+  width: min(420px, 90vw);
+  padding: 20px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.lobby-panel h2, .join-invite-panel h2 { margin: 0 0 10px; }
+
+.lobby-slots { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.lobby-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: left;
+}
+.lobby-slot-label { font-weight: 600; min-width: 56px; }
+.lobby-slot-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.lobby-slot-dot.is-connected { background: var(--ok); }
+.lobby-slot-dot.is-disconnected { background: var(--warn); }
+.lobby-slot-status { flex: 1; }
+
+.lobby-ready,
+.join-invite-panel button {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 12px;
+  background: #2c4a26;
+  border: 1px solid #3f6b31;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lobby-ready:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
+
+.invite-panel { margin: 14px 0; padding-top: 14px; border-top: 1px solid var(--border); text-align: left; }
+.invite-lead { margin: 0 0 8px; color: var(--muted); }
+.invite-link-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.invite-link {
+  flex: 1 1 200px;
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+}
+.invite-link-row button {
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.invite-expiry { margin: 8px 0 0; font-size: 12px; }

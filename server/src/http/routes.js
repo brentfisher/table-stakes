@@ -9,6 +9,7 @@ import * as matchManager from '../game/match-manager.js';
 import { catalogue, publicMarket } from '../game/catalogue.js';
 import { attachBot, normalizeBotDifficulty } from '../game/bot/bot-controller.js';
 import { buildMatchLog, buildMatchSummary } from '../game/telemetry-export.js';
+import * as connections from '../websocket/connection-manager.js';
 import { THREE_VERSION, PHASE_DURATIONS_MS, PHASE_PRESETS } from '../../../shared/constants/tuning.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,11 +41,38 @@ export function apiRouter() {
     res.json({ presets: PHASE_PRESETS, durationsMs: PHASE_DURATIONS_MS });
   });
 
+  /**
+   * PRD §12 room-flow steps 1-2. STORY-024 widened this from a bare dev endpoint into the
+   * PRD's real private-invite flow: `{mode: 'private_human', hostDisplayName}` mints a
+   * non-guessable `inviteToken` and a shareable `joinUrl`, and the response's `status` reads
+   * `waiting_for_opponent`. `mode` omitted (or anything else) keeps the EXACT pre-STORY-024
+   * behaviour — a bare dev room with no invite gating — since `POST /dev/match` and every
+   * `scripts/check-*.mjs` caller construct a room through `matchManager.createRoom()` directly
+   * and never hit this branch either way; this endpoint's own old callers (a plain
+   * `POST /api/rooms` with just `seed`/`phasePreset`) get the same room shape as before, plus
+   * three new always-`null` fields (`mode: 'dev'`, `status`, `hostDisplayName: null`) — additive,
+   * not breaking.
+   *
+   * `includeInvite: true` is passed ONLY here — see `roomStatus`'s own header on why the raw
+   * token is never re-served by `GET /api/rooms/:roomId` afterward.
+   */
   router.post('/rooms', (req, res) => {
     const seed = typeof req.body?.seed === 'string' ? req.body.seed : undefined;
     const phasePreset = matchManager.normalizePhasePreset(req.body?.phasePreset);
-    const room = matchManager.createRoom({ ...(seed ? { seed } : {}), phasePreset });
-    res.status(201).json(matchManager.roomStatus(room));
+    const mode = req.body?.mode === 'private_human' ? 'private_human' : 'dev';
+    const room = matchManager.createRoom({
+      ...(seed ? { seed } : {}),
+      phasePreset,
+      mode,
+      ...(mode === 'private_human' ? { hostDisplayName: req.body?.hostDisplayName } : {}),
+    });
+    const status = matchManager.roomStatus(room, { includeInvite: true });
+    res.status(201).json({
+      ...status,
+      ...(room.inviteToken
+        ? { joinUrl: `${req.protocol}://${req.get('host')}/join/${room.inviteToken}` }
+        : {}),
+    });
   });
 
   router.get('/rooms', (_req, res) => {
@@ -57,6 +85,46 @@ export function apiRouter() {
       res.status(404).json({ error: 'room_not_found' });
       return;
     }
+    res.json(matchManager.roomStatus(room));
+  });
+
+  /**
+   * STORY-024. The `/join/:token` route's OWN lookup — a guest's URL carries only the token,
+   * never a `roomId` (that would defeat the whole point: `roomId` is a small sequential
+   * counter, guessable in one guess from any other room's id). Read-only: this endpoint
+   * creates and mutates nothing, matching the Notes' "the new HTTP endpoints only
+   * create/validate/cancel rooms" — validating here is answering "is this link still good",
+   * not seating anyone; the actual seat is claimed over the WebSocket `join_room` path, same
+   * as every other join (Decision 2).
+   */
+  router.get('/rooms/by-invite/:token', (req, res) => {
+    const result = matchManager.resolveInvite(req.params.token);
+    if (!result.ok) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+    res.json(matchManager.roomStatus(result.room));
+  });
+
+  /**
+   * STORY-024. The host calling off an unfilled invite. No account system exists to verify
+   * the caller really is the host (see `matchManager.cancelRoom`'s own header) — MVP trust
+   * level, same as the reconnect token's. Connected sockets in the room are told immediately
+   * (`error`/`invite_canceled` is already a real `ERROR_CODES` member a client can render),
+   * rather than only ever finding out from a REFUSED future join attempt.
+   */
+  router.post('/rooms/:roomId/cancel', (req, res) => {
+    const room = matchManager.getRoom(req.params.roomId);
+    if (!room) {
+      res.status(404).json({ error: 'room_not_found' });
+      return;
+    }
+    const result = matchManager.cancelRoom(room);
+    if (!result.ok) {
+      res.status(409).json({ error: result.error });
+      return;
+    }
+    connections.broadcast(room, { type: 'error', error: 'invite_canceled', roomId: room.id });
     res.json(matchManager.roomStatus(room));
   });
 

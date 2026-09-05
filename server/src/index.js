@@ -28,7 +28,22 @@ app.use(healthRouter());
 app.use('/api', apiRouter());
 
 // Serve the built client. `npm run build:client` writes here.
-app.use(express.static(join(here, '../public/client-build')));
+const clientBuildDir = join(here, '../public/client-build');
+app.use(express.static(clientBuildDir));
+
+/**
+ * STORY-023/024. `router.ts`'s client-side routes (`/join/:token`, `/lobby/:roomId`,
+ * `/game/:roomId`, etc.) have no matching file under `client-build/` — a fresh tab opening one
+ * of them is exactly a guest's FIRST request, not a follow-up to an already-loaded app, so there
+ * is no earlier page load to have parsed the URL. This is the standard SPA-with-client-routing
+ * fallback: any GET that `express.static` above did not already answer with a real file, and
+ * that is not under `/api`, gets the app shell so `App.tsx`'s own pathname switch can take
+ * over. Restricted to GET-and-not-`/api` so a genuinely bad API path still reaches Express's
+ * normal 404 rather than silently returning HTML for it.
+ */
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.sendFile(join(clientBuildDir, 'index.html'));
+});
 
 const httpServer = createServer(app);
 attachSocketServer(httpServer);
