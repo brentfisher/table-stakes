@@ -11,6 +11,7 @@ import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
 import { EventBanner } from '../ui/EventBanner';
+import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 
 export function App(): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -42,6 +43,13 @@ export function App(): JSX.Element {
           scene-wide light tint is `RestaurantScene#updateEventEffect`; this is the text half. */}
       <EventBanner status={status} />
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
+      {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
+          this one is reading `status`, which stops updating the instant the socket drops, so
+          nothing here needs its own gating besides the two fields this overlay itself owns. */}
+      <ReconnectOverlay
+        reconnecting={Boolean(status?.reconnecting)}
+        disconnectedTerminal={status?.disconnectedTerminal ?? null}
+      />
       {/*
         PRD §18's setup screen is a full-bleed overlay, mounted only during `setup`. It is
         React UI over a live Three.js canvas — it never reconciles a scene entity, which is

@@ -99,6 +99,14 @@ export class Match {
     /** Server-to-client messages produced this tick. The loop drains and broadcasts them. */
     this.outbox = [];
 
+    /**
+     * STORY-022. Server-side-only structured event log, appended to by `logEvent()` below and
+     * by the systems/router that touch a client message or an order's lifecycle. Never
+     * serialized into a snapshot — `telemetry-export.js` is the only reader, and it runs once
+     * at export time, off the simulation tick entirely.
+     */
+    this.telemetry = [];
+
     // PRD §12 room-flow step 4: the server selects the market scenario, from the seed.
     this.config = this.#generateConfig();
     this.market = catalogue.marketsById[this.config.marketId];
@@ -147,6 +155,11 @@ export class Match {
    * window, so it can never take a seat somebody is sitting in.
    */
   join({ requestedPlayerId = null, fallbackPlayerId }) {
+    // STORY-022. A dead room answers `match_ended`, not `match_full` — a late reconnect token
+    // and a genuinely full roster are different facts, and telling them apart is the whole
+    // point of "ends cleanly with a stated reason rather than hanging". Checked before the
+    // reconnect-token branch below: once ended, no token and no fresh join gets a seat.
+    if (this.ended) return { ok: false, error: 'match_ended', reason: this.endReason };
     if (requestedPlayerId) {
       const existing = this.players.get(requestedPlayerId);
       if (existing && !existing.connected && this.#withinGrace(existing)) {
@@ -155,6 +168,7 @@ export class Match {
         // Movement intent does not survive the gap — a reconnecting owner must not inherit
         // the direction they were holding when the socket dropped.
         existing.input = { x: 0, z: 0, sprint: false };
+        this.logEvent('player_connection', { playerId: existing.playerId, action: 'reconnected' });
         return { ok: true, player: existing, reconnected: true };
       }
     }
@@ -207,6 +221,7 @@ export class Match {
       lastPurchaseSequence: 0,
     };
     this.players.set(playerId, player);
+    this.logEvent('player_connection', { playerId, action: 'joined' });
     return player;
   }
 
@@ -223,6 +238,7 @@ export class Match {
     player.ready = false;
     player.input = { x: 0, z: 0, sprint: false };
     player.disconnectedAtMs = this.elapsedMs;
+    this.logEvent('player_connection', { playerId, action: 'disconnected' });
     if (this.phase === 'lobby') this.players.delete(playerId);
   }
 
@@ -358,6 +374,7 @@ export class Match {
     console.log(
       `[match] ${this.id} ${from} -> ${to} (${duration ?? 'no deadline'}ms) at ${Math.round(atMs)}ms`,
     );
+    this.logEvent('phase_transition', { from, to });
     return { from, to, atMs };
   }
 
@@ -379,6 +396,7 @@ export class Match {
     console.log(
       `[match] ${this.id} ended: ${reason}${disconnectedPlayerId ? ` (${disconnectedPlayerId})` : ''}`,
     );
+    this.logEvent('match_end', { reason, disconnectedPlayerId });
     this.enqueue(this.matchCompleteMessage());
   }
 
@@ -398,6 +416,17 @@ export class Match {
     const drained = this.outbox;
     this.outbox = [];
     return drained;
+  }
+
+  /**
+   * STORY-022. Append one structured record to `this.telemetry` — a plain object push, no
+   * `JSON.stringify` and no socket, so a system or the router can call this from its own
+   * transition site without touching the hot tick's cost profile. `atMs` is always
+   * `this.elapsedMs`, the same clock coordinate every other diffable field in the match is
+   * built from — never `Date.now()`, which would make two runs of the same seed diff dirty.
+   */
+  logEvent(category, payload) {
+    this.telemetry.push({ atMs: Math.round(this.elapsedMs), category, ...payload });
   }
 
   /**

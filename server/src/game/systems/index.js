@@ -47,6 +47,7 @@ import { workerSystem } from './worker-system.js';
 import { upgradeSystem } from './upgrade-system.js';
 import { hudBottleneckSystem } from './hud-bottleneck-system.js';
 import { scoringSystem } from './scoring-system.js';
+import { telemetrySystem } from './telemetry-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -88,4 +89,7 @@ export function registerAllSystems() {
   // every one of those three summaries already exists. Registered anywhere earlier, it would read
   // some of them as not-yet-populated `undefined` on the very tick the match ends.
   registerSystem(scoringSystem);
+  // `telemetry` — see that file's own header. Last: it depends on nothing scoring produces and
+  // nothing else depends on it.
+  registerSystem(telemetrySystem);
 }

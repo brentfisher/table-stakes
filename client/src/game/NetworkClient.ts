@@ -10,15 +10,29 @@ export class NetworkClient {
   onMessage: ((message: ServerMessage) => void) | null = null;
   onStatusChange: ((status: 'connecting' | 'open' | 'closed') => void) | null = null;
 
+  /**
+   * STORY-022: callable more than once, for a reconnect attempt after an unexpected drop. Every
+   * listener below checks `isCurrent()` first, so a straggling event from a SUPERSEDED socket —
+   * one that closes late after a later `connect()` already replaced it — cannot fire a status
+   * change for a connection nobody is using any more.
+   */
   connect(url = NetworkClient.defaultUrl()): void {
     this.onStatusChange?.('connecting');
     const socket = new WebSocket(url);
     this.socket = socket;
+    const isCurrent = () => this.socket === socket;
 
-    socket.addEventListener('open', () => this.onStatusChange?.('open'));
-    socket.addEventListener('close', () => this.onStatusChange?.('closed'));
-    socket.addEventListener('error', () => this.onStatusChange?.('closed'));
+    socket.addEventListener('open', () => {
+      if (isCurrent()) this.onStatusChange?.('open');
+    });
+    socket.addEventListener('close', () => {
+      if (isCurrent()) this.onStatusChange?.('closed');
+    });
+    socket.addEventListener('error', () => {
+      if (isCurrent()) this.onStatusChange?.('closed');
+    });
     socket.addEventListener('message', (event) => {
+      if (!isCurrent()) return;
       try {
         this.onMessage?.(JSON.parse(event.data as string) as ServerMessage);
       } catch {

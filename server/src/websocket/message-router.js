@@ -81,7 +81,15 @@ function handleJoinRoom(ws, record, message) {
 
   const result = room.match.join({ requestedPlayerId, fallbackPlayerId: record.playerId });
   if (!result.ok) {
-    connections.send(ws, { type: 'error', error: result.error, roomId: room.id });
+    // STORY-022. `match_ended` carries `reason` (a MATCH_END_REASONS member) — the same
+    // information `match_complete.reason` carries for a player who was still connected to
+    // receive it. See match.js#join's own comment on why this is checked before match_full.
+    connections.send(ws, {
+      type: 'error',
+      error: result.error,
+      roomId: room.id,
+      ...(result.reason ? { reason: result.reason } : {}),
+    });
     console.log(`[ws] ${record.playerId} refused by ${room.id}: ${result.error}`);
     return;
   }
@@ -140,6 +148,13 @@ function handleSetupSubmit(ws, record, message) {
       detail: result.detail,
     });
     console.log(`[ws] ${record.playerId} setup_submit rejected: ${result.reason} — ${result.detail}`);
+    room.match.logEvent('action', {
+      message: 'setup_submit',
+      outcome: 'rejected',
+      playerId: record.playerId,
+      reason: result.reason,
+      detail: result.detail,
+    });
     return;
   }
 
@@ -149,6 +164,7 @@ function handleSetupSubmit(ws, record, message) {
     `[ws] ${record.playerId} setup accepted in ${room.id}: ` +
       `${result.submission.menu.map((slot) => `${slot.dishId}@${slot.price}`).join(', ')}`,
   );
+  room.match.logEvent('action', { message: 'setup_submit', outcome: 'accepted', playerId: record.playerId });
 }
 
 function handlePlayerInput(record, message) {
@@ -192,9 +208,25 @@ function handleInteract(ws, record, message) {
       `[ws] ${record.playerId} interact rejected: ${message.action} ${message.targetId} — ` +
         `${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
     );
+    room.match.logEvent('action', {
+      message: 'interact',
+      outcome: 'rejected',
+      playerId: record.playerId,
+      action: message.action,
+      targetId: message.targetId,
+      reason: result.reason,
+      detail: result.detail,
+    });
     return;
   }
   console.log(`[ws] ${record.playerId} interact accepted: ${message.action} ${message.targetId}`);
+  room.match.logEvent('action', {
+    message: 'interact',
+    outcome: 'accepted',
+    playerId: record.playerId,
+    action: message.action,
+    targetId: message.targetId,
+  });
 }
 
 /**
@@ -230,9 +262,23 @@ function handlePurchaseUpgrade(ws, record, message) {
       `[ws] ${record.playerId} purchase rejected: ${message.upgradeId} — ` +
         `${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
     );
+    room.match.logEvent('action', {
+      message: 'purchase_upgrade',
+      outcome: 'rejected',
+      playerId: record.playerId,
+      upgradeId: message.upgradeId,
+      reason: result.reason,
+      detail: result.detail,
+    });
     return;
   }
   console.log(`[ws] ${record.playerId} purchase accepted: ${message.upgradeId}`);
+  room.match.logEvent('action', {
+    message: 'purchase_upgrade',
+    outcome: 'accepted',
+    playerId: record.playerId,
+    upgradeId: message.upgradeId,
+  });
 }
 
 /**

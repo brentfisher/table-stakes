@@ -669,7 +669,7 @@ function resolveReadyOrders(match, restaurant) {
     const served = order.tickets.filter((t) => t.state === 'ready');
     if (served.length === 0) {
       // Every dish was voided — there is nothing to serve. PRD §8 CANCEL_ORDER, via the poll.
-      cancelOrder(restaurant, order, 'all_dishes_unavailable', match.elapsedMs);
+      cancelOrder(match, restaurant, order, 'all_dishes_unavailable', match.elapsedMs);
       continue;
     }
 
@@ -746,10 +746,23 @@ function deliverOrder(match, restaurant, order) {
   // event-driven demand it could see coming when the order went in, not whether the kitchen
   // happened to still be plating it once the window ended.
   if (isDuringEvent(match, order.placedAtMs)) restaurant.ledger.ordersDeliveredDuringEvent += 1;
+  // STORY-022 §20/§21: the order's full lifecycle timing in one diffable record, emitted once
+  // at its terminal state rather than polled — see `Match#logEvent`'s own header for why.
+  match.logEvent('order', {
+    orderId: order.orderId,
+    restaurantId: order.restaurantId,
+    state: 'delivered',
+    placedAtMs: Math.round(order.placedAtMs),
+    readyAtMs: order.readyAtMs === null ? null : Math.round(order.readyAtMs),
+    deliveredAtMs: Math.round(order.deliveredAtMs),
+    dishIds: order.tickets.map((t) => t.dishId),
+    revenue: order.revenue,
+    quality: order.quality,
+  });
   return true;
 }
 
-function cancelOrder(restaurant, order, reason, atMs) {
+function cancelOrder(match, restaurant, order, reason, atMs) {
   if (order.state === 'cancelled' || order.state === 'delivered') return;
   for (const ticket of order.tickets) {
     if (ticket.state === 'ready' || ticket.state === 'cancelled') continue;
@@ -774,6 +787,17 @@ function cancelOrder(restaurant, order, reason, atMs) {
   // `scoring-system.js` cross-references against critic-event windows. See the field comment
   // on `restaurant.badMomentsMs` in `buildRestaurant`.
   restaurant.badMomentsMs.push(atMs);
+  // STORY-022. Same one-record-per-order-lifecycle shape as `deliverOrder`'s own log call.
+  match.logEvent('order', {
+    orderId: order.orderId,
+    restaurantId: order.restaurantId,
+    state: 'cancelled',
+    placedAtMs: Math.round(order.placedAtMs),
+    readyAtMs: order.readyAtMs === null ? null : Math.round(order.readyAtMs),
+    finishedAtMs: Math.round(order.finishedAtMs),
+    reason: order.cancelReason,
+    dishIds: order.tickets.map((t) => t.dishId),
+  });
 }
 
 /** Drop finished orders out of the snapshot once they have been visible long enough to read. */
@@ -843,7 +867,7 @@ function createKitchenFacade(match, state) {
     cancelOrder(orderId, reason = 'customer_left') {
       const found = findOrder(state, orderId);
       if (!found) return false;
-      cancelOrder(found.restaurant, found.order, reason, match.elapsedMs);
+      cancelOrder(match, found.restaurant, found.order, reason, match.elapsedMs);
       return true;
     },
 
@@ -876,7 +900,7 @@ function createKitchenFacade(match, state) {
         );
         return true;
       }
-      cancelOrder(restaurant, order, reason, match.elapsedMs);
+      cancelOrder(match, restaurant, order, reason, match.elapsedMs);
       return true;
     },
 

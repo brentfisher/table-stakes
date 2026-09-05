@@ -40,7 +40,15 @@ import {
   HUD_CRITICAL_ALERTS_MAX,
   HUD_CASH_FEEDBACK_MIN_DELTA,
   HUD_CASH_FEEDBACK_DISPLAY_MS,
+  RECONNECT_GRACE_MS,
 } from '../../../shared/constants/tuning';
+
+/** STORY-022. How often a dropped client retries the socket while `reconnecting` is shown. */
+const RECONNECT_RETRY_INTERVAL_MS = 1500;
+/** Slack past the server's own grace window before the client gives up unprompted — the server
+ * is the authority on when the seat is actually gone; this only covers "we cannot even reach it
+ * to find out", which the grace window alone would cut off right at the boundary. */
+const RECONNECT_GIVE_UP_BUFFER_MS = 5_000;
 
 interface UpgradeInfo {
   id: string;
@@ -181,6 +189,15 @@ export interface GameClientStatus {
    * #tacticalOverviewEnabled`'s own comment on why it is only reachable during
    * `service`/`final_rush`. */
   showTacticalOverview: boolean;
+  /** STORY-022. True from the moment an already-joined client's socket drops until it either
+   * reopens and rejoins, or reconnection is given up (see `disconnectedTerminal`). Never true
+   * before the FIRST successful join — see `handleConnectionChange`'s own guard. */
+  reconnecting: boolean;
+  /** STORY-022. Set once reconnection is given up: either the server answered a rejoin attempt
+   * with `error: 'match_ended'`/`'room_not_found'`, or the client could not reopen a socket at
+   * all within `RECONNECT_GRACE_MS + RECONNECT_GIVE_UP_BUFFER_MS`. Null while still connected or
+   * still retrying. `reason` is a MatchEndReason, `'room_not_found'`, or `'unreachable'`. */
+  disconnectedTerminal: { reason: string } | null;
 }
 
 /** STORY-012 AC / STORY-015: the ambient "something is worth buying" signal, computed from
@@ -248,9 +265,20 @@ export class GameClient {
     criticalAlerts: [],
     cashFeedback: null,
     showTacticalOverview: false,
+    reconnecting: false,
+    disconnectedTerminal: null,
   };
 
   private cashFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** STORY-022. Cleared in `dispose()` so a pending retry never fires after teardown. */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** STORY-022. Set on the FIRST unexpected drop, cleared on a successful reopen. Compared
+   * against `Date.now()`, not `elapsedMs` — this measures wall-clock retry patience on a
+   * connection that, by definition, has no server clock to read right now. */
+  private reconnectDeadlineMs: number | null = null;
+  /** STORY-022. Guards `handleConnectionChange` against the 'closed' event `dispose()`'s own
+   * `network.disconnect()` call triggers — a deliberate teardown must never start a retry loop. */
+  private disposed = false;
 
   /** Called at panel cadence, not per frame — React subscribes here. */
   onStatus: ((status: GameClientStatus) => void) | null = null;
@@ -310,19 +338,71 @@ export class GameClient {
 
   start(roomId?: string): void {
     this.network.connect();
-    this.network.onStatusChange = (connection) => {
-      this.patchStatus({ connection });
-      if (connection === 'open') this.network.joinRoom(roomId);
-    };
+    this.network.onStatusChange = (connection) => this.handleConnectionChange(connection, roomId);
     this.scene.start();
+  }
+
+  /**
+   * STORY-022. The one place `NetworkClient`'s transport status turns into reconnect UX.
+   * `'open'` always means "present the reconnect token if we have one" — `joinRoom` omits it
+   * (undefined) on the very first connect, since `status.playerId` is still null then, and the
+   * server treats a token-less `join_room` as a fresh seat either way (`Match#join`).
+   *
+   * `'closed'` only starts a retry loop once we have actually joined before (`status.playerId`
+   * set) — an initial connection failure is not "reconnect UX", it is "the server never
+   * answered", out of this story's scope. From there, every `'closed'` (the first drop, or a
+   * failed retry attempt reopening) schedules exactly one more attempt after
+   * `RECONNECT_RETRY_INTERVAL_MS`, until either the server's `joined` response (in
+   * `handleMessage`) cancels the deadline or the deadline passes first — there is deliberately
+   * no separate timer chain to keep in sync with this one. `'open'` itself does NOT clear
+   * `reconnecting`/`reconnectDeadlineMs`: the transport opening is not the server confirming the
+   * rejoin, and clearing early would drop the overlay during the gap where a
+   * `match_ended`/`room_not_found` refusal for this same attempt could still arrive.
+   */
+  private handleConnectionChange(connection: 'connecting' | 'open' | 'closed', roomId?: string): void {
+    this.patchStatus({ connection });
+
+    if (connection === 'open') {
+      // `roomId` here is only ever the URL param `start()` closed over — `undefined` in the
+      // normal no-`?room=` dev flow. A RECONNECT must target the room the server already told
+      // us about (`status.roomId`, set from the first `joined`), or a token-less `join_room`
+      // with no `roomId` creates a brand-new empty room instead of rejoining the real one.
+      // `reconnecting`/`reconnectDeadlineMs` are NOT cleared here — only once `joined` actually
+      // arrives (below) — so the overlay stays up, and the retry budget stays live, for the gap
+      // between the socket opening and the server answering the rejoin.
+      this.network.joinRoom(this.status.roomId ?? roomId, this.status.playerId ?? undefined);
+      return;
+    }
+    if (connection !== 'closed') return; // 'connecting' — nothing to react to yet
+    if (this.disposed || this.status.disconnectedTerminal || !this.status.playerId) return;
+
+    if (this.reconnectDeadlineMs === null) {
+      this.reconnectDeadlineMs = Date.now() + RECONNECT_GRACE_MS + RECONNECT_GIVE_UP_BUFFER_MS;
+      this.patchStatus({ reconnecting: true });
+    }
+    if (Date.now() > this.reconnectDeadlineMs) {
+      this.patchStatus({ reconnecting: false, disconnectedTerminal: { reason: 'unreachable' } });
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.disposed || this.status.disconnectedTerminal) return;
+      this.network.connect();
+    }, RECONNECT_RETRY_INTERVAL_MS);
   }
 
   private handleMessage(message: ServerMessage): void {
     if (message.type === 'joined') {
+      // STORY-022. Cleared HERE, not when the transport merely opens (`handleConnectionChange`)
+      // — the server has now actually confirmed the rejoin, not just accepted a TCP connection.
+      // Clearing earlier would drop the overlay (and the retry deadline) during the gap where a
+      // `match_ended`/`room_not_found` refusal could still arrive for this same attempt.
+      this.reconnectDeadlineMs = null;
       this.patchStatus({
         roomId: String(message.roomId),
         playerId: String(message.playerId),
         seed: String(message.seed),
+        reconnecting: false,
       });
       return;
     }
@@ -500,6 +580,25 @@ export class GameClient {
           },
         });
       }
+      // STORY-022. The server's answer to a rejoin attempt arriving too late — see
+      // `match.js#join`'s own comment on why this is `match_ended`, not `match_full`. Also
+      // covers `room_not_found` (e.g. a dev server restart): either way, this is the
+      // authoritative "stop retrying" the transport-level `unreachable` timeout in
+      // `handleConnectionChange` exists only to approximate when the server cannot be reached
+      // to say so.
+      if (message.error === 'match_ended' || message.error === 'room_not_found') {
+        if (this.reconnectTimer !== null) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        this.reconnectDeadlineMs = null;
+        this.patchStatus({
+          reconnecting: false,
+          disconnectedTerminal: {
+            reason: message.error === 'match_ended' ? String(message.reason ?? 'completed') : 'room_not_found',
+          },
+        });
+      }
       console.warn('[net] server error', message);
     }
   }
@@ -570,6 +669,11 @@ export class GameClient {
   }
 
   dispose(): void {
+    // Set before `network.disconnect()`, which itself triggers a 'closed' event —
+    // `handleConnectionChange` checks this flag first so a deliberate teardown never starts a
+    // retry loop.
+    this.disposed = true;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
     this.input.dispose();
     this.network.disconnect();
