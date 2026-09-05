@@ -3,30 +3,23 @@
 // slots into.
 //
 // Every item on the PRD's acceptance list is present as SOME affordance (never a dead link,
-// per this story's own framing): Play Online and, unless STORY-024/025 have landed on this
-// branch's base, Invite Opponent and Play vs Bot render disabled/"coming soon" — implementing
-// their real flows is explicitly out of scope here (those stories' own job). Join Private Match
-// is a real, working text input: it does not need STORY-024 to exist, only to accept a token
-// and navigate to the route STORY-024 will fill in.
+// per this story's own framing): Play Online and, unless STORY-025 has landed on this branch's
+// base, Play vs Bot render disabled/"coming soon" — implementing that flow is explicitly out of
+// scope here (that story's own job). Join Private Match and, as of STORY-024, Invite Opponent
+// are real, working actions.
 //
-// `PLAY_VS_BOT_AVAILABLE`/`INVITE_AVAILABLE` are the two knobs STORY-024/025 flip when they
-// land — see each constant's own comment for why they are false right now and how a rebase
-// would turn them true instead of requiring this file to be rewritten.
+// `PLAY_VS_BOT_AVAILABLE` is the knob STORY-025 flips when it lands — same shape
+// `INVITE_AVAILABLE` used to be before STORY-024 wired its real `onClick` below.
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { navigate } from '../app/router';
+import { cacheInvite, type CreatedRoom } from '../app/invite-lobby-types';
 import { HowToPlay } from './HowToPlay';
 import { SettingsPanel } from './SettingsPanel';
 
-/** STORY-024 (private invite lobby) has not landed on this branch's base (`master` @ this
- * story's kickoff). Flipping this to `true` is necessary but not sufficient — STORY-024 still
- * has to add the button's real `onClick` (a `POST /api/rooms` call plus navigating into its new
- * `LobbyScreen`, per that story's own AC); this constant only stops the button from being
- * disabled once that handler exists. */
-const INVITE_AVAILABLE = false;
-/** STORY-025 (solo bot match menu flow) has not landed on this branch's base — same shape as
- * `INVITE_AVAILABLE` above: flipping this is necessary but not sufficient, that story still
- * adds the real `onClick`. */
+/** STORY-025 (solo bot match menu flow) has not landed on this branch's base — same shape
+ * `INVITE_AVAILABLE` used to be: flipping this is necessary but not sufficient, that story
+ * still has to add the real `onClick`. */
 const PLAY_VS_BOT_AVAILABLE = false;
 
 type VersionState =
@@ -76,12 +69,46 @@ export function MainMenu(): JSX.Element {
   const [version, retryVersion] = useVersion();
   const [joinCode, setJoinCode] = useState('');
   const [activeModal, setActiveModal] = useState<'how-to-play' | 'settings' | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   const submitJoinCode = (event: FormEvent) => {
     event.preventDefault();
     const token = joinCode.trim();
     if (!token) return;
     navigate(`/join/${encodeURIComponent(token)}`);
+  };
+
+  // STORY-024. `POST /api/rooms` mints the room + invite; the freshly-minted token/link is
+  // cached (`cacheInvite`) under the room's id so `App.tsx`'s `'lobby'` route — the very next
+  // thing `navigate` mounts — can read it back without a second round trip. See
+  // `invite-lobby-types.ts`'s own header for why this is sessionStorage rather than route state.
+  const inviteOpponent = async () => {
+    setInviting(true);
+    setInviteError(null);
+    try {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'private_human' }),
+      });
+      const body = (await res.json()) as CreatedRoom & { error?: string };
+      if (!res.ok || !body.id) {
+        setInviteError('Could not create a match. Try again.');
+        return;
+      }
+      cacheInvite(body.id, {
+        inviteToken: body.inviteToken,
+        joinUrl: body.joinUrl,
+        hostDisplayName: body.hostDisplayName,
+        expiresAt: body.inviteExpiresAt,
+      });
+      navigate(`/lobby/${body.id}`);
+    } catch {
+      setInviteError('Could not reach the server. Try again.');
+    } finally {
+      setInviting(false);
+    }
   };
 
   return (
@@ -104,13 +131,13 @@ export function MainMenu(): JSX.Element {
           <button
             type="button"
             className="main-menu-action"
-            disabled={!INVITE_AVAILABLE}
-            aria-disabled={!INVITE_AVAILABLE}
-            title={INVITE_AVAILABLE ? undefined : 'Coming soon — private invite lobby (STORY-024)'}
+            disabled={inviting}
+            aria-disabled={inviting}
+            onClick={inviteOpponent}
           >
-            Invite Opponent
-            {!INVITE_AVAILABLE ? <span className="main-menu-action-badge">Coming soon</span> : null}
+            {inviting ? 'Creating…' : 'Invite Opponent'}
           </button>
+          {inviteError ? <p className="main-menu-invite-error">{inviteError}</p> : null}
 
           <button
             type="button"

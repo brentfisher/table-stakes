@@ -8,12 +8,16 @@
 // nothing but read the current pathname (`router.ts`) and pick which top-level screen to
 // render. Every panel that used to live directly in this file (`HudPanel`, `SetupScreen`,
 // `ResultsPanel`, etc.) moved, unchanged, into `GameView.tsx` — see that file's own header.
+//
+// STORY-024 wires the 'join' and 'lobby' routes to real screens instead of `RoutePlaceholder`.
 
 import { useEffect } from 'react';
 import { matchRoute, navigate, usePathname } from './router';
 import { MainMenu } from '../ui/MainMenu';
 import { GameView } from './GameView';
 import { RoutePlaceholder } from '../ui/RoutePlaceholder';
+import { JoinInvitePage } from './JoinInvitePage';
+import { cacheInvite, readCachedInvite } from './invite-lobby-types';
 
 export function App(): JSX.Element {
   const pathname = usePathname();
@@ -37,25 +41,38 @@ export function App(): JSX.Element {
     case 'results':
       // Both routes hand the same roomId into the same live view — see `GameView.tsx`'s own
       // header for exactly what `/results/:roomId` does and does not do (verified against the
-      // real server, not assumed).
+      // real server, not assumed). No `lobbyUi` here: this is the pre-existing bare dev/bot
+      // `?room=` flow (redirected above) or a shared mid-match link, neither of which goes
+      // through the invite/lobby entry points `LobbyScreen` is for.
       return <GameView roomId={route.roomId} />;
     case 'join':
-      // STORY-024's job. Reserved here so a shared invite link tells the visitor what is
-      // going on instead of 404ing outright — see `RoutePlaceholder.tsx`.
+      // STORY-024. Validates the token BEFORE mounting `GameClient` (see `JoinInvitePage`'s own
+      // header); on success, cache what the lobby route needs and hand off to it the same way
+      // `MainMenu`'s "Invite Opponent" does below.
       return (
-        <RoutePlaceholder
-          title="Private match invites aren't live yet"
-          detail={`Invite token "${route.token}" can't be redeemed yet — private invite lobbies are still being built.`}
+        <JoinInvitePage
+          token={route.token}
+          onJoined={({ roomId, inviteToken }) => {
+            cacheInvite(roomId, { inviteToken });
+            navigate(`/lobby/${roomId}`, { replace: true });
+          }}
+          onBackHome={() => navigate('/')}
         />
       );
-    case 'lobby':
-      // STORY-024's job, same reasoning as 'join' above.
+    case 'lobby': {
+      // STORY-024. `cacheInvite`/`readCachedInvite` is the hand-off from whichever entry point
+      // got here (`MainMenu`'s "Invite Opponent", or `JoinInvitePage` above) — see that
+      // module's own header for why this is sessionStorage rather than route state: it is also
+      // what survives a hard reload of this exact URL.
+      const cached = readCachedInvite(route.roomId);
+      const invite =
+        cached?.joinUrl && cached.expiresAt !== undefined
+          ? { joinUrl: cached.joinUrl, hostDisplayName: cached.hostDisplayName ?? null, expiresAt: cached.expiresAt }
+          : null;
       return (
-        <RoutePlaceholder
-          title="Lobby isn't live yet"
-          detail={`Room "${route.roomId}" doesn't have a lobby screen yet — private match lobbies are still being built.`}
-        />
+        <GameView roomId={route.roomId} inviteToken={cached?.inviteToken} lobbyUi invite={invite} />
       );
+    }
     case 'dev-harnesses':
       // STORY-026's job (asset showcase) and the existing standalone `harnesses/` app already
       // cover this in development — this route is reserved, not yet backed by anything here.

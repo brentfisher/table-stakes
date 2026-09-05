@@ -28,9 +28,27 @@ import { ResultsPanel } from '../ui/ResultsPanel';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
 import { EventBanner } from '../ui/EventBanner';
 import { ReconnectOverlay } from '../ui/ReconnectOverlay';
+import { LobbyScreen } from '../ui/LobbyScreen';
+import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
-export function GameView({ roomId }: { roomId?: string }): JSX.Element {
+export interface GameViewProps {
+  roomId?: string;
+  /** STORY-024. Required for a FRESH join against a private-invite room — see
+   * `GameClient.start`'s own comment. `undefined` for the dev/bot flow. */
+  inviteToken?: string;
+  /**
+   * STORY-024. Whether this mount came from the invite/lobby entry points (`App.tsx`'s
+   * `'lobby'` route) rather than a bare dev `?room=`/shared mid-match link — gates whether
+   * `LobbyScreen` renders at all during `matchPhase === 'lobby'`. `invite` (host-only: the
+   * `POST /api/rooms` response's link, before the guest has joined) is a further refinement of
+   * this, not a replacement for it — a guest has `lobbyUi: true, invite: null`.
+   */
+  lobbyUi?: boolean;
+  invite?: InviteInfo | null;
+}
+
+export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }: GameViewProps): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<GameClient | null>(null);
   const [status, setStatus] = useState<GameClientStatus | null>(null);
@@ -44,20 +62,38 @@ export function GameView({ roomId }: { roomId?: string }): JSX.Element {
     // Status arrives on join and once per snapshot (~10 Hz), not per animation frame.
     client.onStatus = (next) => setStatus({ ...next });
 
-    // `roomId` is the route param (`/game/:roomId`, `/results/:roomId`) — `App.tsx` now
-    // redirects the old `/?room=<id>` link shape to `/game/<id>` before this component ever
-    // mounts, so `roomId` is the only source `client.start` needs; the query string is read
-    // here too only as a last-resort fallback for a `GameView` reached with neither (there is
-    // currently no such route, but this keeps `client.start(undefined)`'s "create a fresh room"
-    // behavior reachable rather than silently dropping it).
+    // `roomId` is the route param (`/game/:roomId`, `/results/:roomId`, `/lobby/:roomId`) —
+    // `App.tsx` now redirects the old `/?room=<id>` link shape to `/game/<id>` before this
+    // component ever mounts, so `roomId` is the only source `client.start` needs; the query
+    // string is read here too only as a last-resort fallback for a `GameView` reached with
+    // neither (there is currently no such route, but this keeps `client.start(undefined)`'s
+    // "create a fresh room" behavior reachable rather than silently dropping it).
     const fallbackRoomId = new URLSearchParams(window.location.search).get('room') ?? undefined;
-    client.start(roomId ?? fallbackRoomId);
+    client.start(roomId ?? fallbackRoomId, inviteToken);
 
     return () => {
       clientRef.current = null;
       client.dispose();
     };
+    // Deliberately run once per mount plus on a real roomId change — `inviteToken` is only
+    // ever meaningful for the FIRST join of a given room (see `GameClient.start`'s own
+    // comment), never something this effect should re-run over on its own.
   }, [roomId]);
+
+  // STORY-024. Cosmetic only: once the match leaves `lobby`, reflect that in the address bar
+  // as `/game/:roomId` — a bookmark or share of THIS tab now lands back in the match via
+  // `App.tsx`'s own `/game/:roomId` handling, rather than a stale `/lobby/:roomId`. Never
+  // touches history for the pre-existing dev/bot `?room=` flow or a shared mid-match link
+  // (`lobbyUi` false there), and never before the FIRST real snapshot: `status.matchPhase`
+  // starts `null` (only the `joined` message has arrived, matchPhase is simply not known yet),
+  // which is NOT the same fact as "known to be a phase past lobby" — treating `null` as "past
+  // lobby" would rewrite the URL to `/game/:roomId` the instant `joined` arrived, while the
+  // lobby screen was still showing.
+  useEffect(() => {
+    if (!lobbyUi || !status?.roomId || !status.matchPhase || status.matchPhase === 'lobby') return;
+    const target = `/game/${status.roomId}`;
+    if (window.location.pathname !== target) window.history.replaceState(null, '', target);
+  }, [lobbyUi, status?.roomId, status?.matchPhase]);
 
   return (
     <div className="app">
@@ -73,6 +109,19 @@ export function GameView({ roomId }: { roomId?: string }): JSX.Element {
         reconnecting={Boolean(status?.reconnecting)}
         disconnectedTerminal={status?.disconnectedTerminal ?? null}
       />
+      {/*
+        STORY-024. Full-bleed overlay, same pattern as `SetupScreen` just below — mounted only
+        during `lobby`, and only for the invite/lobby entry points (`lobbyUi`), never for the
+        pre-existing bare dev/bot `?room=` flow or a shared mid-match link, which keep rendering
+        only `HudPanel`'s own generic "Ready up" button in `lobby`, exactly as before this story.
+      */}
+      {lobbyUi && status?.matchPhase === 'lobby' ? (
+        <LobbyScreen
+          status={status}
+          onReady={(ready) => clientRef.current?.setReady(ready)}
+          invite={invite}
+        />
+      ) : null}
       {/*
         PRD §18's setup screen is a full-bleed overlay, mounted only during `setup`. It is
         React UI over a live Three.js canvas — it never reconciles a scene entity, which is

@@ -88,6 +88,14 @@ export interface SetupSubmitPayload {
  * that disagrees with the server about when service ends. Snapshots arrive at BROADCAST_HZ,
  * which is a smooth enough countdown for a HUD.
  */
+
+/** STORY-024. See `GameClientStatus.players`'s own comment. */
+export interface LobbySlot {
+  playerId: string;
+  connected: boolean;
+  ready: boolean;
+}
+
 export interface GameClientStatus {
   connection: 'connecting' | 'open' | 'closed';
   roomId: string | null;
@@ -193,6 +201,15 @@ export interface GameClientStatus {
    * reopens and rejoins, or reconnection is given up (see `disconnectedTerminal`). Never true
    * before the FIRST successful join — see `handleConnectionChange`'s own guard. */
   reconnecting: boolean;
+  /**
+   * STORY-024. `match_snapshot.players[]`, narrowed to what `LobbyScreen` needs — a slot's
+   * identity, connection, and ready state — and NOTHING position/scene-related (that half of
+   * `players[]` already flows straight into `StateInterpolator`/`EntityViewRegistry` in
+   * `handleMessage` below, never through React). Public for both seats, same as `ready` already
+   * is on the wire (PRD §18 "opponent-ready status") — there is nothing private about a slot
+   * being connected or ready.
+   */
+  players: LobbySlot[];
   /** STORY-022. Set once reconnection is given up: either the server answered a rejoin attempt
    * with `error: 'match_ended'`/`'room_not_found'`, or the client could not reopen a socket at
    * all within `RECONNECT_GRACE_MS + RECONNECT_GIVE_UP_BUFFER_MS`. Null while still connected or
@@ -267,7 +284,13 @@ export class GameClient {
     showTacticalOverview: false,
     reconnecting: false,
     disconnectedTerminal: null,
+    players: [],
   };
+
+  /** STORY-024. Set by `start()`; resent on every `join_room` (see `NetworkClient.joinRoom`'s
+   * own comment on why sending it during a reconnect, too, is harmless). Undefined for every
+   * pre-existing dev/bot flow, which never passes a second argument to `start()`. */
+  private inviteToken: string | undefined;
 
   private cashFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
   /** STORY-022. Cleared in `dispose()` so a pending retry never fires after teardown. */
@@ -336,7 +359,14 @@ export class GameClient {
     };
   }
 
-  start(roomId?: string): void {
+  /**
+   * @param roomId a fresh room to join (omit for the old token-less dev flow, which creates one)
+   * @param inviteToken STORY-024. Required for a FRESH join against a private-invite room —
+   *   see `NetworkClient.joinRoom`'s own comment on why it is safe to keep sending on a
+   *   reconnect too.
+   */
+  start(roomId?: string, inviteToken?: string): void {
+    this.inviteToken = inviteToken;
     this.network.connect();
     this.network.onStatusChange = (connection) => this.handleConnectionChange(connection, roomId);
     this.scene.start();
@@ -370,7 +400,7 @@ export class GameClient {
       // `reconnecting`/`reconnectDeadlineMs` are NOT cleared here — only once `joined` actually
       // arrives (below) — so the overlay stays up, and the retry budget stays live, for the gap
       // between the socket opening and the server answering the rejoin.
-      this.network.joinRoom(this.status.roomId ?? roomId, this.status.playerId ?? undefined);
+      this.network.joinRoom(this.status.roomId ?? roomId, this.status.playerId ?? undefined, this.inviteToken);
       return;
     }
     if (connection !== 'closed') return; // 'connecting' — nothing to react to yet
@@ -519,6 +549,14 @@ export class GameClient {
 
       this.patchStatus({
         playerCount: players.length,
+        // STORY-024. `players[]` on the wire also carries `ready` (see match.js#toSnapshot),
+        // which `PlayerState` above does not declare — same narrow cast `opponentReady` already
+        // uses just below for the identical reason.
+        players: players.map((p) => ({
+          playerId: p.playerId,
+          connected: p.connected ?? true,
+          ready: Boolean((p as unknown as { ready?: boolean }).ready),
+        })),
         serverTime: Number(message.serverTime ?? 0),
         // Rendered as received. No local clock — see GameClientStatus.
         matchPhase: nextPhase,
