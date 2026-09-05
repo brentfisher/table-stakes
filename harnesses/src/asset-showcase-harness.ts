@@ -188,8 +188,12 @@ const PATIENCE_BAND_VALUES: { id: string; label: string; value: number }[] = [
   { id: 'critical', label: 'Critical (red)', value: UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD / 2 },
 ];
 
-function customerXFor(customerId: string): number {
-  const segmentId = customerId.replace('customer_', '');
+/** `segmentId` here is the BARE segment id (`SegmentDef.id`, e.g. `office_worker`) — the same
+ * value used as the customer's `customerId` (see `RestaurantScene#upsertCustomer`'s own
+ * `customer_${state.customerId}` naming). It must never be the `customer_`-prefixed variant id
+ * `PLAYER_VARIANT_DEFS` uses for its dropdown, or the scene ends up with a doubly-prefixed
+ * object name (`customer_customer_office_worker`) that `getObjectByName` can never find. */
+function customerXFor(segmentId: string): number {
   const idx = SEGMENTS.findIndex((s) => s.id === segmentId);
   return -8 + Math.max(0, idx) * 4;
 }
@@ -456,13 +460,15 @@ function createAssetShowcaseHarness(): SceneHarness {
             }
           }
         } else {
-          activeCustomerId = id;
+          // `id` is the `customer_`-prefixed variant id; the customer's OWN id (and the scene
+          // object name's suffix) is the bare segment id — see `customerXFor`'s own comment.
           const segmentId = id.replace('customer_', '');
+          activeCustomerId = segmentId;
           setPatienceSelect(
             PATIENCE_BAND_VALUES.map((b) => ({ value: b.id, label: b.label })),
             'healthy',
           );
-          scene.upsertCustomer(mockCustomerRenderState(id, segmentId, customerXFor(id), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
+          scene.upsertCustomer(mockCustomerRenderState(segmentId, segmentId, customerXFor(segmentId), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
           diagnostics = [
             'CustomerSnapshot.state (SEATED/EATING/PAYING/LEAVING, exit states like ' +
               "CHOOSE_RIVAL, …) has no visual on the customer's own body — only patienceRemaining " +
@@ -487,9 +493,8 @@ function createAssetShowcaseHarness(): SceneHarness {
         }
 
         for (const s of SEGMENTS) {
-          const id = `customer_${s.id}`;
-          scene.upsertCustomer(mockCustomerRenderState(id, s.id, customerXFor(id), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
-          spawnedCustomerIds.push(id);
+          scene.upsertCustomer(mockCustomerRenderState(s.id, s.id, customerXFor(s.id), CUSTOMER_ROW_Z, PATIENCE_BAND_VALUES[0].value));
+          spawnedCustomerIds.push(s.id);
         }
 
         selectPlayerVariant(PLAYER_VARIANT_DEFS[0].id);
@@ -515,7 +520,7 @@ function createAssetShowcaseHarness(): SceneHarness {
         if (id === 'carried_1' || id === 'carried_2' || id === 'carried_3') {
           const count = Number(id.split('_')[1]);
           scene.setCarrying(SHOWCASE_OWNER_ID, count);
-          target = scene.scene.getObjectByName(`owner_${SHOWCASE_OWNER_ID}`);
+          target = scene.scene.getObjectByName(`owner_${SHOWCASE_OWNER_ID}`) ?? null;
           diagnostics = [
             'No standalone dish/plate model exists in this codebase — the plate mesh above is a ' +
               "fixed child of the owner avatar (RestaurantScene#upsertOwner's carry-plate loop), " +
@@ -536,7 +541,7 @@ function createAssetShowcaseHarness(): SceneHarness {
             },
             customers: dirty ? [] : [mockDiningCustomer('showcase_customer', { tableId, state: stateByBadge[id] })],
           });
-          target = scene.scene.getObjectByName(tableId);
+          target = scene.scene.getObjectByName(tableId) ?? null;
           diagnostics = [
             dirty
               ? "'Dirty' is a cleanup state, not an order state — it is included here because it " +
@@ -555,7 +560,7 @@ function createAssetShowcaseHarness(): SceneHarness {
               }),
             ],
           });
-          target = scene.scene.getObjectByName('service_pass');
+          target = scene.scene.getObjectByName('service_pass') ?? null;
           diagnostics = [
             "The food-ready icon at the pass is the only production visual for OrderState " +
               "'ready' — there is no per-dish mesh at the pass either; every ready ticket shows " +
@@ -568,7 +573,7 @@ function createAssetShowcaseHarness(): SceneHarness {
             mockOrder(`showcase_queue_${i}`, DISHES[0].id, { state: 'queued', station: 'grill' }),
           );
           applyFloorState({ orders });
-          target = scene.scene.getObjectByName('station_grill');
+          target = scene.scene.getObjectByName('station_grill') ?? null;
           diagnostics = [
             'The colored box stack represents how many queued tickets (any dish) are waiting at ' +
               "this station — a per-station count, not a per-dish shape. OrderState 'in_progress' " +
@@ -635,7 +640,7 @@ function createAssetShowcaseHarness(): SceneHarness {
               'duplicating or inventing a look this codebase has never shipped.',
           ];
         } else {
-          target = scene.scene.getObjectByName(id);
+          target = scene.scene.getObjectByName(id) ?? null;
           if (isStation) {
             const station = id.replace('station_', '');
             if (station !== 'grill') {
@@ -780,8 +785,8 @@ function createAssetShowcaseHarness(): SceneHarness {
           if (!activeCustomerId || !scene) return;
           const band = PATIENCE_BAND_VALUES.find((b) => b.id === v);
           if (!band) return;
-          const segmentId = activeCustomerId.replace('customer_', '');
-          scene.upsertCustomer(mockCustomerRenderState(activeCustomerId, segmentId, customerXFor(activeCustomerId), CUSTOMER_ROW_Z, band.value));
+          // `activeCustomerId` is already the bare segment id (see `selectPlayerVariant`).
+          scene.upsertCustomer(mockCustomerRenderState(activeCustomerId, activeCustomerId, customerXFor(activeCustomerId), CUSTOMER_ROW_Z, band.value));
         },
         customerControls,
       );
