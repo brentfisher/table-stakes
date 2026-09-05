@@ -19,12 +19,14 @@ import { HowToPlay } from './HowToPlay';
 import { SettingsPanel } from './SettingsPanel';
 
 /** STORY-024 (private invite lobby) has not landed on this branch's base (`master` @ this
- * story's kickoff) — flip to `true` once it has, which is the whole of what wiring in the real
- * "Invite Opponent" flow requires here (the button below already calls through a single
- * handler). */
+ * story's kickoff). Flipping this to `true` is necessary but not sufficient — STORY-024 still
+ * has to add the button's real `onClick` (a `POST /api/rooms` call plus navigating into its new
+ * `LobbyScreen`, per that story's own AC); this constant only stops the button from being
+ * disabled once that handler exists. */
 const INVITE_AVAILABLE = false;
 /** STORY-025 (solo bot match menu flow) has not landed on this branch's base — same shape as
- * `INVITE_AVAILABLE` above. */
+ * `INVITE_AVAILABLE` above: flipping this is necessary but not sufficient, that story still
+ * adds the real `onClick`. */
 const PLAY_VS_BOT_AVAILABLE = false;
 
 type VersionState =

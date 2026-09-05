@@ -16,9 +16,13 @@ import { navigate } from '../app/router';
 export function RoutePlaceholder({
   title,
   detail,
+  badge = 'Coming soon',
 }: {
   title: string;
   detail: string;
+  /** Distinguishes "not built yet" (the default, used by /join, /lobby, /dev/harnesses) from a
+   * genuine unrecognized path — a 404 is not "coming soon", it is just wrong. */
+  badge?: string;
 }): JSX.Element {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -31,7 +35,7 @@ export function RoutePlaceholder({
   return (
     <div className="app route-placeholder">
       <div className="route-placeholder-card">
-        <p className="route-placeholder-badge">Coming soon</p>
+        <p className="route-placeholder-badge">{badge}</p>
         <h1>{title}</h1>
         <p className="route-placeholder-detail">{detail}</p>
         <button type="button" autoFocus onClick={() => navigate('/')}>

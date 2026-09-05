@@ -1,17 +1,23 @@
 // STORY-023. This is the ENTIRE pre-existing render tree from `App.tsx`, extracted verbatim so
-// it can be mounted at `/game/:roomId` (and `/results/:roomId`, see below) instead of being the
+// it can be mounted at `/game/:roomId` and `/results/:roomId` (see below) instead of being the
 // only thing `App` ever rendered. Nothing in this file changed behavior — every panel, the
-// `GameClient` lifecycle, the `?room=` fallback — is copied as-is; see `App.tsx`'s own header
-// for what actually changed (routing) versus what didn't (this).
+// `GameClient` lifecycle — is copied as-is; see `App.tsx`'s own header for what actually
+// changed (routing) versus what didn't (this).
 //
-// `/results/:roomId` intentionally reuses this same component rather than a dedicated one:
-// `ResultsPanel` already renders itself, full-bleed, the instant `status.matchComplete` arrives
-// (see the comment on it below) regardless of which path led here — a player who reloads or
-// shares a `/results/:roomId` link for a match that already ended re-joins the same room and
-// gets the same panel from the same live data, with no second results code path to keep in
-// sync with STORY-014's. If the room no longer exists server-side, that is the exact
-// `room_not_found` case `GameClient` already turns into `disconnectedTerminal` (STORY-022) —
-// this route does not need its own failure handling on top of that.
+// `/results/:roomId` intentionally reuses this same component rather than a dedicated one, but
+// this is NOT a "revisit a finished match's results" viewer — verified against the real server:
+// `match.js#join` refuses ANY join, fresh or reconnect-token, once `this.ended` is true
+// (`{ error: 'match_ended', reason }`), so a client that was never connected to this match
+// mounts, sends `join_room`, and gets that refusal back just like a disconnected player would.
+// `GameClient` already turns that into `disconnectedTerminal` (STORY-022), so what actually
+// renders is `ReconnectOverlay`'s "Connection lost — the match ended ... ({reason})" with its
+// existing Reload affordance — not `ResultsPanel`. That is still an explicit, stated outcome
+// (this story's AC for "failed" states), just not a working post-hoc results page; building one
+// would mean a second reader of `MatchResult` data alongside `ResultsPanel`'s, which is
+// STORY-014's surface, not this story's job. The one case `/results/:roomId` DOES show the real
+// `ResultsPanel` is the ordinary one: a still-connected client whose OWN match just ended,
+// which never actually needs this route — `ResultsPanel` already renders the moment
+// `status.matchComplete` arrives while sitting on `/game/:roomId`.
 
 import { useEffect, useRef, useState } from 'react';
 import { GameClient, type GameClientStatus } from '../game/GameClient';
@@ -38,9 +44,12 @@ export function GameView({ roomId }: { roomId?: string }): JSX.Element {
     // Status arrives on join and once per snapshot (~10 Hz), not per animation frame.
     client.onStatus = (next) => setStatus({ ...next });
 
-    // `roomId` is the route param when present (`/game/:roomId`, `/results/:roomId`); the bare
-    // `?room=` query fallback keeps working for any link minted before STORY-023's routes
-    // existed, exactly as `App.tsx` handled it before this file was extracted.
+    // `roomId` is the route param (`/game/:roomId`, `/results/:roomId`) — `App.tsx` now
+    // redirects the old `/?room=<id>` link shape to `/game/<id>` before this component ever
+    // mounts, so `roomId` is the only source `client.start` needs; the query string is read
+    // here too only as a last-resort fallback for a `GameView` reached with neither (there is
+    // currently no such route, but this keeps `client.start(undefined)`'s "create a fresh room"
+    // behavior reachable rather than silently dropping it).
     const fallbackRoomId = new URLSearchParams(window.location.search).get('room') ?? undefined;
     client.start(roomId ?? fallbackRoomId);
 
