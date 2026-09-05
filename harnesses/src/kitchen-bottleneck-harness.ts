@@ -194,6 +194,10 @@ interface OwnerMock {
   currentAction: OwnerActionKind | null;
   carryingTicketId: string | null;
   repairTargetStation: Station | null;
+  /** Which station a 'cook'/'plate' dispatch targeted, purely for `ownerRenderState`'s own
+   * positioning — the dispatch itself already resolved instantly (see `resolveOwnerCompletion`'s
+   * header comment), so this has no bearing on when the action completes. */
+  actionTargetStation: Station | null;
 }
 
 interface StepCompletion { actor: 'worker' | 'owner'; durationMs: number; station: Station; dishId: string }
@@ -225,7 +229,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
   let stationsMock = new Map<Station, StationMock>();
   let bins = new Map<string, BinMock>();
   let workers = new Map<string, WorkerMock>();
-  let owner: OwnerMock = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null };
+  let owner: OwnerMock = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
   let simClockMs = 0;
   let productionSpeed = 1;
   let nextTicketSeq = 0;
@@ -629,8 +633,9 @@ function createKitchenBottleneckHarness(): SceneHarness {
 
   function ownerRenderState(): OwnerRenderState {
     let position: Vec3 = OWNER_IDLE_POS;
-    if (owner.currentAction === 'cook' || owner.currentAction === 'plate') position = PASS_POS;
-    else if (owner.currentAction === 'restock') position = PANTRY_POS;
+    if ((owner.currentAction === 'cook' || owner.currentAction === 'plate') && owner.actionTargetStation) {
+      position = STATION_POS[owner.actionTargetStation];
+    } else if (owner.currentAction === 'restock') position = PANTRY_POS;
     else if (owner.currentAction === 'repair' && owner.repairTargetStation) position = STATION_POS[owner.repairTargetStation];
     else if (owner.currentAction === 'carry') position = TABLES[0] ?? PASS_POS;
     return { playerId: OWNER_ID, position, facing: 0, isSelf: true };
@@ -667,7 +672,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         ['cook_1', { workerId: 'cook_1', role: 'cook' as WorkerRole, enabled: true, busyRemainingMs: null, currentTaskKind: null, pendingTicketId: null, needsHelp: null }],
         ['server_1', { workerId: 'server_1', role: 'server' as WorkerRole, enabled: true, busyRemainingMs: null, currentTaskKind: null, pendingTicketId: null, needsHelp: null }],
       ]);
-      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null };
+      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
       simClockMs = 0;
       productionSpeed = 1;
       nextTicketSeq = 0;
@@ -763,7 +768,15 @@ function createKitchenBottleneckHarness(): SceneHarness {
       panel.addSeparator();
 
       // --- Owner interventions (§17 differential) -------------------------------------------
-      panel.addToggle('Owner on floor', false, (v) => { owner.spawned = v; if (!v) { owner.busyRemainingMs = null; owner.currentAction = null; owner.carryingTicketId = null; } });
+      panel.addToggle('Owner on floor', false, (v) => {
+        owner.spawned = v;
+        if (!v) {
+          owner.busyRemainingMs = null;
+          owner.currentAction = null;
+          owner.carryingTicketId = null;
+          owner.actionTargetStation = null;
+        }
+      });
       panel.addButton('Owner: cook (prep/grill/oven)', () => {
         if (!owner.spawned || owner.busyRemainingMs !== null) return;
         const ticket = findEligibleQueuedTicket(['prep', 'grill', 'oven']);
@@ -771,6 +784,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         startStationStep(ticket, stationsMock.get(ticket.station)!, 'owner');
         owner.busyRemainingMs = OWNER_TASK_DURATIONS_MS.cook;
         owner.currentAction = 'cook';
+        owner.actionTargetStation = ticket.station;
       });
       panel.addButton('Owner: plate (plating)', () => {
         if (!owner.spawned || owner.busyRemainingMs !== null) return;
@@ -779,6 +793,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         startStationStep(ticket, stationsMock.get(ticket.station)!, 'owner');
         owner.busyRemainingMs = OWNER_TASK_DURATIONS_MS.plate;
         owner.currentAction = 'plate';
+        owner.actionTargetStation = ticket.station;
       });
       panel.addButton('Owner: carry ready dish to table', () => {
         if (!owner.spawned || owner.busyRemainingMs !== null || owner.carryingTicketId) return;
@@ -940,7 +955,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       stationsMock = new Map();
       bins = new Map();
       workers = new Map();
-      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null };
+      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
     },
   };
 }
