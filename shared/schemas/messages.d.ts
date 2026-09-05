@@ -54,7 +54,19 @@ export type ErrorCode =
   | 'purchase_rejected'
   /** STORY-022: `join_room` (fresh or a reconnect token) arrived after the match already
    * ended. Carries `reason`, a MatchEndReason. */
-  | 'match_ended';
+  | 'match_ended'
+  /** STORY-024: a fresh join against a private-invite room presented a token that does not
+   * match the room's current `inviteToken`. */
+  | 'invite_token_mismatch'
+  /** STORY-024: the room's invite has passed `INVITE_TOKEN_EXPIRY_MS`. */
+  | 'invite_expired'
+  /** STORY-024: the host canceled the room via `POST /api/rooms/:roomId/cancel`. */
+  | 'invite_canceled'
+  /** STORY-024: the room's match has already left `lobby` — distinct from `match_full`, a
+   * timing fact rather than a capacity one. */
+  | 'already_started'
+  /** STORY-024: no room owns the presented invite token at all. */
+  | 'invite_not_found';
 
 export type MatchPhase =
   | 'lobby'
@@ -112,6 +124,15 @@ export interface JoinRoomMessage {
    * honours it when that player is currently DISCONNECTED and still inside its grace window.
    */
   playerId?: string;
+  /**
+   * STORY-024. Required for a FRESH (non-reconnect) join against a private-invite room —
+   * `match-manager.js#createRoom({mode: 'private_human'})`'s own `inviteToken`. A `join_room`
+   * that supplies a matching `playerId` for an already-held, disconnected seat bypasses this
+   * (see `validateInvite`'s own header): they already hold the seat, the invite got them in
+   * once already. Rooms created without `mode: 'private_human'` (the pre-existing dev/bot
+   * flow) have no `inviteToken` at all, so this field is simply ignored for them.
+   */
+  inviteToken?: string;
 }
 
 /**

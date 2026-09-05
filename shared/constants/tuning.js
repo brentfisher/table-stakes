@@ -1044,3 +1044,20 @@ export const BOT_MENU_PRICE_JITTER = 0.12;
  * worker body — kept as its own named constant rather than imported, matching this file's own
  * `bot-controller.js` header on why cross-system values are duplicated, not shared, here. */
 export const BOT_ARRIVAL_EPSILON = 0.35;
+
+// ============================================================================================
+// STORY-024: private opponent invite and lobby
+// ============================================================================================
+// PRD §12 room-flow steps 1-2, turned from a bare `POST /api/rooms` dev endpoint into a real
+// private-invite flow: a non-guessable `inviteToken` (see `match-manager.js#createRoom`,
+// `node:crypto#randomUUID`, not this file's own `randomSeed` — that one is seeded and
+// reproducible on purpose, the opposite of what an invite token needs) plus an expiry, so a
+// share link that leaks or is never used does not stay valid forever.
+
+/**
+ * How long a private-invite room's `inviteToken` remains redeemable, from creation. Generous
+ * on purpose — this is a link a host copies into a chat app or text message, not a same-tab
+ * redirect; PRD §12 says nothing about invite lifetime, so this is a usability choice, not a
+ * balance one. `match-manager.js#validateInvite`/`resolveInvite` are the only readers.
+ */
+export const INVITE_TOKEN_EXPIRY_MS = 15 * 60_000;
