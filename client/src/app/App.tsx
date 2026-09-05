@@ -22,11 +22,12 @@ export function App(): JSX.Element {
   // Pre-STORY-023, the only way into a game was `/?room=<id>` (there was no `/game/:roomId`).
   // `/` now renders `MainMenu` instead of `GameView`, so an old link would otherwise land a
   // returning player on the menu with their room id silently ignored. One-time redirect to the
-  // real route keeps those links working instead of just no-op'ing them.
+  // real route keeps those links working instead of just no-op'ing them. `replace: true` (see
+  // `router.ts`'s own comment on it) so this redirect is not itself a Back-button stop.
   useEffect(() => {
     if (route.name !== 'menu') return;
     const legacyRoomId = new URLSearchParams(window.location.search).get('room');
-    if (legacyRoomId) navigate(`/game/${encodeURIComponent(legacyRoomId)}`);
+    if (legacyRoomId) navigate(`/game/${encodeURIComponent(legacyRoomId)}`, { replace: true });
   }, [route.name]);
 
   switch (route.name) {

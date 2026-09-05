@@ -43,10 +43,21 @@ const listeners = new Set<Listener>();
  * every in-app navigation has to fan out to subscribers itself — this is the one place that
  * happens, which is what keeps `navigate()` safe to call from anywhere (menu buttons, the
  * join-code form, a placeholder's "back to menu" link) without each call site re-deriving how
- * to force a re-render. */
-export function navigate(path: string): void {
+ * to force a re-render.
+ *
+ * `replace: true` uses `history.replaceState` instead of `pushState` — for a redirect the
+ * visitor never chose (the legacy `/?room=` -> `/game/:roomId` rewrite in `App.tsx` is the only
+ * caller), so it must not itself become a Back-button stop: pushing it would let Back return to
+ * the `/?room=` URL, whose `App` effect would immediately redirect forward again, making Back
+ * inert for that visitor. Every real navigation (a menu button, the join-code form) stays a
+ * push, since those SHOULD be a Back-button stop. */
+export function navigate(path: string, options: { replace?: boolean } = {}): void {
   if (path !== window.location.pathname) {
-    window.history.pushState({}, '', path);
+    if (options.replace) {
+      window.history.replaceState({}, '', path);
+    } else {
+      window.history.pushState({}, '', path);
+    }
   }
   listeners.forEach((listener) => listener());
 }
