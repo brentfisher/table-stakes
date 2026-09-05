@@ -36,6 +36,18 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .harness-viewport { position: relative; min-width: 0; }
 .harness-viewport canvas { display: block; width: 100%; height: 100%; }
 
+/* STORY-020 event visualization harness — a top-centre overlay standing in for the live
+   client's EventBanner/HudPanel event surfaces, unified across warning/active/ended states. */
+.event-preview-banner {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  max-width: min(90%, 480px); padding: 8px 14px; border-radius: 8px;
+  background: rgba(20, 24, 29, 0.85); border: 1px solid var(--border);
+  text-align: center; pointer-events: none;
+}
+.event-preview-banner-title { font-weight: 600; margin-right: 8px; }
+.event-preview-banner-time { color: var(--accent); font-variant-numeric: tabular-nums; }
+.event-preview-banner-desc { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
 .dev-controls {
   padding: 14px 12px; background: var(--panel);
   border-left: 1px solid var(--border); overflow-y: auto;
