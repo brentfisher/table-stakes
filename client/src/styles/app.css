@@ -578,3 +578,21 @@ body {
 .tactical-events li { margin: 2px 0; }
 
 .results-narrative li { line-height: 1.5; }
+
+/* STORY-022. Highest z-index in the sheet: while this is up, every other panel underneath is
+   rendering the last snapshot from BEFORE the drop, which must not be mistaken for live. */
+.reconnect-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(8, 10, 13, 0.9);
+  color: var(--text);
+  text-align: center;
+}
+.reconnect-title { margin: 0; font-size: 22px; font-weight: 600; }
+.reconnect-detail { margin: 0; color: var(--muted); max-width: 420px; }

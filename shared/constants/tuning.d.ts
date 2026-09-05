@@ -33,6 +33,7 @@ export declare const OWNER_SPRINT_MULTIPLIER: number;
 export declare const OWNER_SPRINT_MAX_MS: number;
 export declare const OWNER_SPRINT_COOLDOWN_MS: number;
 export declare const RECONNECT_GRACE_MS: number;
+export declare const TELEMETRY_SAMPLE_INTERVAL_MS: number;
 
 // --- events (STORY-011) -------------------------------------------------------------------
 

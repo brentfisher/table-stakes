@@ -341,11 +341,14 @@ for (const preset of ['full', 'prototype']) {
     JSON.stringify(complete),
   );
 
-  // And a late token is refused rather than silently reseating them.
+  // And a late token is refused rather than silently reseating them. STORY-022: the match is
+  // already `ended` by this point, so the honest refusal is `match_ended` (with the reason the
+  // match itself ended for), not `match_full` — a live-full roster and a dead room are
+  // different facts, and only one of them means "the client should keep retrying".
   const late = match.join({ requestedPlayerId: 'p2', fallbackPlayerId: 'player_100' });
   check(
-    'a reconnect token presented after the grace window does not reclaim the seat',
-    !late.ok && late.error === 'match_full',
+    'a reconnect token presented after the grace window is told the match ended, not that it is full',
+    !late.ok && late.error === 'match_ended' && late.reason === 'player_disconnected',
     JSON.stringify(late),
   );
 }

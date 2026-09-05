@@ -104,6 +104,12 @@ export const ERROR_CODES = Object.freeze([
   // `action-validator.js` (e.g. `out_of_range`, `unknown_upgrade`, `already_owned`,
   // `prerequisite_missing`, `effect_not_implemented`, `insufficient_cash`).
   'purchase_rejected',
+  // STORY-022. `Match#join()` refuses a `join_room` — fresh or carrying a reconnect token —
+  // once the match has already ended, rather than falling through to `match_full` (a live-full
+  // roster and a dead room are different facts, and only one of them means "wait and retry").
+  // Carries `reason`, a MATCH_END_REASONS member, so a reconnect that arrived just past the
+  // grace window can say why instead of leaving the client to guess.
+  'match_ended',
 ]);
 
 /**

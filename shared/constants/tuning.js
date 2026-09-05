@@ -90,6 +90,14 @@ export const OWNER_SPRINT_COOLDOWN_MS = 5_000;
 /** Reconnect grace period. PRD §13 "Server responsibilities": handle reconnect grace. */
 export const RECONNECT_GRACE_MS = 30_000;
 
+/**
+ * STORY-022 §24 "final score gap over time". How often `telemetry-system.js` samples the
+ * revenue gap between the two restaurants — coarse on purpose (PRD §20 "logging is off the hot
+ * path... must not perturb the 10-20 Hz simulation tick"), a running trend line, not a per-tick
+ * one.
+ */
+export const TELEMETRY_SAMPLE_INTERVAL_MS = 5_000;
+
 // --- events (STORY-011) -------------------------------------------------------------------
 // PRD §9 "Dynamic events". Every number the seeded event deck uses lives here; `events.json`
 // owns what an event DOES, this file owns when and how often one may happen.

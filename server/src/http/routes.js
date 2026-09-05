@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import * as matchManager from '../game/match-manager.js';
 import { catalogue, publicMarket } from '../game/catalogue.js';
 import { attachBot, normalizeBotDifficulty } from '../game/bot/bot-controller.js';
+import { buildMatchLog, buildMatchSummary } from '../game/telemetry-export.js';
 import { THREE_VERSION, PHASE_DURATIONS_MS, PHASE_PRESETS } from '../../../shared/constants/tuning.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,32 @@ export function apiRouter() {
       return;
     }
     res.json(matchManager.roomStatus(room));
+  });
+
+  /**
+   * PRD §20/§21 Milestone 4 "match telemetry dashboard or log export". The structured event
+   * log — seed, event schedule, every customer decision, every order's lifecycle, every
+   * validated and rejected client action, every upgrade purchase — in the diffable shape
+   * `telemetry-export.js`'s own header explains. Available for a running OR ended match; a
+   * `results`-phase room's log is the complete, final one.
+   */
+  router.get('/rooms/:roomId/log', (req, res) => {
+    const room = matchManager.getRoom(req.params.roomId);
+    if (!room) {
+      res.status(404).json({ error: 'room_not_found' });
+      return;
+    }
+    res.json(buildMatchLog(room.match));
+  });
+
+  /** PRD §24 balance figures, derived from the same match — see `buildMatchSummary`'s header. */
+  router.get('/rooms/:roomId/summary', (req, res) => {
+    const room = matchManager.getRoom(req.params.roomId);
+    if (!room) {
+      res.status(404).json({ error: 'room_not_found' });
+      return;
+    }
+    res.json(buildMatchSummary(room.match));
   });
 
   /**

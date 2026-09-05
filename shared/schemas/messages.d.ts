@@ -51,7 +51,10 @@ export type ErrorCode =
   /** STORY-012: well-formed but illegal `purchase_upgrade` — out of range of the terminal,
    * unknown upgrade, already owned, unmet tier prerequisite, an effect not wired to any
    * system, or unaffordable. Carries `reason`. */
-  | 'purchase_rejected';
+  | 'purchase_rejected'
+  /** STORY-022: `join_room` (fresh or a reconnect token) arrived after the match already
+   * ended. Carries `reason`, a MatchEndReason. */
+  | 'match_ended';
 
 export type MatchPhase =
   | 'lobby'
