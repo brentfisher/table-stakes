@@ -2,123 +2,63 @@
 // lower-frequency game state panels. It must NOT reconcile Three.js entities as JSX state
 // every simulation tick — the scene is mounted once into a plain div and driven by
 // GameClient, and React only re-renders on the low-frequency status callback.
+//
+// STORY-023. This used to unconditionally mount `GameClient` (there was no menu and no way to
+// reach the game except by already having a `?room=`). It is now route-aware: `App` itself does
+// nothing but read the current pathname (`router.ts`) and pick which top-level screen to
+// render. Every panel that used to live directly in this file (`HudPanel`, `SetupScreen`,
+// `ResultsPanel`, etc.) moved, unchanged, into `GameView.tsx` — see that file's own header.
 
-import { useEffect, useRef, useState } from 'react';
-import { GameClient, type GameClientStatus } from '../game/GameClient';
-import { HudPanel } from '../ui/HudPanel';
-import { SetupScreen } from '../ui/SetupScreen';
-import { UpgradeTerminal } from '../ui/UpgradeTerminal';
-import { ResultsPanel } from '../ui/ResultsPanel';
-import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
-import { EventBanner } from '../ui/EventBanner';
-import { ReconnectOverlay } from '../ui/ReconnectOverlay';
+import { matchRoute, usePathname } from './router';
+import { MainMenu } from '../ui/MainMenu';
+import { GameView } from './GameView';
+import { RoutePlaceholder } from '../ui/RoutePlaceholder';
 
 export function App(): JSX.Element {
-  const sceneRef = useRef<HTMLDivElement>(null);
-  const clientRef = useRef<GameClient | null>(null);
-  const [status, setStatus] = useState<GameClientStatus | null>(null);
+  const pathname = usePathname();
+  const route = matchRoute(pathname);
 
-  useEffect(() => {
-    const container = sceneRef.current;
-    if (!container) return undefined;
-
-    const client = new GameClient(container);
-    clientRef.current = client;
-    // Status arrives on join and once per snapshot (~10 Hz), not per animation frame.
-    client.onStatus = (next) => setStatus({ ...next });
-
-    const roomId = new URLSearchParams(window.location.search).get('room') ?? undefined;
-    client.start(roomId);
-
-    return () => {
-      clientRef.current = null;
-      client.dispose();
-    };
-  }, []);
-
-  return (
-    <div className="app">
-      <div className="scene" ref={sceneRef} />
-      {/* STORY-016 PRD §14 "event banner top-centre with a district-level visual effect" — the
-          scene-wide light tint is `RestaurantScene#updateEventEffect`; this is the text half. */}
-      <EventBanner status={status} />
-      <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
-      {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
-          this one is reading `status`, which stops updating the instant the socket drops, so
-          nothing here needs its own gating besides the two fields this overlay itself owns. */}
-      <ReconnectOverlay
-        reconnecting={Boolean(status?.reconnecting)}
-        disconnectedTerminal={status?.disconnectedTerminal ?? null}
-      />
-      {/*
-        PRD §18's setup screen is a full-bleed overlay, mounted only during `setup`. It is
-        React UI over a live Three.js canvas — it never reconciles a scene entity, which is
-        what PRD §13 and Milestone 0 Decision 5 ask for.
-      */}
-      {status?.matchPhase === 'setup' ? (
-        <SetupScreen
-          status={status}
-          onSubmit={(payload) => clientRef.current?.submitSetup(payload)}
+  switch (route.name) {
+    case 'menu':
+      return <MainMenu />;
+    case 'game':
+    case 'results':
+      // Both routes hand the same roomId into the same live view — see `GameView.tsx`'s own
+      // header for why `/results/:roomId` does not need a second, static results renderer.
+      return <GameView roomId={route.roomId} />;
+    case 'join':
+      // STORY-024's job. Reserved here so a shared invite link tells the visitor what is
+      // going on instead of 404ing outright — see `RoutePlaceholder.tsx`.
+      return (
+        <RoutePlaceholder
+          title="Private match invites aren't live yet"
+          detail={`Invite token "${route.token}" can't be redeemed yet — private invite lobbies are still being built.`}
         />
-      ) : null}
-      {/*
-        STORY-014 (PRD §11 results screen). Renders as soon as `match_complete` has arrived —
-        NOT gated on `matchPhase === 'results'` — because a disconnect-triggered end sets
-        `endReason` without ever visiting the `results` phase (see match.js's own comment on
-        `matchCompleteMessage`); the panel has to cover that path too, not just the normal one.
-        Full-bleed overlay, same `SetupScreen` pattern above it in this tree.
-      */}
-      {status?.matchComplete ? (
-        <ResultsPanel
-          status={status}
-          onRematch={() => {
-            // No `rematch` client message exists (see NetworkClient.ts) and none is added —
-            // a fresh page load re-joins room-less, which is exactly PRD §12 room-flow step 1
-            // ("create a room") and lands back in the lobby.
-            window.location.href = window.location.pathname;
-          }}
+      );
+    case 'lobby':
+      // STORY-024's job, same reasoning as 'join' above.
+      return (
+        <RoutePlaceholder
+          title="Lobby isn't live yet"
+          detail={`Room "${route.roomId}" doesn't have a lobby screen yet — private match lobbies are still being built.`}
         />
-      ) : null}
-      {/* STORY-012. Opens on proximity, not an `E` press — see
-          `InteractionController#nearUpgradeTerminal`'s own comment for why. */}
-      {status?.nearUpgradeTerminal ? (
-        <UpgradeTerminal
-          cash={status.cash}
-          purchasedUpgradeIds={status.purchasedUpgradeIds}
-          onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
+      );
+    case 'dev-harnesses':
+      // STORY-026's job (asset showcase) and the existing standalone `harnesses/` app already
+      // cover this in development — this route is reserved, not yet backed by anything here.
+      return (
+        <RoutePlaceholder
+          title="Dev harness index isn't here yet"
+          detail="The scene harnesses run from the standalone harnesses/ app for now; an in-client index isn't built yet."
         />
-      ) : null}
-      {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
-          #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
-          false`) on leaving `service`/`final_rush`, so the phase check here is a display guard,
-          not the only thing preventing a stale panel. */}
-      {status?.showTacticalOverview && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
-        <TacticalOverviewPanel status={status} />
-      ) : null}
-      <div className="scope-note">
-        <strong>Match lifecycle</strong> — the PRD §5 phase clock runs on the server; both
-        owners ready up to leave the lobby, then build a menu during setup. Customers, orders,
-        events, money and scoring each land in a later story.
-      </div>
-      <div className="help">
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}
-        <kbd>E</kbd> interact · <kbd>F</kbd> put down · <kbd>Tab</kbd> overview
-      </div>
-      {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
-          this is it, verbatim — nothing here decides whether pressing E will succeed. */}
-      {status?.prompt ? (
-        <div className="interact-prompt">
-          <kbd>E</kbd>
-          {status.prompt.label}
-        </div>
-      ) : null}
-      {status && (status.carrying.length > 0 || status.currentAction) ? (
-        <div className="carry-status">
-          {status.currentAction ? `${status.currentAction}…` : null}
-          {status.currentAction && status.carrying.length > 0 ? ' · ' : null}
-          {status.carrying.length > 0 ? `carrying ${status.carrying.length}` : null}
-        </div>
-      ) : null}
-    </div>
-  );
+      );
+    case 'not-found':
+    default:
+      return (
+        <RoutePlaceholder
+          title="Page not found"
+          detail={`Nothing is routed at "${route.name === 'not-found' ? route.pathname : pathname}".`}
+        />
+      );
+  }
 }
