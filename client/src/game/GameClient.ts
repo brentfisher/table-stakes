@@ -352,16 +352,25 @@ export class GameClient {
    * set) — an initial connection failure is not "reconnect UX", it is "the server never
    * answered", out of this story's scope. From there, every `'closed'` (the first drop, or a
    * failed retry attempt reopening) schedules exactly one more attempt after
-   * `RECONNECT_RETRY_INTERVAL_MS`, until either `'open'` cancels the deadline or the deadline
-   * passes — there is deliberately no separate timer chain to keep in sync with this one.
+   * `RECONNECT_RETRY_INTERVAL_MS`, until either the server's `joined` response (in
+   * `handleMessage`) cancels the deadline or the deadline passes first — there is deliberately
+   * no separate timer chain to keep in sync with this one. `'open'` itself does NOT clear
+   * `reconnecting`/`reconnectDeadlineMs`: the transport opening is not the server confirming the
+   * rejoin, and clearing early would drop the overlay during the gap where a
+   * `match_ended`/`room_not_found` refusal for this same attempt could still arrive.
    */
   private handleConnectionChange(connection: 'connecting' | 'open' | 'closed', roomId?: string): void {
     this.patchStatus({ connection });
 
     if (connection === 'open') {
-      this.reconnectDeadlineMs = null;
-      this.network.joinRoom(roomId, this.status.playerId ?? undefined);
-      if (this.status.reconnecting) this.patchStatus({ reconnecting: false });
+      // `roomId` here is only ever the URL param `start()` closed over — `undefined` in the
+      // normal no-`?room=` dev flow. A RECONNECT must target the room the server already told
+      // us about (`status.roomId`, set from the first `joined`), or a token-less `join_room`
+      // with no `roomId` creates a brand-new empty room instead of rejoining the real one.
+      // `reconnecting`/`reconnectDeadlineMs` are NOT cleared here — only once `joined` actually
+      // arrives (below) — so the overlay stays up, and the retry budget stays live, for the gap
+      // between the socket opening and the server answering the rejoin.
+      this.network.joinRoom(this.status.roomId ?? roomId, this.status.playerId ?? undefined);
       return;
     }
     if (connection !== 'closed') return; // 'connecting' — nothing to react to yet
@@ -384,10 +393,16 @@ export class GameClient {
 
   private handleMessage(message: ServerMessage): void {
     if (message.type === 'joined') {
+      // STORY-022. Cleared HERE, not when the transport merely opens (`handleConnectionChange`)
+      // — the server has now actually confirmed the rejoin, not just accepted a TCP connection.
+      // Clearing earlier would drop the overlay (and the retry deadline) during the gap where a
+      // `match_ended`/`room_not_found` refusal could still arrive for this same attempt.
+      this.reconnectDeadlineMs = null;
       this.patchStatus({
         roomId: String(message.roomId),
         playerId: String(message.playerId),
         seed: String(message.seed),
+        reconnecting: false,
       });
       return;
     }

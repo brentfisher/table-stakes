@@ -83,6 +83,8 @@ const post = async (path, body) =>
     body: JSON.stringify(body ?? {}),
   })).json();
 
+const get = async (path) => (await fetch(`${BASE}${path}`)).json();
+
 // --- the run -----------------------------------------------------------------------------
 
 async function main() {
@@ -220,6 +222,22 @@ async function main() {
     'match_complete reaches both clients with the PRD §12 envelope and a populated MatchResult per player',
     envelopeOk(p1.complete) && envelopeOk(p2.complete),
     JSON.stringify(p1.complete),
+  );
+
+  // STORY-022. `check-telemetry.mjs` exercises `buildMatchLog`/`buildMatchSummary` in process;
+  // neither that script nor anything else hits the two HTTP routes that actually serve them —
+  // this is the one place in the suite with a live server and a finished room already in scope.
+  const log = await get(`/api/rooms/${room.id}/log`);
+  check(
+    'GET /api/rooms/:roomId/log serves a diffable event log from the running server',
+    typeof log.seed === 'string' && Array.isArray(log.events) && log.events.length > 0,
+    `seed=${log.seed} events=${log.events?.length}`,
+  );
+  const summary = await get(`/api/rooms/${room.id}/summary`);
+  check(
+    'GET /api/rooms/:roomId/summary serves the §24 balance figures from the running server',
+    typeof summary.partiesServedByRestaurant === 'object' && typeof summary.playerInterventions === 'object',
+    JSON.stringify(summary),
   );
 
   p1.ws.close();
