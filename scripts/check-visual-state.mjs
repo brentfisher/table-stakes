@@ -2,11 +2,11 @@
 // STORY-016 "3D visual state language" — pure color-band classification check, in process.
 //
 // This is a pure-logic check ONLY. The 3D rendering itself (patience rings, table badges,
-// station queue/shortage icons, worker role/task icons, the food-ready icon at the pass, rival
-// activity, the event effect) has no in-process test surface — "this repo has no React/Three.js
-// test framework" (STORY-015's own check-hud.mjs precedent). It was verified live in a real
-// two-tab browser session instead; see this story's `Implementation notes (post-hoc)` section
-// in its story file for what was checked there.
+// station queue/shortage icons, worker role/task icons, the dish-specific ready-food proxies at
+// the pass (STORY-030), rival activity, the event effect) has no in-process test surface —
+// "this repo has no React/Three.js test framework" (STORY-015's own check-hud.mjs precedent). It
+// was verified live in a real two-tab browser session instead; see this story's `Implementation
+// notes (post-hoc)` section in its story file for what was checked there.
 //
 // What IS pure and in-process-testable is the classification `RestaurantScene.ts` builds every
 // indicator's color on: `patienceColorBand`/`stationQueueColorBand`

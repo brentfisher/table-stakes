@@ -20,12 +20,17 @@
 //     owner/worker/customer render states (`upsertOwner`/`upsertWorker`/`upsertCustomer`) for
 //     Player Models, and its zone/table/station/pantry/pass/terminal/competitor visuals for
 //     Restaurant Models.
-//   - Dish Models has NO per-dish visual asset to showcase — every dish (`smash_burger`,
-//     `caesar_salad`, …) renders as the exact same generic plate mesh regardless of `dishId`.
-//     This category is built around what IS real instead: the plate's three production
-//     placements (carried by the owner, the food-ready icon at the pass, the table badge), plus
-//     an honest accounting of which `OrderState` values ('queued', 'ready') have ANY visual at
-//     all and which ('placed', 'in_progress', 'delivered', 'cancelled') have none.
+//   - Dish Models is a MIX, not uniformly generic. STORY-030 gave 'ready' a real per-dish visual
+//     — the plate at the service pass is chosen by `dishId` (`RestaurantScene#upsertReadyDish`,
+//     five named silhouettes plus a neutral fallback for the rest of the catalogue) — but every
+//     OTHER dish placement is still exactly one generic mesh regardless of `dishId`: the carry
+//     plate (`MAX_VISIBLE_CARRY_PLATES` in `RestaurantScene.ts`, STORY-031's concern to make
+//     dish-specific) and the table badge glyph (`TABLE_BADGE_GLYPHS`, a meal-state indicator, not
+//     a dish one). This category is built around that reality: 'ready' gets the real dish-select
+//     control the pass now has; carry and table placements get the same honest "no per-dish
+//     visual here" treatment as before; plus an accounting of which `OrderState` values
+//     ('queued', 'ready') have ANY visual at all and which ('placed', 'in_progress', 'delivered',
+//     'cancelled') have none.
 //   - Wherever a requested preview has no production view to map onto — `OwnerRenderState.
 //     sprinting` (carried on the wire, never rendered), `CustomerSnapshot.state`/exit states (no
 //     visual beyond the patience ring), `equipment_failure`/`StationSnapshot.broken` (declared
@@ -326,6 +331,12 @@ function createAssetShowcaseHarness(): SceneHarness {
       let spawnedOwnerIds: string[] = [];
       let spawnedCustomerIds: string[] = [];
       let spawnedWorkerIds: string[] = [];
+      /** STORY-030. Ready-dish proxies are NOT part of `applyFloorState`'s `updateFloorState`
+       * call (production reconciles them through `EntityViewRegistry`, outside that method —
+       * see `RestaurantScene.ts`'s own comment on `updateFloorState`), so `applyFloorState({})`
+       * alone does not clear a previously showcased one; both call sites below must track and
+       * clear their own ticket id, same discipline as `spawnedCustomerIds`/`spawnedWorkerIds`. */
+      let spawnedReadyDishIds: string[] = [];
       let activeOwnerState: OwnerRenderState | null = null;
       let activeWorkerDef: WorkerPreviewDef | null = null;
       let activeCustomerId: string | null = null;
@@ -348,6 +359,21 @@ function createAssetShowcaseHarness(): SceneHarness {
           orders: opts.orders ?? [],
           events: [],
         });
+      }
+
+      /** STORY-030. `removeReadyDish` only detaches (see `teardownCategoryEntities`'s own
+       * comment on why `removeOwner`/`removeCustomer`/`removeWorker` never dispose geometry) —
+       * this disposes each proxy's own subtree first, same pattern as every other showcased
+       * entity. Called before spawning a NEW ready-dish showcase item too, so switching
+       * fresh→stale never leaves the old proxy behind under a second ticket id. */
+      function clearShowcaseReadyDishes(): void {
+        if (!scene) return;
+        for (const ticketId of spawnedReadyDishIds) {
+          const group = scene.scene.getObjectByName(`ready_dish_${ticketId}`);
+          if (group) disposeSubtree(group);
+          scene.removeReadyDish(ticketId);
+        }
+        spawnedReadyDishIds = [];
       }
 
       // --- visibility / bounds / camera: the focused-vs-composed mechanism -------------------
@@ -559,9 +585,10 @@ function createAssetShowcaseHarness(): SceneHarness {
         const noVisualNote = (state: string) =>
           `OrderState '${state}' has no distinct visual anywhere in this codebase. ` +
           "RestaurantScene only ever visually distinguishes 'queued' (a station's queue-box " +
-          "stack) and 'ready' (the food-ready icon at the pass) — 'placed', 'in_progress', " +
-          "'delivered' and 'cancelled' render as nothing beyond the station/table's own static " +
-          'geometry. Nothing is spawned for this selection; that is the honest result, not a bug.';
+          "stack) and 'ready' (a dish-specific plated proxy at the pass, STORY-030) — 'placed', " +
+          "'in_progress', 'delivered' and 'cancelled' render as nothing beyond the station/" +
+          'table\'s own static geometry. Nothing is spawned for this selection; that is the ' +
+          'honest result, not a bug.';
 
         if (id === 'carried_1' || id === 'carried_2' || id === 'carried_3') {
           const count = Number(id.split('_')[1]);
@@ -598,20 +625,27 @@ function createAssetShowcaseHarness(): SceneHarness {
           ];
         } else if (id === 'pass_ready_fresh' || id === 'pass_ready_stale') {
           const stale = id === 'pass_ready_stale';
-          applyFloorState({
-            orders: [
-              mockOrder('showcase_pass_order', DISHES[0].id, {
-                state: 'ready',
-                readyAgeMs: stale ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
-              }),
-            ],
+          applyFloorState({});
+          clearShowcaseReadyDishes();
+          const ticketId = 'showcase_pass_order_ticket';
+          scene.upsertReadyDish({
+            ticketId,
+            dishId: DISHES[0].id,
+            tableId: layoutTableIds()[0] ?? null,
+            readyAgeMs: stale ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
+            isOldest: true,
           });
+          spawnedReadyDishIds = [ticketId];
           target = scene.scene.getObjectByName('service_pass') ?? null;
           diagnostics = [
-            "The food-ready icon at the pass is the only production visual for OrderState " +
-              "'ready' — there is no per-dish mesh at the pass either; every ready ticket shows " +
-              'the same glyph, tinted healthy or bottleneck by how long it has sat past ' +
-              'ORDER_FRESHNESS_GRACE_MS.',
+            // STORY-030. Supersedes the old single-glyph `foodReadyIcon` — every ready ticket
+            // now gets its own dish-specific proxy (`RestaurantScene#upsertReadyDish`), keyed
+            // off `dishId`, with a READY/GOING COLD label and table chip, tinted healthy/
+            // bottleneck by how long it has sat past `ORDER_FRESHNESS_GRACE_MS`.
+            'The dish-specific plated proxy at the pass is the production visual for OrderState ' +
+              "'ready' (PRD §5.2/§10.1) — geometry is chosen by `dishId`, not by state; freshness " +
+              'is carried by the ring color and the READY/GOING COLD chip, never by recoloring ' +
+              'the food itself.',
           ];
         } else if (id === 'kitchen_queued_low' || id === 'kitchen_queued_high') {
           const depth = id === 'kitchen_queued_low' ? 1 : 4;
@@ -651,6 +685,7 @@ function createAssetShowcaseHarness(): SceneHarness {
         rivalFraction = 0;
         rivalQueueLength = 0;
         applyFloorState({});
+        clearShowcaseReadyDishes();
 
         const isStation = id.startsWith('station_');
         const isTable = layoutTableIds().includes(id);
@@ -747,6 +782,7 @@ function createAssetShowcaseHarness(): SceneHarness {
         spawnedOwnerIds = [];
         spawnedCustomerIds = [];
         spawnedWorkerIds = [];
+        clearShowcaseReadyDishes();
         activeOwnerState = null;
         activeWorkerDef = null;
         activeCustomerId = null;
@@ -938,16 +974,22 @@ function createAssetShowcaseHarness(): SceneHarness {
       const servicePassControls = document.createElement('div');
       restaurantSection.appendChild(servicePassControls);
       const setPassSelect = panel.addSelect(
-        'Food-ready icon',
+        // STORY-030. Was "Food-ready icon" — this now toggles a dish-specific plated proxy
+        // (`RestaurantScene#upsertReadyDish`), not a single generic glyph.
+        'Ready-dish proxy',
         PASS_OPTIONS,
         (v) => {
-          if (v === 'none') {
-            applyFloorState({});
-            return;
-          }
-          applyFloorState({
-            orders: [mockOrder('showcase_pass_order', DISHES[0].id, { state: 'ready', readyAgeMs: v === 'stale' ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0 })],
+          clearShowcaseReadyDishes();
+          if (v === 'none' || !scene) return;
+          const ticketId = 'showcase_pass_order_ticket';
+          scene.upsertReadyDish({
+            ticketId,
+            dishId: DISHES[0].id,
+            tableId: layoutTableIds()[0] ?? null,
+            readyAgeMs: v === 'stale' ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
+            isOldest: true,
           });
+          spawnedReadyDishIds = [ticketId];
         },
         servicePassControls,
       );
@@ -1097,6 +1139,10 @@ function createAssetShowcaseHarness(): SceneHarness {
 
         if (scene && camera) {
           scene.updateCustomerAnimations(elapsedTotal);
+          // STORY-030. Same per-frame split as `updateCustomerAnimations` — pulses whichever
+          // showcased ready-dish proxy is marked `isOldest` (see the two `upsertReadyDish` call
+          // sites below).
+          scene.updateReadyDishAnimations(elapsedTotal);
           if (boundsOn && boundsHelper && currentTarget) boundsHelper.box.setFromObject(currentTarget);
           camera.update(dt);
           renderer?.render(scene.scene, camera.camera);
