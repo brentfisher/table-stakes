@@ -18,6 +18,7 @@
 import type { GameClientStatus } from '../game/GameClient';
 import type { RestaurantSnapshot, BottleneckKind } from '../../../shared/schemas/game-state';
 import { eventTitle } from './event-titles';
+import { botProfileLabel } from './bot-profiles';
 
 /** Short badge text for a bottleneck kind — distinct from `HudPanel`'s full alert sentences,
  * since this panel shows every active kind for both restaurants at once, not a ranked top few. */
@@ -95,6 +96,10 @@ function RestaurantColumn({
 export function TacticalOverviewPanel({ status }: { status: GameClientStatus }): JSX.Element {
   const self = status.restaurants.find((r) => r.restaurantId === status.playerId) ?? null;
   const rival = status.restaurants.find((r) => r.restaurantId !== status.playerId) ?? null;
+  // STORY-025. Same label-only treatment as `HudPanel`'s scoreboard header — see that file's
+  // own comment.
+  const rivalBot = status.bots.find((bot) => bot.playerId === rival?.restaurantId) ?? null;
+  const rivalTitle = rivalBot ? `Bot (${botProfileLabel(rivalBot.difficulty)})` : 'Rival';
   const activeEvents = status.events.filter((e) => e.state === 'active');
   const upcomingEvents = [...status.events]
     .filter((e) => e.state === 'warning')
@@ -110,7 +115,7 @@ export function TacticalOverviewPanel({ status }: { status: GameClientStatus }):
       </div>
       <div className="tactical-columns">
         <RestaurantColumn title="You" restaurant={self} isSelf />
-        <RestaurantColumn title="Rival" restaurant={rival} isSelf={false} />
+        <RestaurantColumn title={rivalTitle} restaurant={rival} isSelf={false} />
       </div>
       <div className="tactical-events">
         <h3>Events</h3>

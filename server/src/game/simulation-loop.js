@@ -51,6 +51,7 @@
 import { SIMULATION_TICK_HZ, BROADCAST_HZ } from '../../../shared/constants/tuning.js';
 import { MATCH_PHASES } from '../../../shared/schemas/messages.js';
 import * as store from '../persistence/in-memory-store.js';
+import { buildSnapshot } from './match-manager.js';
 
 const TICK_MS = 1000 / SIMULATION_TICK_HZ;
 const BROADCAST_MS = 1000 / BROADCAST_HZ;
@@ -184,9 +185,11 @@ export function startSimulationLoop({ broadcast, broadcastPerViewer }) {
       sinceBroadcast = 0;
       for (const room of store.listRooms()) {
         // One snapshot per viewer: the `you` slice differs per player, and PRD §18 forbids
-        // ever building it any other way.
+        // ever building it any other way. STORY-025: `buildSnapshot` (not `room.match
+        // .toSnapshot` directly) so a bot-match room's roster (`room.bots`) rides along —
+        // see that function's own header.
         if (room.sockets.size > 0) {
-          broadcastPerViewer(room, (playerId) => room.match.toSnapshot(playerId));
+          broadcastPerViewer(room, (playerId) => buildSnapshot(room, playerId));
         }
       }
     }

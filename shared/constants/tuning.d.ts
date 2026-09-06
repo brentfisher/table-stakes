@@ -249,19 +249,25 @@ export declare const PATIENCE_RING_ATTENTION_THRESHOLD: number;
 export declare const PATIENCE_RING_BOTTLENECK_THRESHOLD: number;
 export declare const STATION_QUEUE_ATTENTION_THRESHOLD: number;
 
-// --- STORY-017: bot opponent -----------------------------------------------------------------
+// --- STORY-017: bot opponent, widened by STORY-025's Balanced/Fast Service/Premium profiles --
 export declare const BOT_RNG_STREAM: string;
 export declare const BOT_DIFFICULTIES: readonly string[];
 export declare const BOT_DEFAULT_DIFFICULTY: string;
 export interface BotDifficultyLevels {
   easy: number;
   hard: number;
+  balanced: number;
+  fast_service: number;
+  premium: number;
 }
 export declare const BOT_DECISION_INTERVAL_MS: BotDifficultyLevels;
 export declare const BOT_MISTAKE_PROBABILITY: BotDifficultyLevels;
 export interface BotSprintEnabled {
   easy: boolean;
   hard: boolean;
+  balanced: boolean;
+  fast_service: boolean;
+  premium: boolean;
 }
 export declare const BOT_SPRINT_ENABLED: BotSprintEnabled;
 export declare const BOT_TAG_MATCH_WEIGHT: number;

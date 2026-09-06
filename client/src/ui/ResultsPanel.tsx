@@ -23,6 +23,7 @@ import segmentsData from '../../../shared/game-data/customer-segments.json';
 import eventsData from '../../../shared/game-data/events.json';
 import type { GameClientStatus } from '../game/GameClient';
 import type { MatchResult } from '../../../shared/schemas/messages';
+import { botProfileLabel } from './bot-profiles';
 
 const DISH_NAMES = new Map<string, string>(
   (dishesData.dishes as Array<{ id: string; name: string }>).map((d) => [d.id, d.name]),
@@ -82,6 +83,12 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   const rivalId = restaurantIds.find((id) => id !== selfId) ?? restaurantIds[0] ?? null;
   const selfResult = selfId ? complete.results[selfId] : undefined;
   const rivalResult = rivalId ? complete.results[rivalId] : undefined;
+  // STORY-025 AC: "identifies the bot opponent by name/profile rather than showing generic
+  // 'Player 2'". `status.bots` is empty for a human-vs-human match, so `rivalBot` is null and
+  // `rivalTitle` below is exactly the pre-STORY-025 "Rival" — this only changes anything for an
+  // actual bot match.
+  const rivalBot = status.bots.find((bot) => bot.playerId === rivalId) ?? null;
+  const rivalTitle = rivalBot ? `Rival — ${botProfileLabel(rivalBot.difficulty)} Bot` : 'Rival';
 
   const outcome =
     complete.winnerPlayerId === null
@@ -119,7 +126,7 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
         <>
           <div className="results-region results-stats">
             <StatColumn title="You" result={selfResult} />
-            <StatColumn title="Rival" result={rivalResult} />
+            <StatColumn title={rivalTitle} result={rivalResult} />
           </div>
 
           <div className="results-region results-narrative">

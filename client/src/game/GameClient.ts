@@ -8,6 +8,7 @@ import { EntityViewRegistry } from './EntityViewRegistry';
 import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
 import type {
+  BotSnapshotEntry,
   CustomerSnapshot,
   MatchCompleteMessage,
   MatchEndReason,
@@ -215,6 +216,11 @@ export interface GameClientStatus {
    * all within `RECONNECT_GRACE_MS + RECONNECT_GIVE_UP_BUFFER_MS`. Null while still connected or
    * still retrying. `reason` is a MatchEndReason, `'room_not_found'`, or `'unreachable'`. */
   disconnectedTerminal: { reason: string } | null;
+  /** STORY-025. `match_snapshot.bots[]`, verbatim — empty for a human-vs-human match. This is
+   * what lets `HudPanel`/`TacticalOverviewPanel`/`ResultsPanel` name a bot opponent by profile
+   * (`bot-profiles.ts#botProfileLabel`) instead of a generic "Rival", without any of them
+   * re-deriving "is this seat a bot" from anything but this array. */
+  bots: BotSnapshotEntry[];
 }
 
 /** STORY-012 AC / STORY-015: the ambient "something is worth buying" signal, computed from
@@ -285,6 +291,7 @@ export class GameClient {
     reconnecting: false,
     disconnectedTerminal: null,
     players: [],
+    bots: [],
   };
 
   /** STORY-024. Set by `start()`; resent on every `join_room` (see `NetworkClient.joinRoom`'s
@@ -597,6 +604,8 @@ export class GameClient {
         ),
         ...(phaseChanged && !tacticalOverviewPhase ? { showTacticalOverview: false } : {}),
         ...cashFeedbackPatch,
+        // STORY-025. Verbatim off the wire — see `GameClientStatus.bots`'s own field comment.
+        bots: (message.bots ?? []) as BotSnapshotEntry[],
       });
       return;
     }

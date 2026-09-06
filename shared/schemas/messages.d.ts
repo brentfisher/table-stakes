@@ -290,6 +290,23 @@ export interface SnapshotEventEntry {
 }
 
 /**
+ * STORY-025. One `room.bots` entry (`bot-controller.js#attachBot`), as merged into the wire
+ * snapshot by `match-manager.js#buildSnapshot` ONLY for a `mode: 'solo_bot'` room — see that
+ * function's own header for why this cannot come from `Match#toSnapshot` itself, and for why
+ * the gate matters (a bare `POST /dev/match` bot room must never carry this, per STORY-017
+ * AC1). Public and identical per viewer on the rooms it does appear for, same as every other
+ * top-level `MatchSnapshotMessage` field: which seat is a bot, and what profile, is not
+ * privileged information the way an opponent's menu/setup is.
+ */
+export interface BotSnapshotEntry {
+  playerId: string;
+  /** A `BOT_DIFFICULTIES` member (`shared/constants/tuning.js`) — the client's own
+   * `client/src/ui/bot-profiles.ts` maps this to a display label ("Balanced", "Practice", ...)
+   * rather than the raw id ever reaching a player-facing string directly. */
+  difficulty: string;
+}
+
+/**
  * PRD §12 server-to-client example 1. Broadcast at BROADCAST_HZ, and BUILT PER VIEWER — two
  * players in one match receive two different objects, identical except for `you`.
  *
@@ -313,6 +330,10 @@ export interface MatchSnapshotMessage {
   customers: CustomerSnapshot[];
   orders: OrderSnapshot[];
   players: PlayerSnapshot[];
+  /** STORY-025. Present (and non-empty for an attached bot) ONLY for a `mode: 'solo_bot'`
+   * room — absent from every `'dev'`/`'private_human'` snapshot, unchanged from before this
+   * story. See `BotSnapshotEntry`. */
+  bots?: BotSnapshotEntry[];
 }
 
 /** PRD §12 server-to-client example 2. `startsInMs` is 0 when the event activates immediately. */

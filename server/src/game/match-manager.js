@@ -50,6 +50,8 @@ function normalizeHostDisplayName(value) {
  *   expiry, and `holdLobbySeatsDuringGrace` on its `Match` (see match.js's own comment on
  *   why a lobby drop is NOT simply "somebody else can take that seat" here).
  * @param {string} [options.hostDisplayName] STORY-024. `'private_human'` only.
+ * @param {string} [options.marketId] STORY-025. Forwarded to `Match` verbatim — see that
+ *   constructor's own comment on the fallback-to-drawn-market behavior for an unknown id.
  */
 export function createRoom({
   seed = randomSeed(),
@@ -57,6 +59,7 @@ export function createRoom({
   requiredPlayers = PLAYERS_PER_MATCH,
   mode = 'dev',
   hostDisplayName,
+  marketId,
 } = {}) {
   const id = nextRoomId();
   const isPrivateInvite = mode === 'private_human';
@@ -70,6 +73,7 @@ export function createRoom({
     phasePreset,
     requiredPlayers,
     holdLobbySeatsDuringGrace: isPrivateInvite,
+    marketId,
   });
   const room = {
     id,
@@ -157,6 +161,46 @@ export function roomStatus(room, { includeInvite = false } = {}) {
 
 export function listRoomStatuses() {
   return store.listRooms().map((room) => roomStatus(room));
+}
+
+/**
+ * STORY-025. The real `match_snapshot` a viewer receives, PLUS the room's own bot roster —
+ * the one fact `Match#toSnapshot` cannot supply on its own, since a bot (`bot-controller.js
+ * #attachBot`) is attached to the ROOM (`room.bots`), not to the `Match`. Kept as a thin
+ * wrapper rather than teaching `match.js` about bots at all: that file's own header is explicit
+ * that later stories register a SYSTEM rather than editing it directly, and `room.bots` already
+ * lives entirely outside `Match` for exactly the "bot is a client, not a privileged branch"
+ * reason `bot-controller.js`'s header gives.
+ *
+ * `bots` IS ONLY EVER ADDED FOR A `mode: 'solo_bot'` ROOM — every other room (`'dev'`,
+ * `'private_human'`) gets `Match#toSnapshot`'s own output back UNTOUCHED, byte-identical to
+ * before this story. This gate is load-bearing, not cosmetic: `scripts/smoke-bot.mjs`'s own
+ * comment on `POST /dev/match` is explicit that "What must never happen is the marker
+ * [bot: true] reaching a WebSocket message" — STORY-017 AC1 requires a bare dev/bot room to be
+ * indistinguishable, ON THE WIRE, from two real humans, so a developer/tester exercises the
+ * identical client code path a real match would. Merging `bots` into EVERY room's snapshot
+ * would silently break that guarantee the instant this story landed. A `mode: 'solo_bot'` room
+ * is the opposite case ON PURPOSE: the player who created it explicitly chose "Play vs Bot" from
+ * the menu, so naming the bot IS this story's own AC ("identifies the bot opponent by name/
+ * profile rather than showing generic 'Player 2'"). `POST /dev/match` is untouched by this
+ * story and still creates `mode: 'dev'` rooms exclusively, so this gate can never fire for it.
+ *
+ * `bots` is top-level, not under `you`, for the rooms it DOES apply to — both viewers see the
+ * identical array (which playerId is a bot, and its difficulty/profile id), the same public/
+ * private split every other top-level `match_snapshot` field already follows.
+ *
+ * `simulation-loop.js`'s real broadcast calls this; so does `scripts/check-bot-menu.mjs`, so
+ * the shape a check exercises and the shape a client actually receives can never quietly
+ * diverge (the same reasoning `match.toSnapshot` itself documents for why it is called from
+ * exactly one production site).
+ */
+export function buildSnapshot(room, viewerPlayerId = null) {
+  const snapshot = room.match.toSnapshot(viewerPlayerId);
+  if (room.mode !== 'solo_bot') return snapshot;
+  return {
+    ...snapshot,
+    bots: (room.bots ?? []).map((bot) => ({ playerId: bot.playerId, difficulty: bot.difficulty })),
+  };
 }
 
 /**

@@ -102,7 +102,9 @@ export class BotController {
    * @param {object} room  a match-manager room ({id, match, sockets, ...}) — the SAME shape
    *                       `socket-server.js`'s real connections attach to.
    * @param {object} [options]
-   * @param {'easy'|'hard'} [options.difficulty]
+   * @param {'easy'|'hard'|'balanced'|'fast_service'|'premium'} [options.difficulty] any
+   *   `BOT_DIFFICULTIES` member (STORY-025 added the three profile ids to the two STORY-017
+   *   shipped) — always pass through `normalizeBotDifficulty`, never a raw string.
    * @param {number} [options.seatIndex]  0 for the first bot attached to this room, 1 for a
    *                                      second (a bot-vs-bot room — `scripts/check-bot.mjs`
    *                                      only). MUST be caller-supplied and MUST NOT be derived

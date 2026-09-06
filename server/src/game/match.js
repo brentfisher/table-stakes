@@ -67,6 +67,15 @@ export class Match {
    *   to a third party who happens to load the join link in that window. Defaults false so
    *   every existing caller — `check-match-lifecycle.mjs`'s own "a drop during lobby releases
    *   the seat instead of holding it" among them — is unaffected.
+   * @param {string|null} [options.marketId] STORY-025. PRD §12 step 4 says "the server selects
+   *   the market scenario" FROM THE SEED — normally true here too (`#generateConfig` still
+   *   draws `marketDraw` unconditionally, so every pre-existing seed keeps drawing the exact
+   *   same market it always did and `spawnJitter`'s draw index never shifts). This override
+   *   exists ONLY for the STORY-025 "Play vs Bot" menu's "market scenario" picker, which needs
+   *   an explicit choice rather than a seed lottery: when it names a real `catalogue.marketsById`
+   *   entry, that market is used INSTEAD of the drawn one; a missing/unknown id falls back to
+   *   the drawn market exactly as if this option had never been passed, so a typo or a stale id
+   *   degrades to the pre-existing behavior rather than throwing.
    */
   constructor({
     id,
@@ -74,6 +83,7 @@ export class Match {
     phasePreset = 'prototype',
     requiredPlayers = PLAYERS_PER_MATCH,
     holdLobbySeatsDuringGrace = false,
+    marketId = null,
   }) {
     if (!PHASE_DURATIONS_MS[phasePreset]) {
       throw new Error(
@@ -122,18 +132,23 @@ export class Match {
      */
     this.telemetry = [];
 
-    // PRD §12 room-flow step 4: the server selects the market scenario, from the seed.
-    this.config = this.#generateConfig();
+    // PRD §12 room-flow step 4: the server selects the market scenario, from the seed —
+    // unless STORY-025's `marketId` override names a real one (see the constructor's own
+    // comment on why the draw still happens either way).
+    this.config = this.#generateConfig(marketId);
     this.market = catalogue.marketsById[this.config.marketId];
   }
 
   // --- deterministic configuration ----------------------------------------------------
 
-  #generateConfig() {
+  #generateConfig(marketIdOverride = null) {
     // Draw order is part of the reproducibility contract: market first, then spawn jitter.
-    // Inserting a draw ABOVE an existing one changes every match with the same seed.
+    // Inserting a draw ABOVE an existing one changes every match with the same seed. The draw
+    // itself always happens, override or not — see the constructor's own comment on why.
     const marketDraw = this.rng();
-    const market = catalogue.markets[Math.floor(marketDraw * catalogue.markets.length)];
+    const drawnMarket = catalogue.markets[Math.floor(marketDraw * catalogue.markets.length)];
+    const overrideMarket = marketIdOverride ? catalogue.marketsById[marketIdOverride] : null;
+    const market = overrideMarket ?? drawnMarket;
     return {
       layoutId: layout.id,
       marketId: market.id,
