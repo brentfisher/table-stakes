@@ -172,9 +172,12 @@ const MAX_VISIBLE_CARRY_PLATES = 3;
  * fixed slot layout (like `MAX_VISIBLE_QUEUE_BOXES`/`MAX_VISIBLE_CARRY_PLATES` above) rather
  * than a dynamic reflow, so an already-visible dish never jumps sideways just because a NEWER
  * ticket became ready. 8 comfortably outpaces kitchen throughput for the MVP's 4-station,
- * single-cook line; a 9th simultaneous ready ticket (never observed in practice) falls back to
- * slot 0, the same "past this point the exact position stops mattering" call
- * `MAX_VISIBLE_QUEUE_BOXES`'s own comment makes for its 5th box. */
+ * single-cook line; a 9th simultaneous ready ticket (never observed in practice) is hidden
+ * rather than placed on top of another proxy — UNLIKE `MAX_VISIBLE_QUEUE_BOXES`'s 5th box (which
+ * is fine to simply not draw, since the queue's color band already carries "this is bad" past
+ * that point), a hidden-vs-overlapping choice matters here because the AC is explicitly "all
+ * remain visible without geometry overlap" — overlapping would violate it outright, a briefly
+ * uncounted 9th plate would not. See `claimReadyDishSlot`. */
 const MAX_READY_DISH_SLOTS = 8;
 /** Local-space X range across the service pass's own 16-unit width (`buildEntity`'s
  * `service_pass` box), leaving a margin so a plate's own radius never clips past the pass edge. */
@@ -755,13 +758,16 @@ export class RestaurantScene {
   // ('readyDishes') --------------------------------------------------------------------------
 
   /** First free pass slot for a NEWLY seen ticket — see `readyDishSlotPosition`'s own comment
-   * on why slots are claimed once and held, not recomputed every snapshot. Falls back to slot 0
-   * past `MAX_READY_DISH_SLOTS` live tickets simultaneously (see that constant's own comment). */
-  private claimReadyDishSlot(ticketId: string): number {
+   * on why slots are claimed once and held, not recomputed every snapshot. Returns `null` past
+   * `MAX_READY_DISH_SLOTS` live tickets simultaneously (see that constant's own comment) — the
+   * caller (`upsertReadyDish`) hides the proxy rather than placing a second one on an
+   * already-occupied slot, which the AC "all remain visible without geometry overlap" rules out
+   * as an option; the overlap is what would actually violate it, not a briefly-hidden 9th plate. */
+  private claimReadyDishSlot(ticketId: string): number | null {
     const existing = this.readyDishSlots.get(ticketId);
     if (existing !== undefined) return existing;
-    let slot = this.readyDishSlotUsed.findIndex((used) => !used);
-    if (slot === -1) slot = 0;
+    const slot = this.readyDishSlotUsed.findIndex((used) => !used);
+    if (slot === -1) return null;
     this.readyDishSlotUsed[slot] = true;
     this.readyDishSlots.set(ticketId, slot);
     return slot;
@@ -830,6 +836,14 @@ export class RestaurantScene {
     }
 
     const slot = this.claimReadyDishSlot(state.ticketId);
+    if (slot === null) {
+      // Past `MAX_READY_DISH_SLOTS` simultaneously ready tickets — hide rather than overlap an
+      // already-placed proxy (see `claimReadyDishSlot`'s own comment). Skip the rest of this
+      // upsert; there is nothing else worth updating on a proxy nobody can see.
+      group.visible = false;
+      return;
+    }
+    group.visible = true;
     // Local space, relative to `service_pass`'s own box mesh (16w × 0.9h, centered at its own
     // origin — see `buildEntity`'s `service_pass` case): y=0.45 sits exactly on the top surface.
     group.position.set(readyDishSlotPosition(slot), 0.45, 0);
