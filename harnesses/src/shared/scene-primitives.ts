@@ -10,6 +10,7 @@ export type {
   CustomerRenderState,
   WorkerRenderState,
   ReadyDishRenderState,
+  CarriedDishRenderState,
 } from '../../../client/src/scenes/RestaurantScene';
 export { CameraController, DEFAULT_CAMERA } from '../../../client/src/game/CameraController';
 export type { CameraSettings } from '../../../client/src/game/CameraController';

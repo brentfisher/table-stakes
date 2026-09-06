@@ -345,6 +345,18 @@ export class GameClient {
    * `network.disconnect()` call triggers — a deliberate teardown must never start a retry loop. */
   private disposed = false;
 
+  /**
+   * STORY-031. The `action` half of the most recently SENT `interact` — `onInteract`'s send site
+   * sets this right before calling `network.sendInteract`. The server's `interact_rejected` error
+   * (message-router.js#handleInteract) carries no `action`/`targetId` of its own (only `error`/
+   * `reason`/`detail`), so this is how the `error` handler below knows a given rejection was for
+   * a `deliver` attempt specifically — the only kind this story's AC asks for negative feedback
+   * on. Safe against interleaving: the server rejects `interact` while a PREVIOUS one is still
+   * `busy` (`action-validator.js`'s own `busy` reason), so there is never more than one
+   * outstanding `interact` per player to misattribute this to.
+   */
+  private lastInteractAction: string | null = null;
+
   /** Called at panel cadence, not per frame — React subscribes here. */
   onStatus: ((status: GameClientStatus) => void) | null = null;
 
@@ -399,10 +411,22 @@ export class GameClient {
     // no-op otherwise — there is nothing else PRD §8 names for it that this MVP can act on
     // (see `INTERACT_ACTIONS`'s comment in messages.js for why `drop_carry` exists at all).
     this.input.onInteract = () => {
-      if (this.status.prompt) this.network.sendInteract(this.status.prompt.targetId, this.status.prompt.action);
+      if (this.status.prompt) {
+        // STORY-031. See `lastInteractAction`'s own comment — recorded here, at the send site,
+        // so the `error` handler can tell a `deliver` rejection apart from any other.
+        this.lastInteractAction = this.status.prompt.action;
+        this.network.sendInteract(this.status.prompt.targetId, this.status.prompt.action);
+      }
     };
     this.input.onSecondary = () => {
-      if (this.status.carrying.length > 0) this.network.sendInteract('self', 'drop_carry');
+      if (this.status.carrying.length > 0) {
+        // STORY-031. Same `lastInteractAction` tracking as `onInteract` above — without this, a
+        // `drop_carry` rejection right after an earlier `deliver` attempt would still read as
+        // `lastInteractAction === 'deliver'` and fire a misleading "CAN'T DELIVER HERE" toast for
+        // an action that was never a delivery attempt at all.
+        this.lastInteractAction = 'drop_carry';
+        this.network.sendInteract('self', 'drop_carry');
+      }
     };
     // STORY-015 §8 "Tab: tactical overview panel". `InputController` already gates WHEN this
     // fires (`setTacticalOverviewEnabled`, updated below on every phase change); this is only
@@ -492,12 +516,6 @@ export class GameClient {
     if (message.type === 'match_snapshot') {
       const players = (message.players ?? []) as PlayerState[];
       this.interpolator.push(players);
-      // STORY-012 "Serving Tray": one small plate mesh per carried order, public — see
-      // `RestaurantScene#setCarrying`. Snapshot cadence (~10 Hz) is plenty for a count that
-      // only changes on pickup/deliver/drop, so this does not go through `handleFrame`.
-      for (const p of players as (PlayerState & { carrying?: string[] })[]) {
-        this.scene.restaurant.setCarrying(p.playerId, p.carrying?.length ?? 0);
-      }
       const you = message.you as
         | {
             ready?: boolean;
@@ -520,6 +538,31 @@ export class GameClient {
       const events = (message.events ?? []) as SnapshotEventEntry[];
       const eventForecast = (message.eventForecast ?? []) as SnapshotEventForecastEntry[];
 
+      // STORY-031 PRD §5.3/§10.2. Supersedes STORY-012's generic plate-count indicator
+      // (`setCarrying`) with real per-dish geometry: each player's OWN `carrying` (order ids,
+      // already capped to that player's own `carryCapacity` — §8, never trust a longer array
+      // than the snapshot itself confirms) is cross-referenced against `orders[]` for every
+      // ticket/dish it decomposed into (an order is not always one plate — see
+      // `CarriedDishRenderState`'s own comment), same snapshot cadence as everything else here,
+      // not per render frame.
+      for (const p of players as (PlayerState & { carrying?: string[]; carryCapacity?: number })[]) {
+        const carryCapacity = p.carryCapacity ?? 1;
+        const carriedOrderIds = (p.carrying ?? []).slice(0, carryCapacity);
+        const slots = carriedOrderIds.flatMap((orderId) =>
+          orders
+            .filter((o) => o.orderId === orderId)
+            .map((o) => ({ ticketId: o.ticketId, dishId: o.dishId })),
+        );
+        this.scene.restaurant.setCarriedDishes(p.playerId, slots);
+      }
+      // STORY-031 PRD §5.3. The destination-table target chip/arrow/ring — self's OWN carried
+      // orders only (the rival's tables have no individually-rendered mesh a marker could attach
+      // to; see `RestaurantScene#updateCarryTargets`'s own comment).
+      const selfCarryTableIds = (self?.carrying ?? [])
+        .map((orderId) => orders.find((o) => o.orderId === orderId)?.tableId ?? null)
+        .filter((tableId): tableId is string => tableId !== null);
+      this.scene.restaurant.updateCarryTargets(selfCarryTableIds);
+
       // STORY-029 PRD-027 §9. Diff this snapshot against the previous one, once, here — the same
       // "compute once per snapshot, patch the already-final result" discipline `criticalAlerts`
       // below already follows. `selfRestaurantId` is `this.status.playerId`, already set by the
@@ -528,6 +571,11 @@ export class GameClient {
         selfRestaurantId: this.status.playerId,
         orders,
         events,
+        // STORY-031. This viewer's OWN owner's carrying — see `detectOwnerPickedUpEvents`/
+        // `detectOrderDeliveredEvents`'s own comments for why this is the un-sliced array (not
+        // `selfCarryTableIds`/the capacity-sliced `slots` above): the reducer diffs the raw
+        // `carrying[]` itself, same as the wire field.
+        carrying: self?.carrying ?? [],
       };
       const newPresentationEvents = reducePresentationEvents(
         this.previousPresentationSnapshot,
@@ -588,8 +636,18 @@ export class GameClient {
       // restaurant currently has ready; ties keep whichever `Array#reduce` visits first, which is
       // fine — PRD §5.2 only asks that THE oldest be highlighted, not that a tie be broken any
       // particular way.
+      //
+      // STORY-031. Also excludes any order in the SELF owner's OWN `carrying[]` — a ticket stays
+      // `state: 'ready'` the whole time it is being carried (only `order.claimedBy` changes
+      // server-side; see `action-validator.js#resolvePickup`), so without this exclusion a
+      // picked-up ticket would keep rendering at the pass AND in the carry socket at once. This
+      // is what makes the AC's "pass-side proxy removed the instant it enters carrying[]" true.
+      const selfCarryingOrderIds = new Set(self?.carrying ?? []);
       const selfReadyOrders = orders.filter(
-        (o) => o.restaurantId === this.status.playerId && o.state === 'ready',
+        (o) =>
+          o.restaurantId === this.status.playerId &&
+          o.state === 'ready' &&
+          !selfCarryingOrderIds.has(o.orderId),
       );
       const oldestTicketId =
         selfReadyOrders.length > 0
@@ -720,6 +778,19 @@ export class GameClient {
           },
         });
       }
+      // STORY-031 PRD §5.3/§8/§9. A rejected `deliver` attempt (`action-validator.js#resolveDeliver`
+      // — `wrong_table`/`not_ready`/`out_of_range`/`no_such_target`) did NOT change authoritative
+      // state, so it is deliberately NOT run through `reducePresentationEvents`'s dedup-key
+      // machinery (that machinery exists for real snapshot transitions only — see the reducer's
+      // own file-header comment on this exact type). Instead: a direct, ungated toast, with a
+      // freshly-minted key every time so it is never suppressed as a "repeat" of anything.
+      if (message.error === 'interact_rejected' && this.lastInteractAction === 'deliver') {
+        const rejection: EmittedPresentationEvent = {
+          key: `delivery-rejected:${this.status.playerId}:${Date.now()}`,
+          event: { type: 'delivery-rejected', reason: String(message.reason ?? 'unknown') },
+        };
+        this.patchStatus({ presentationEvents: [rejection] });
+      }
       // STORY-022. The server's answer to a rejoin attempt arriving too late — see
       // `match.js#join`'s own comment on why this is `match_ended`, not `match_full`. Also
       // covers `room_not_found` (e.g. a dev server restart): either way, this is the
@@ -777,6 +848,8 @@ export class GameClient {
     // STORY-030 PRD §5.2 "highlight or pulse the oldest ready ticket first" — per-frame, same
     // split as the customer posture animation above.
     this.scene.restaurant.updateReadyDishAnimations(this.elapsedSeconds);
+    // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same per-frame split.
+    this.scene.restaurant.updateCarryTargetAnimations(this.elapsedSeconds);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (self) this.scene.cameraController.setTarget(self.position.x, self.position.z);

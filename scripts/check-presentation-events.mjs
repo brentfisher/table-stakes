@@ -63,8 +63,8 @@ function baseOrder(overrides = {}) {
   };
 }
 
-function snapshotOf(orders, events, selfRestaurantId = 'p1') {
-  return { selfRestaurantId, orders, events };
+function snapshotOf(orders, events, selfRestaurantId = 'p1', carrying = []) {
+  return { selfRestaurantId, orders, events, carrying };
 }
 
 // =================================================================================================
@@ -170,6 +170,7 @@ console.log('\n4. no gameplay-action-emitting capability — by construction, ev
     'customer-lost-to-rival': ['type', 'customerId', 'tableId'],
     'customer-abandoned': ['type', 'customerId', 'tableId'],
     'ingredient-blocked': ['type', 'ingredientId', 'stationId'],
+    'delivery-rejected': ['type', 'reason'],
   };
   const ACTION_SHAPED_FIELD_NAMES = ['action', 'resolve', 'dispatch', 'apply', 'execute', 'command', 'intent'];
 
@@ -233,9 +234,10 @@ console.log('\n5. priority order — reuses hud-alerts.js#ALERT_CATEGORIES, not 
     presentationEventPriority({ type: 'ingredient-blocked' }) === categoryIndex('ingredient_shortage'),
   );
   check(
-    'owner-picked-up/order-delivered (ordinary confirmations, no HUD-alert equivalent) rank at the lowest tier',
+    'owner-picked-up/order-delivered/delivery-rejected (ordinary action feedback, no HUD-alert equivalent) rank at the lowest tier',
     presentationEventPriority({ type: 'owner-picked-up' }) === categoryIndex('general_suggestion') &&
       presentationEventPriority({ type: 'order-delivered' }) === categoryIndex('general_suggestion') &&
+      presentationEventPriority({ type: 'delivery-rejected' }) === categoryIndex('general_suggestion') &&
       categoryIndex('general_suggestion') === ALERT_CATEGORIES.length,
   );
   check(
@@ -302,6 +304,81 @@ console.log('\n8. end to end — the two real, wired sources, against real catal
       active[0].event.eventId === REAL_EVENT.id &&
       ended[0].event.eventId === REAL_EVENT.id,
   );
+}
+
+// =================================================================================================
+console.log('\n9. STORY-031 — owner-picked-up / order-delivered, real carrying[]/orders[] diffs');
+// =================================================================================================
+{
+  // Pickup: an order enters `carrying[]` — fires once, names the real dish/table, never on the
+  // steady state of "still carrying it".
+  const readyOrder = baseOrder({ state: 'ready', readyAgeMs: 500 });
+  const beforePickup = snapshotOf([readyOrder], [], 'p1', []);
+  const afterPickup = snapshotOf([readyOrder], [], 'p1', ['order_1']);
+  const pickupEmitted = reducePresentationEvents(beforePickup, afterPickup, new Set());
+  const pickedUp = pickupEmitted.find((e) => e.event.type === 'owner-picked-up');
+  check('owner-picked-up fires the instant an order enters carrying[]', Boolean(pickedUp), JSON.stringify(pickupEmitted));
+  check('owner-picked-up carries the real dish name', pickedUp?.event.dishName === REAL_DISH.name);
+  check('owner-picked-up carries the real tableId', pickedUp?.event.tableId === 'T04');
+  check('owner-picked-up key is presentationEventKey("owner-picked-up", orderId, "v1")',
+    pickedUp?.key === presentationEventKey('owner-picked-up', 'order_1', 'v1'));
+
+  const stillCarrying = reducePresentationEvents(afterPickup, afterPickup, new Set([pickedUp.key]));
+  check('still carrying the same order next snapshot emits nothing (steady state)', stillCarrying.length === 0);
+
+  // Delivery: the order leaves carrying[] AND its ticket confirms 'delivered' — fires once, with
+  // a revenue figure summed from the real per-ticket `price` field, not a fabricated number.
+  const deliveredOrder = baseOrder({ state: 'delivered' });
+  const afterDelivery = snapshotOf([deliveredOrder], [], 'p1', []);
+  const deliveryEmitted = reducePresentationEvents(afterPickup, afterDelivery, new Set([pickedUp.key]));
+  const delivered = deliveryEmitted.find((e) => e.event.type === 'order-delivered');
+  check('order-delivered fires the instant an order leaves carrying[] AND is state=delivered', Boolean(delivered), JSON.stringify(deliveryEmitted));
+  check('order-delivered revenue sums the real ticket price(s)', delivered?.event.revenue === deliveredOrder.price, JSON.stringify(delivered));
+  check('order-delivered carries the real tableId', delivered?.event.tableId === 'T04');
+
+  // A drop_carry: the order leaves carrying[] but its ticket is still 'ready', not 'delivered' —
+  // must NOT be read as a delivery (§8: never predicted/never a false positive on a non-transition).
+  const droppedOrder = baseOrder({ state: 'ready', readyAgeMs: 500 });
+  const afterDrop = snapshotOf([droppedOrder], [], 'p1', []);
+  const dropEmitted = reducePresentationEvents(afterPickup, afterDrop, new Set([pickedUp.key]));
+  check(
+    'a drop_carry (order leaves carrying[] but ticket stays ready, not delivered) never emits order-delivered',
+    dropEmitted.every((e) => e.event.type !== 'order-delivered'),
+    JSON.stringify(dropEmitted),
+  );
+
+  // A multi-ticket order (a party that ordered more than one dish) — dishName joins every
+  // ticket's dish, revenue sums every ticket's price, and only ONE owner-picked-up/order-delivered
+  // event fires for the whole order, not one per ticket.
+  const multiTickets = [
+    baseOrder({ ticketId: 'ticket_1', dishId: REAL_DISH.id, price: 10, state: 'ready' }),
+    baseOrder({ ticketId: 'ticket_2', dishId: dishesData.dishes[1].id, price: 6, state: 'ready' }),
+  ];
+  const beforeMultiPickup = snapshotOf(multiTickets, [], 'p1', []);
+  const afterMultiPickup = snapshotOf(multiTickets, [], 'p1', ['order_1']);
+  const multiPickupEmitted = reducePresentationEvents(beforeMultiPickup, afterMultiPickup, new Set())
+    .filter((e) => e.event.type === 'owner-picked-up');
+  check('a multi-ticket order emits exactly one owner-picked-up event, not one per ticket', multiPickupEmitted.length === 1, JSON.stringify(multiPickupEmitted));
+  check(
+    'its dishName joins every ticket\'s dish',
+    multiPickupEmitted[0]?.event.dishName === `${REAL_DISH.name} + ${dishesData.dishes[1].name}`,
+    JSON.stringify(multiPickupEmitted),
+  );
+
+  const deliveredMultiTickets = multiTickets.map((t) => ({ ...t, state: 'delivered' }));
+  const afterMultiDelivery = snapshotOf(deliveredMultiTickets, [], 'p1', []);
+  const multiDeliveryEmitted = reducePresentationEvents(afterMultiPickup, afterMultiDelivery, new Set())
+    .filter((e) => e.event.type === 'order-delivered');
+  check('a multi-ticket order emits exactly one order-delivered event, not one per ticket', multiDeliveryEmitted.length === 1, JSON.stringify(multiDeliveryEmitted));
+  check('its revenue sums every ticket\'s price (10 + 6 = 16)', multiDeliveryEmitted[0]?.event.revenue === 16, JSON.stringify(multiDeliveryEmitted));
+
+  // Restaurant scoping: the rival's own owner picking up their own order is never this viewer's
+  // toast — same discipline section 6 above already proves for ticket-ready.
+  const rivalReady = baseOrder({ restaurantId: 'rival', state: 'ready' });
+  const rivalBefore = snapshotOf([rivalReady], [], 'p1', []);
+  const rivalAfter = snapshotOf([rivalReady], [], 'p1', ['order_1']); // this viewer's OWN carrying somehow names a rival order — defensive
+  const rivalEmitted = reducePresentationEvents(rivalBefore, rivalAfter, new Set());
+  check('an order whose ticket belongs to the rival restaurant never emits a toast for this viewer', rivalEmitted.length === 0, JSON.stringify(rivalEmitted));
 }
 
 // =================================================================================================

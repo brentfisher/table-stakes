@@ -8,13 +8,21 @@
 // `scripts/check-workers.mjs` already uses) is the one shape both can import unmodified.
 //
 // STORY-029 IS THE FOUNDATION, NOT THE WHOLE PRD. Only two of the ten §9 `PresentationEvent`
-// types are actually DETECTED here — `ticket-ready` (an `OrderSnapshot.state` transition to
+// types were actually DETECTED there — `ticket-ready` (an `OrderSnapshot.state` transition to
 // `ready`) and `event-warning`/`event-active`/`event-ended` (an `events[]` state transition).
-// The other six (`owner-picked-up`, `order-delivered`, the three `customer-*` types,
-// `ingredient-blocked`) are exported as part of the full union so later stories (STORY-030/031)
-// can add their own `detectX` sibling function beside `detectTicketReadyEvents`/
-// `detectEventTransitionEvents` below without touching the shared key/version/priority
-// machinery. See STORY-029's own Notes for why this split is deliberate, not an oversight.
+// STORY-031 adds two more: `detectOwnerPickedUpEvents`/`detectOrderDeliveredEvents`, diffing
+// `carrying[]` against `orders[]` the same "previous vs. next snapshot, never predicted" way.
+// The remaining four (the three `customer-*` types, `ingredient-blocked`) are still exported as
+// part of the full union so a later story can add its own `detectX` sibling function beside the
+// four below without touching the shared key/version/priority machinery. See STORY-029's own
+// Notes for why this split is deliberate, not an oversight.
+//
+// ONE TYPE IN THE UNION IS NOT PRODUCED HERE AT ALL: `delivery-rejected`. It is not a snapshot
+// DIFF — a rejected `interact` never changes authoritative state, so there is nothing for two
+// consecutive `match_snapshot`s to disagree about (§8). `GameClient.ts` synthesizes it directly
+// from the `interact_rejected` error message, with a freshly-minted key every time (never run
+// through `alreadyEmittedKeys`) — see that file's own comment on why gating it through this
+// module's dedup machinery would be wrong for something that is not a state transition.
 //
 // THE KEY FORMAT, AND WHY VERSIONING IS COUNT-DERIVED, NOT A FIXED "v1": PRD §9's own example
 // (`event-active:office_break:active_v1`) suggests a literal "_v1" suffix, but
@@ -141,6 +149,83 @@ function detectEventTransitionEvents(previous, next, alreadyEmittedKeys) {
 }
 
 /**
+ * PRD-027 §5.3/§9. Fires once per ORDER the instant it enters the owner's OWN `carrying[]` —
+ * `carrying` is order-scoped (`PlayerSnapshot.carrying`'s own field comment: "a whole order
+ * ...is one carry slot"), so there is exactly one pickup moment per order regardless of how many
+ * dishes/tickets it decomposed into, unlike `detectTicketReadyEvents`'s per-ticket keying above.
+ * `wasCarrying` is this function's own version of `detectTicketReadyEvents`'s `wasReady` guard:
+ * an order already sitting in `carrying[]` last snapshot (the overwhelmingly common case at
+ * 10 Hz) is a steady state, not a fresh pickup, and must emit nothing.
+ *
+ * `dishName` joins every ticket sharing this `orderId` ("SMASH BURGER + CAESAR SALAD") — the
+ * same cross-reference this story's own Notes require ("cross-reference each carried order id
+ * against `orders[]` ... do not assume `carrying.length` maps 1:1 to plates"), since one carry
+ * slot can hold more than one dish.
+ */
+function detectOwnerPickedUpEvents(previous, next, alreadyEmittedKeys) {
+  const prevCarrying = new Set(previous.carrying ?? []);
+  const nextCarrying = next.carrying ?? [];
+  const emitted = [];
+  for (const orderId of nextCarrying) {
+    if (prevCarrying.has(orderId)) continue; // already carrying it last snapshot, not a fresh pickup
+
+    const tickets = next.orders.filter((o) => o.orderId === orderId && o.restaurantId === next.selfRestaurantId);
+    if (tickets.length === 0) continue; // defensive: no ticket data yet to name in the toast
+    const tableId = tickets[0].tableId;
+    if (tableId === null) continue; // same "never emit a broken toast" discipline as ticket-ready
+    const dishName = tickets.map((t) => dishNameFor(t.dishId)).join(' + ');
+
+    const type = 'owner-picked-up';
+    const version = nextVersionTag(alreadyEmittedKeys, type, orderId);
+    const key = presentationEventKey(type, orderId, version);
+    if (alreadyEmittedKeys.has(key)) continue;
+
+    emitted.push({ key, event: { type, orderId, dishName, tableId } });
+  }
+  return emitted;
+}
+
+/**
+ * PRD-027 §5.3/§9. Fires once per order the instant it LEAVES the owner's OWN `carrying[]` AND
+ * every ticket sharing that `orderId` confirms `state === 'delivered'` in the SAME snapshot —
+ * never on the local keypress that sent the `deliver` interact (§8: "never predicted"), and
+ * never on a `drop_carry` (which also empties `carrying[]` for that order but leaves its
+ * tickets short of `delivered` — see `action-validator.js#resolveDropCarry`). That second
+ * condition is what tells the two apart from a snapshot diff alone.
+ *
+ * `revenue` sums the same `ticket.price` fields `order-system.js#deliverOrder` itself sums
+ * server-side (`served.reduce((sum, t) => sum + t.price, 0)`) — no new wire field needed, since
+ * `price` is already public per ticket (`toPublicOrderSnapshot`).
+ */
+function detectOrderDeliveredEvents(previous, next, alreadyEmittedKeys) {
+  const prevCarrying = new Set(previous.carrying ?? []);
+  const nextCarrying = new Set(next.carrying ?? []);
+  const emitted = [];
+  for (const orderId of prevCarrying) {
+    if (nextCarrying.has(orderId)) continue; // still carrying it — nothing has happened yet
+
+    const tickets = next.orders.filter((o) => o.orderId === orderId && o.restaurantId === next.selfRestaurantId);
+    if (tickets.length === 0) continue;
+    if (!tickets.every((t) => t.state === 'delivered')) continue; // a drop_carry, not a delivery
+
+    const tableId = tickets[0].tableId;
+    if (tableId === null) continue;
+    const dishName = tickets.map((t) => dishNameFor(t.dishId)).join(' + ');
+    // Same rounding-to-cents `toCents` in order-system.js does; a plain reduce would otherwise
+    // occasionally leave a floating-point remainder ($14.989999999999998).
+    const revenue = Math.round(tickets.reduce((sum, t) => sum + t.price, 0) * 100) / 100;
+
+    const type = 'order-delivered';
+    const version = nextVersionTag(alreadyEmittedKeys, type, orderId);
+    const key = presentationEventKey(type, orderId, version);
+    if (alreadyEmittedKeys.has(key)) continue;
+
+    emitted.push({ key, event: { type, orderId, dishName, tableId, revenue } });
+  }
+  return emitted;
+}
+
+/**
  * The reducer. `previous === null` means no prior snapshot exists yet (a fresh join or
  * reconnect) and always yields `[]` — reading a ticket already `ready` or an event already
  * `active` on the very FIRST snapshot a client ever sees as a "transition" would replay every
@@ -153,6 +238,8 @@ export function reducePresentationEvents(previous, next, alreadyEmittedKeys) {
   return [
     ...detectTicketReadyEvents(previous, next, alreadyEmittedKeys),
     ...detectEventTransitionEvents(previous, next, alreadyEmittedKeys),
+    ...detectOwnerPickedUpEvents(previous, next, alreadyEmittedKeys),
+    ...detectOrderDeliveredEvents(previous, next, alreadyEmittedKeys),
   ];
 }
 
@@ -171,8 +258,9 @@ export function reducePresentationEvents(previous, next, alreadyEmittedKeys) {
 // action confirmations ("it worked"), not something-is-wrong alerts. `hud-alerts.js` never
 // ranks a confirmation at all, so there is no existing line to reuse; they fall to the lowest
 // tier (`general_suggestion`) deliberately, the same "ambient, not urgent" tier that category
-// already represents for the HUD, rather than inventing a new priority level for two types this
-// story does not even wire up to real snapshot data yet.
+// already represents for the HUD. `delivery-rejected` (STORY-031, synthesized directly by
+// `GameClient.ts` — see the file header) sits right beside them for the same reason: it is
+// player-action feedback, not a HUD-ranked game-state alert.
 const CATEGORY_BY_PRESENTATION_TYPE = {
   'customer-critical': 'customer_abandonment_imminent',
   'customer-lost-to-rival': 'customer_abandonment_imminent',
@@ -184,6 +272,7 @@ const CATEGORY_BY_PRESENTATION_TYPE = {
   'event-ended': 'event_countdown',
   'owner-picked-up': 'general_suggestion',
   'order-delivered': 'general_suggestion',
+  'delivery-rejected': 'general_suggestion',
 };
 
 const PRIORITY_BY_CATEGORY = Object.fromEntries(ALERT_CATEGORIES.map((category, index) => [category, index + 1]));
