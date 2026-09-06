@@ -27,6 +27,7 @@ import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
 import { EventBanner } from '../ui/EventBanner';
+import { ArcadeToast } from '../ui/ArcadeToast';
 import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 import { LobbyScreen } from '../ui/LobbyScreen';
 import type { InviteInfo } from '../ui/InvitePanel';
@@ -101,6 +102,10 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       {/* STORY-016 PRD §14 "event banner top-centre with a district-level visual effect" — the
           scene-wide light tint is `RestaurantScene#updateEventEffect`; this is the text half. */}
       <EventBanner status={status} />
+      {/* STORY-029 PRD-027 §11 "Arcade toast: upper-center, below banner". Own scoped
+          `.arcade-toast*` CSS namespace — see `app.css`'s own comment on why it never touches
+          `.event-banner*`. */}
+      <ArcadeToast status={status} />
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
           this one is reading `status`, which stops updating the instant the socket drops, so

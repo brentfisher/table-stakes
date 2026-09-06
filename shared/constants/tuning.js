@@ -935,6 +935,14 @@ export const HUD_CASH_FEEDBACK_MIN_DELTA = 100;
 /** How long the floating cash/tip feedback stays on screen before clearing itself. */
 export const HUD_CASH_FEEDBACK_DISPLAY_MS = 2_500;
 
+// --- STORY-029: arcade transition toasts (PRD-027 §6.2) -------------------------------------
+
+/** PRD-027 §5.4 "Enters quickly, holds briefly, then leaves without interaction." How long one
+ * arcade toast stays visible before the queue advances to the next-highest-priority pending
+ * event (or clears). STORY-032 owns any per-tone/accessibility-preset duration override; this is
+ * the one flat default every toast uses until then. */
+export const ARCADE_TOAST_DISPLAY_MS = 3_200;
+
 // --- STORY-016: 3D visual state language color bands ---------------------------------------
 //
 // PRD §4.4 / §14 "visual state language". These are the CUTOFFS that turn a 0..1 or integer

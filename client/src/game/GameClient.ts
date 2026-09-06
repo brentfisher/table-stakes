@@ -37,12 +37,26 @@ import { buildCriticalAlerts, capCriticalAlerts, type CriticalAlert } from '../.
 // moment" decision, including the null-revenue first-sample guard — is pulled out as its own
 // pure, dual-imported (client + check script) function rather than left inline here.
 import { cashFeedbackFor } from '../../../shared/game-logic/hud-cash-feedback';
+// STORY-029. PRD-027 §9 "Presentation Event Reducer" — the ONE place a `match_snapshot` diff
+// turns into deduplicated, stably-keyed `PresentationEvent`s for the arcade toast layer
+// (`client/src/ui/ArcadeToast.tsx`). Same Decision 4 shape/dual-import reasoning as
+// `hud-alerts.js` above: `scripts/check-presentation-events.mjs` imports the identical module.
+import {
+  reducePresentationEvents,
+  type EmittedPresentationEvent,
+  type PresentationSnapshotInput,
+} from '../../../shared/game-logic/presentation-event-reducer';
 import {
   HUD_CRITICAL_ALERTS_MAX,
   HUD_CASH_FEEDBACK_MIN_DELTA,
   HUD_CASH_FEEDBACK_DISPLAY_MS,
   RECONNECT_GRACE_MS,
 } from '../../../shared/constants/tuning';
+
+/** Shared empty-array reference — `handleMessage` reuses THIS exact array whenever a snapshot
+ * diff emits nothing new, rather than allocating a fresh `[]`, so `ArcadeToast.tsx`'s queue
+ * effect (keyed on array identity) does not re-run at snapshot cadence (~10 Hz) for no reason. */
+const EMPTY_PRESENTATION_EVENTS: EmittedPresentationEvent[] = [];
 
 /** STORY-022. How often a dropped client retries the socket while `reconnecting` is shown. */
 const RECONNECT_RETRY_INTERVAL_MS = 1500;
@@ -194,6 +208,16 @@ export interface GameClientStatus {
    * `handleMessage`'s own comment on the guard against firing on the FIRST real value.
    */
   cashFeedback: { amount: number; atMs: number } | null;
+  /**
+   * STORY-029. PRD-027 §9 — the batch of `PresentationEvent`s (with their §9 dedup key) THIS
+   * snapshot's diff freshly emitted, already deduplicated against every key emitted so far this
+   * match. Almost always empty: `reducePresentationEvents` only returns something on an actual
+   * state transition (a ticket becoming ready, an event changing state), never on a steady-state
+   * repeat. `ArcadeToast.tsx` is the one consumer; it owns turning this into "which one toast is
+   * visible right now" (ranking, interruption, coalescing) — this field is just the raw diff
+   * output, at snapshot cadence, same discipline `criticalAlerts` above already established.
+   */
+  presentationEvents: EmittedPresentationEvent[];
   /** STORY-015. PRD §8 `Tab`: the tactical overview panel — see `InputController
    * #tacticalOverviewEnabled`'s own comment on why it is only reachable during
    * `service`/`final_rush`. */
@@ -287,6 +311,7 @@ export class GameClient {
     eventForecast: [],
     criticalAlerts: [],
     cashFeedback: null,
+    presentationEvents: EMPTY_PRESENTATION_EVENTS,
     showTacticalOverview: false,
     reconnecting: false,
     disconnectedTerminal: null,
@@ -298,6 +323,16 @@ export class GameClient {
    * own comment on why sending it during a reconnect, too, is harmless). Undefined for every
    * pre-existing dev/bot flow, which never passes a second argument to `start()`. */
   private inviteToken: string | undefined;
+
+  /** STORY-029. `reducePresentationEvents`'s own "previous" argument — null until the first real
+   * `match_snapshot` has been diffed once, so the very first snapshot never gets read as a wall
+   * of transitions (see that function's own first-value guard). Advanced to this snapshot's
+   * input at the end of every `match_snapshot` branch. */
+  private previousPresentationSnapshot: PresentationSnapshotInput | null = null;
+  /** STORY-029. Every §9 key `reducePresentationEvents` has ever returned this match — the ONE
+   * piece of state that makes "never re-emit a key" true across snapshots; the reducer itself is
+   * pure and only ever reads this set, never owns it. */
+  private readonly emittedPresentationEventKeys = new Set<string>();
 
   private cashFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
   /** STORY-022. Cleared in `dispose()` so a pending retry never fires after teardown. */
@@ -474,6 +509,23 @@ export class GameClient {
       const events = (message.events ?? []) as SnapshotEventEntry[];
       const eventForecast = (message.eventForecast ?? []) as SnapshotEventForecastEntry[];
 
+      // STORY-029 PRD-027 §9. Diff this snapshot against the previous one, once, here — the same
+      // "compute once per snapshot, patch the already-final result" discipline `criticalAlerts`
+      // below already follows. `selfRestaurantId` is `this.status.playerId`, already set by the
+      // `joined` message before any `match_snapshot` can arrive.
+      const presentationSnapshot: PresentationSnapshotInput = {
+        selfRestaurantId: this.status.playerId,
+        orders,
+        events,
+      };
+      const newPresentationEvents = reducePresentationEvents(
+        this.previousPresentationSnapshot,
+        presentationSnapshot,
+        this.emittedPresentationEventKeys,
+      );
+      for (const { key } of newPresentationEvents) this.emittedPresentationEventKeys.add(key);
+      this.previousPresentationSnapshot = presentationSnapshot;
+
       // STORY-008. `InteractionController` is refreshed here (once per snapshot, ~10 Hz), not
       // in `handleFrame` (per render frame) — the candidates it reads (orders/customers/
       // restaurants) only change at snapshot cadence, and re-deriving them at frame rate would
@@ -604,6 +656,9 @@ export class GameClient {
         ),
         ...(phaseChanged && !tacticalOverviewPhase ? { showTacticalOverview: false } : {}),
         ...cashFeedbackPatch,
+        // STORY-029. Reuse the shared empty-array reference on the (overwhelmingly common) empty
+        // case — see that constant's own comment on why.
+        presentationEvents: newPresentationEvents.length > 0 ? newPresentationEvents : EMPTY_PRESENTATION_EVENTS,
         // STORY-025. Verbatim off the wire — see `GameClientStatus.bots`'s own field comment.
         bots: (message.bots ?? []) as BotSnapshotEntry[],
       });
