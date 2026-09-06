@@ -1,7 +1,9 @@
 // PRD §4.4 / §14 "visual state language" — THE ONE SOURCE OF TRUTH for the six state colors.
 // Every 3D indicator STORY-016 adds (patience ring, table badge, station queue/shortage,
-// worker needs-help glow, food-ready icon, event effect, rival activity) imports its color from
-// here rather than hardcoding a hex value locally — that is this story's own AC #1.
+// worker needs-help glow, event effect, rival activity) imports its color from here rather than
+// hardcoding a hex value locally — that is this story's own AC #1. STORY-030's dish-specific
+// ready-food proxies (`RestaurantScene#upsertReadyDish`, superseding STORY-016's single
+// food-ready glyph) do the same.
 //
 // The CUTOFFS that decide which band a value falls into (patience fraction, queue depth) are a
 // simulation-adjacent concern and live in `shared/constants/tuning.js` +

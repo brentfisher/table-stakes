@@ -20,12 +20,17 @@
 //     owner/worker/customer render states (`upsertOwner`/`upsertWorker`/`upsertCustomer`) for
 //     Player Models, and its zone/table/station/pantry/pass/terminal/competitor visuals for
 //     Restaurant Models.
-//   - Dish Models has NO per-dish visual asset to showcase — every dish (`smash_burger`,
-//     `caesar_salad`, …) renders as the exact same generic plate mesh regardless of `dishId`.
-//     This category is built around what IS real instead: the plate's three production
-//     placements (carried by the owner, the food-ready icon at the pass, the table badge), plus
-//     an honest accounting of which `OrderState` values ('queued', 'ready') have ANY visual at
-//     all and which ('placed', 'in_progress', 'delivered', 'cancelled') have none.
+//   - Dish Models is a MIX, not uniformly generic. STORY-030 gave 'ready' a real per-dish visual
+//     — the plate at the service pass is chosen by `dishId` (`RestaurantScene#upsertReadyDish`,
+//     five named silhouettes plus a neutral fallback for the rest of the catalogue) — but every
+//     OTHER dish placement is still exactly one generic mesh regardless of `dishId`: the carry
+//     plate (`MAX_VISIBLE_CARRY_PLATES` in `RestaurantScene.ts`, STORY-031's concern to make
+//     dish-specific) and the table badge glyph (`TABLE_BADGE_GLYPHS`, a meal-state indicator, not
+//     a dish one). This category is built around that reality: 'ready' gets the real dish-select
+//     control the pass now has; carry and table placements get the same honest "no per-dish
+//     visual here" treatment as before; plus an accounting of which `OrderState` values
+//     ('queued', 'ready') have ANY visual at all and which ('placed', 'in_progress', 'delivered',
+//     'cancelled') have none.
 //   - Wherever a requested preview has no production view to map onto — `OwnerRenderState.
 //     sprinting` (carried on the wire, never rendered), `CustomerSnapshot.state`/exit states (no
 //     visual beyond the patience ring), `equipment_failure`/`StationSnapshot.broken` (declared
@@ -580,9 +585,10 @@ function createAssetShowcaseHarness(): SceneHarness {
         const noVisualNote = (state: string) =>
           `OrderState '${state}' has no distinct visual anywhere in this codebase. ` +
           "RestaurantScene only ever visually distinguishes 'queued' (a station's queue-box " +
-          "stack) and 'ready' (the food-ready icon at the pass) — 'placed', 'in_progress', " +
-          "'delivered' and 'cancelled' render as nothing beyond the station/table's own static " +
-          'geometry. Nothing is spawned for this selection; that is the honest result, not a bug.';
+          "stack) and 'ready' (a dish-specific plated proxy at the pass, STORY-030) — 'placed', " +
+          "'in_progress', 'delivered' and 'cancelled' render as nothing beyond the station/" +
+          'table\'s own static geometry. Nothing is spawned for this selection; that is the ' +
+          'honest result, not a bug.';
 
         if (id === 'carried_1' || id === 'carried_2' || id === 'carried_3') {
           const count = Number(id.split('_')[1]);
