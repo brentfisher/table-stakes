@@ -23,7 +23,7 @@ import type {
 // `RestaurantScene.ts`'s own `upsertCustomer`/`upsertWorker` accept — see that file's own
 // header on why `WorkerRenderState` is extracted from `RestaurantSnapshot['workers']` rather
 // than redeclared.
-import type { CustomerRenderState, WorkerRenderState } from '../scenes/RestaurantScene';
+import type { CustomerRenderState, ReadyDishRenderState, WorkerRenderState } from '../scenes/RestaurantScene';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 // STORY-015. `shared/game-logic/hud-alerts.js` (plain JS + sibling `.d.ts`, Decision 4's shape)
@@ -343,6 +343,17 @@ export class GameClient {
       remove: (id) => this.scene.restaurant.removeWorker(id),
       ids: () => this.scene.restaurant.workerIds(),
     });
+    // STORY-030 PRD §5.2. Same seam again: a ready ticket is a spawn/despawn entity (it appears
+    // the moment `OrderSnapshot.state` flips to 'ready', disappears on pickup — STORY-031's
+    // concern), unlike the fixed-count table badges/station indicators `updateFloorState`
+    // updates directly. `id` here is `ticketId` (`orderId` is shared by every dish in one
+    // party's order — see `OrderSnapshot`'s own doc comment on why `ticketId` is the one unique
+    // per-dish key).
+    this.registry.register<ReadyDishRenderState & { id: string }>('readyDishes', {
+      upsert: (state) => this.scene.restaurant.upsertReadyDish(state),
+      remove: (id) => this.scene.restaurant.removeReadyDish(id),
+      ids: () => this.scene.restaurant.readyDishIds(),
+    });
 
     this.network.onStatusChange = (connection) => this.patchStatus({ connection });
     this.network.onMessage = (message) => this.handleMessage(message);
@@ -507,9 +518,9 @@ export class GameClient {
       // registry ever sees it: table ids are shared literal strings across both restaurants'
       // own internal layouts, so an unfiltered reconcile would try to render the rival's party
       // onto this restaurant's floor. Everything else this story adds (table badges, station
-      // queue/shortage, the food-ready icon, rival activity, the event effect) is NOT a
-      // spawn/despawn entity — those update through the single `updateFloorState` call below,
-      // which does its own restaurant-scoped filtering (see that method's own header).
+      // queue/shortage, rival activity, the event effect) is NOT a spawn/despawn entity — those
+      // update through the single `updateFloorState` call below, which does its own
+      // restaurant-scoped filtering (see that method's own header).
       const selfCustomers = customers.filter((c) => c.restaurantId === this.status.playerId);
       this.registry.reconcile('customers', selfCustomers.map((c) => ({ ...c, id: c.customerId })));
       const selfRestaurantForWorkers = restaurants.find((r) => r.restaurantId === this.status.playerId);
@@ -517,6 +528,33 @@ export class GameClient {
         'workers',
         (selfRestaurantForWorkers?.workers ?? []).map((w) => ({ ...w, id: w.workerId })),
       );
+
+      // STORY-030 PRD §5.2. Also a spawn/despawn entity, same reasoning — a raw, unfiltered
+      // reconcile would render the rival kitchen's ready tickets at this restaurant's pass.
+      // `isOldest` is derived HERE (not in `RestaurantScene.ts` — Pattern 4/11: the scene renders
+      // state, it does not rank it) by comparing `readyAgeMs` across every ticket this
+      // restaurant currently has ready; ties keep whichever `Array#reduce` visits first, which is
+      // fine — PRD §5.2 only asks that THE oldest be highlighted, not that a tie be broken any
+      // particular way.
+      const selfReadyOrders = orders.filter(
+        (o) => o.restaurantId === this.status.playerId && o.state === 'ready',
+      );
+      const oldestTicketId =
+        selfReadyOrders.length > 0
+          ? selfReadyOrders.reduce((oldest, o) => (o.readyAgeMs > oldest.readyAgeMs ? o : oldest)).ticketId
+          : null;
+      this.registry.reconcile(
+        'readyDishes',
+        selfReadyOrders.map((o) => ({
+          id: o.ticketId,
+          ticketId: o.ticketId,
+          dishId: o.dishId,
+          tableId: o.tableId,
+          readyAgeMs: o.readyAgeMs,
+          isOldest: o.ticketId === oldestTicketId,
+        })),
+      );
+
       this.scene.restaurant.updateFloorState({
         selfRestaurantId: this.status.playerId,
         restaurants,
@@ -681,6 +719,9 @@ export class GameClient {
     // `patienceRemaining`.
     this.elapsedSeconds += dt;
     this.scene.restaurant.updateCustomerAnimations(this.elapsedSeconds);
+    // STORY-030 PRD §5.2 "highlight or pulse the oldest ready ticket first" — per-frame, same
+    // split as the customer posture animation above.
+    this.scene.restaurant.updateReadyDishAnimations(this.elapsedSeconds);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (self) this.scene.cameraController.setTarget(self.position.x, self.position.z);

@@ -69,7 +69,67 @@ export function createGlyphSprite(glyph: string, colorHex: number, scale = 0.5):
 }
 
 /** Recolor an existing glyph sprite created by `createGlyphSprite` — the per-frame/per-snapshot
- * path, never allocating a new texture or material. */
+ * path, never allocating a new texture or material. Works equally on a `createLabelSprite`
+ * sprite below: both are plain `SpriteMaterial`s, this only ever touches `.color`. */
 export function setGlyphSpriteColor(sprite: THREE.Sprite, colorHex: number): void {
   (sprite.material as THREE.SpriteMaterial).color.setHex(colorHex);
+}
+
+const labelTextureCache = new Map<string, THREE.CanvasTexture>();
+const LABEL_TEXTURE_WIDTH = 256;
+const LABEL_TEXTURE_HEIGHT = 88;
+
+/** STORY-030. `glyphTexture` above only fits a 1-2 character symbol in a circle — PRD §5.2's
+ * ready-food chips need real short WORDS ("READY", "GOING COLD", "T04"), which need a wider
+ * pill-shaped chip, not a circle. Same discipline as `glyphTexture` otherwise: white ink/fill
+ * baked once per distinct STRING, cached, and tinted per instance via `setGlyphSpriteColor` —
+ * see that function's own updated comment. */
+function labelTexture(text: string): THREE.CanvasTexture {
+  const cached = labelTextureCache.get(text);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = LABEL_TEXTURE_WIDTH;
+  canvas.height = LABEL_TEXTURE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context unavailable');
+
+  ctx.clearRect(0, 0, LABEL_TEXTURE_WIDTH, LABEL_TEXTURE_HEIGHT);
+  const radius = LABEL_TEXTURE_HEIGHT / 2 - 4;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(4, 4, LABEL_TEXTURE_WIDTH - 8, LABEL_TEXTURE_HEIGHT - 8, radius);
+  ctx.fill();
+
+  ctx.fillStyle = '#1b1f24';
+  // A single size fits every PRD §5.2 label this ships with ("READY", "GOING COLD", "T04",
+  // "T12") — all short enough at this chip width; a future longer label would need its own
+  // measurement pass, not a concern for this story's fixed vocabulary.
+  ctx.font = 'bold 34px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, LABEL_TEXTURE_WIDTH / 2, LABEL_TEXTURE_HEIGHT / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  labelTextureCache.set(text, texture);
+  return texture;
+}
+
+/** A new sprite instance showing short WORD text (unlike `createGlyphSprite`'s single symbol)
+ * on a rounded chip — PRD §5.2 "compact state label"/"target table chip". `scale` sets the
+ * chip's height in world units; width follows the texture's own aspect ratio so the chip never
+ * stretches. */
+export function createLabelSprite(text: string, colorHex: number, scale = 0.5): THREE.Sprite {
+  const material = new THREE.SpriteMaterial({
+    map: labelTexture(text),
+    color: colorHex,
+    depthTest: false,
+    transparent: true,
+  });
+  const sprite = new THREE.Sprite(material);
+  const aspect = LABEL_TEXTURE_WIDTH / LABEL_TEXTURE_HEIGHT;
+  sprite.scale.set(scale * aspect, scale, 1);
+  sprite.renderOrder = 10;
+  return sprite;
 }

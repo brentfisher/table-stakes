@@ -41,7 +41,13 @@
 
 import * as THREE from 'three';
 import type { SceneHarness } from './harness-shell';
-import { RestaurantScene, CameraController, type OwnerRenderState, type WorkerRenderState } from './shared/scene-primitives';
+import {
+  RestaurantScene,
+  CameraController,
+  type OwnerRenderState,
+  type WorkerRenderState,
+  type ReadyDishRenderState,
+} from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
 import { STATE_COLORS } from '../../client/src/game/state-colors';
 import { createGlyphSprite } from '../../client/src/scenes/icon-sprites';
@@ -64,6 +70,7 @@ import {
   INVENTORY_RESTOCK_TRAVEL_MS,
   INVENTORY_RESTOCK_MS_PER_UNIT,
   WORKER_RESTOCK_THRESHOLD_UNITS,
+  ORDER_FRESHNESS_GRACE_MS,
 } from '../../shared/constants/tuning';
 
 // --- Spatial reference points -----------------------------------------------------------------
@@ -84,6 +91,10 @@ const STATION_POS: Record<Station, Vec3> = Object.fromEntries(
 const PANTRY_POS = entityPos('pantry');
 const PASS_POS = entityPos('service_pass');
 const TABLES: Vec3[] = entities.filter((e) => e.type === 'table').map((e) => entityPos(e.id));
+// STORY-030. Real `restaurant-layout.json` table ids ("table_1".."table_6"), so ready-dish
+// fixtures exercise `RestaurantScene#upsertReadyDish`'s own `formatTableChip` on the SAME id
+// shape a live snapshot's `OrderSnapshot.tableId` actually has, not an invented string.
+const TABLE_IDS: string[] = entities.filter((e) => e.type === 'table').map((e) => e.id);
 const COOK_IDLE_POS: Vec3 = { x: 0, y: 0, z: 6.4 };
 const SERVER_IDLE_POS: Vec3 = { x: -1.5, y: 0, z: 0.6 };
 const OWNER_IDLE_POS: Vec3 = { x: 4, y: 0, z: 0.5 };
@@ -114,8 +125,14 @@ const PRESET_DISHES: DishData[] = PRESET_DISH_IDS.map((id) => {
   if (!dish) throw new Error(`kitchen-bottleneck-harness: preset dish not found: ${id}`);
   return dish;
 });
+// STORY-030. Looked up against `ALL_DISHES`, not `PRESET_DISHES` — the ready-dish fixtures below
+// spawn tickets already at the `plating` step (`spawnReadyTicket`, `dishId` never goes through
+// the cooking pipeline's `PRESET_DISHES`-scoped station/ingredient logic above), and need the
+// full §10.1 dish set (`chicken_sandwich`, `espresso`) that PRESET_DISHES's "cover all four
+// stations with 4 dishes" selection does not happen to include. `PRESET_DISHES ⊆ ALL_DISHES`, so
+// every existing caller (queued-ticket cooking) is unaffected.
 function dishById(id: string): DishData {
-  const dish = PRESET_DISHES.find((d) => d.id === id);
+  const dish = ALL_DISHES.find((d) => d.id === id);
   if (!dish) throw new Error(`kitchen-bottleneck-harness: unknown dish ${id}`);
   return dish;
 }
@@ -128,6 +145,12 @@ function stepDurationMs(dish: DishData, station: Station): number {
 }
 
 const INGREDIENT_IDS = [...new Set(PRESET_DISHES.flatMap((d) => Object.keys(d.ingredients)))];
+
+// STORY-030 PRD §10.1/§13. The exact five dishes the asset table names a proxy for, in that
+// order — what the new "ready food" fixtures below cycle/spread across, so a single "mixed
+// batch" spawn is also the §10.3 acceptance-test scene (one of each silhouette, side by side).
+const READY_DISH_IDS = ['smash_burger', 'caesar_salad', 'chicken_sandwich', 'nachos', 'espresso'];
+const READY_DISHES: DishData[] = READY_DISH_IDS.map(dishById);
 
 // --- Harness-only tuning (control-panel knobs, not gameplay data; see house convention on
 // `shared/constants/tuning.js` — none of this feeds a live system) -----------------------------
@@ -156,6 +179,10 @@ interface MockTicket {
   queuedAtMs: number;
   readyAtMs: number | null;
   deliveredAtMs: number | null;
+  /** STORY-030. Only ever set by `spawnReadyTicket` — cooking-pipeline tickets (`makeTicket`)
+   * have no destination table yet in this harness's own model, same as a live `OrderSnapshot`
+   * before a party is seated. Feeds `RestaurantScene#upsertReadyDish`'s table chip. */
+  tableId: string | null;
 }
 
 interface StationMock {
@@ -224,6 +251,10 @@ function createKitchenBottleneckHarness(): SceneHarness {
   let frame = 0;
   let observer: ResizeObserver | null = null;
   let brokenBadges = new Map<Station, THREE.Sprite>();
+  /** STORY-030. Which ready-dish ticket ids `syncScene` rendered last frame — see that method's
+   * own comment on why this harness diffs by hand instead of through `EntityViewRegistry`. */
+  let lastReadyDishIds = new Set<string>();
+  let harnessElapsedSeconds = 0;
 
   let tickets = new Map<string, MockTicket>();
   let stationsMock = new Map<Station, StationMock>();
@@ -234,6 +265,11 @@ function createKitchenBottleneckHarness(): SceneHarness {
   let productionSpeed = 1;
   let nextTicketSeq = 0;
   let nextDishSeq = 0;
+  /** STORY-030. Rotates `READY_DISH_IDS`/`TABLE_IDS` independently of `nextDishSeq` (the
+   * cooking-pipeline rotation above) — ready-food fixtures should not skip a dish just because a
+   * "Spawn single ticket" click also advanced the shared counter. */
+  let nextReadyDishSeq = 0;
+  let nextReadyTableSeq = 0;
   let selectedStation: Station = STATIONS[0];
   let selectedIngredient = INGREDIENT_IDS[0];
 
@@ -285,14 +321,21 @@ function createKitchenBottleneckHarness(): SceneHarness {
       queuedAtMs: simClockMs,
       readyAtMs: null,
       deliveredAtMs: null,
+      tableId: null,
     };
     tickets.set(id, ticket);
     return ticket;
   }
 
-  function spawnReadyTicket(): void {
-    const dish = PRESET_DISHES[nextDishSeq % PRESET_DISHES.length];
-    nextDishSeq += 1;
+  /**
+   * STORY-030 PRD §5.2/§13. Spawns a ticket already at 'ready', for a specific dish/table, whose
+   * `readyAgeMs` is `ageMs` from the moment it appears — not always 0 — so a fixture can present
+   * an ALREADY-STALE (or already-mid-age) dish immediately, rather than making a tester wait out
+   * real sim time to see `GOING COLD`. `readyAtMs` is simply backdated by `ageMs`; every other
+   * consumer of `readyAtMs` (`buildOrderSnapshots`'s own `readyAgeMs` derivation) needs no special
+   * case for that.
+   */
+  function spawnReadyTicket(dish: DishData, tableId: string | null, ageMs = 0): MockTicket {
     nextTicketSeq += 1;
     const id = `harness_ticket_${nextTicketSeq}`;
     const ticket: MockTicket = {
@@ -307,11 +350,13 @@ function createKitchenBottleneckHarness(): SceneHarness {
       remainingMs: 0,
       stepStartedAtMs: null,
       dispatchedBy: null,
-      queuedAtMs: simClockMs,
-      readyAtMs: simClockMs,
+      queuedAtMs: simClockMs - ageMs,
+      readyAtMs: simClockMs - ageMs,
       deliveredAtMs: null,
+      tableId,
     };
     tickets.set(id, ticket);
+    return ticket;
   }
 
   function findEligibleQueuedTicket(allowedStations?: Station[]): MockTicket | null {
@@ -535,7 +580,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       ticketId: t.ticketId,
       restaurantId: RESTAURANT_ID,
       customerId: 'harness_customer',
-      tableId: null,
+      tableId: t.tableId,
       dishId: t.dishId,
       price: dishById(t.dishId).suggestedPrice,
       state: t.state,
@@ -544,6 +589,29 @@ function createKitchenBottleneckHarness(): SceneHarness {
       remainingMs: Math.max(0, t.remainingMs),
       readyAgeMs: t.state === 'ready' ? Math.max(0, simClockMs - (t.readyAtMs ?? simClockMs)) : 0,
       blockedByIngredientId: t.blockedByIngredientId,
+    }));
+  }
+
+  /**
+   * STORY-030. `RestaurantScene`'s ready-dish proxies are a spawn/despawn view (see
+   * `upsertReadyDish`/`removeReadyDish`'s own comments), reconciled through `EntityViewRegistry`
+   * in the real client — this harness has no registry (same as `upsertWorker`/`upsertOwner`
+   * above, called directly), so it does the same present/remove diff by hand against
+   * `lastReadyDishIds`. `isOldest` is computed the same way `GameClient.ts` computes it: the
+   * live ready ticket with the smallest `readyAtMs` (equivalently, the largest `readyAgeMs`).
+   */
+  function readyDishRenderStates(): ReadyDishRenderState[] {
+    const ready = [...tickets.values()].filter((t) => t.state === 'ready');
+    let oldest: MockTicket | null = null;
+    for (const t of ready) {
+      if (!oldest || (t.readyAtMs ?? 0) < (oldest.readyAtMs ?? 0)) oldest = t;
+    }
+    return ready.map((t) => ({
+      ticketId: t.ticketId,
+      dishId: t.dishId,
+      tableId: t.tableId,
+      readyAgeMs: Math.max(0, simClockMs - (t.readyAtMs ?? simClockMs)),
+      isOldest: t.ticketId === oldest?.ticketId,
     }));
   }
 
@@ -595,6 +663,18 @@ function createKitchenBottleneckHarness(): SceneHarness {
 
     if (owner.spawned) scene.upsertOwner(ownerRenderState());
     else scene.removeOwner(OWNER_ID);
+
+    // STORY-030 PRD §5.2. Same present/remove diff `EntityViewRegistry.reconcile` does in the
+    // real client — see `readyDishRenderStates`'s own header on why this harness does it by hand.
+    const readyIds = new Set<string>();
+    for (const state of readyDishRenderStates()) {
+      readyIds.add(state.ticketId);
+      scene.upsertReadyDish(state);
+    }
+    for (const id of lastReadyDishIds) {
+      if (!readyIds.has(id)) scene.removeReadyDish(id);
+    }
+    lastReadyDishIds = readyIds;
 
     for (const station of STATIONS) {
       const badge = brokenBadges.get(station);
@@ -677,6 +757,8 @@ function createKitchenBottleneckHarness(): SceneHarness {
       productionSpeed = 1;
       nextTicketSeq = 0;
       nextDishSeq = 0;
+      nextReadyDishSeq = 0;
+      nextReadyTableSeq = 0;
       selectedStation = STATIONS[0];
       selectedIngredient = INGREDIENT_IDS[0];
       stepCompletions = [];
@@ -684,6 +766,8 @@ function createKitchenBottleneckHarness(): SceneHarness {
       totalCompletions = [];
       restockCompletions = [];
       repairCompletions = [];
+      lastReadyDishIds = new Set();
+      harnessElapsedSeconds = 0;
 
       // One badge per station, built once — see this file's header on why "broken" gets its own
       // glyph rather than reusing/recoloring the queue or shortage indicators STORY-016 built.
@@ -723,7 +807,43 @@ function createKitchenBottleneckHarness(): SceneHarness {
           makeTicket(candidates[i % candidates.length], { atStation: selectedStation });
         }
       });
-      panel.addButton('Spawn ready dish at pass', () => spawnReadyTicket());
+      // --- STORY-030 PRD §13 "Kitchen Bottleneck Harness" ready-food fixtures ------------------
+      // Each independently triggerable, and each held for inspection exactly like every other
+      // fixture above (the mock kitchen never times these out on its own — `server_1`, if
+      // enabled, will eventually pick one up and clear it the same way it already does for the
+      // pre-STORY-030 "Spawn ready dish at pass" button; disable "Server enabled" above first to
+      // hold a fixture on the pass indefinitely for inspection/screenshotting).
+      panel.addButton('Ready food: spawn one fresh dish', () => {
+        const dish = READY_DISHES[nextReadyDishSeq % READY_DISHES.length];
+        const tableId = TABLE_IDS[nextReadyTableSeq % TABLE_IDS.length];
+        nextReadyDishSeq += 1;
+        nextReadyTableSeq += 1;
+        spawnReadyTicket(dish, tableId, 0);
+      });
+      panel.addButton('Ready food: spawn mixed batch (different ages/tables — §10.3 scene)', () => {
+        // One of EACH §10.1 dish, one per table, spread across ages from fresh to just-past
+        // `ORDER_FRESHNESS_GRACE_MS` — this single fixture doubles as the §10.3 acceptance-test
+        // scene: every named silhouette on the pass at once, plus a fresh/stale pair to confirm
+        // the ring color split reads correctly alongside the geometry.
+        const ageStepMs = ORDER_FRESHNESS_GRACE_MS / (READY_DISHES.length - 1);
+        READY_DISHES.forEach((dish, i) => {
+          const tableId = TABLE_IDS[(nextReadyTableSeq + i) % TABLE_IDS.length];
+          spawnReadyTicket(dish, tableId, Math.round(i * ageStepMs));
+        });
+        nextReadyTableSeq += READY_DISHES.length;
+      });
+      panel.addButton('Ready food: spawn one stale dish', () => {
+        const dish = READY_DISHES[nextReadyDishSeq % READY_DISHES.length];
+        const tableId = TABLE_IDS[nextReadyTableSeq % TABLE_IDS.length];
+        nextReadyDishSeq += 1;
+        nextReadyTableSeq += 1;
+        spawnReadyTicket(dish, tableId, ORDER_FRESHNESS_GRACE_MS + 3_000);
+      });
+      panel.addButton('Ready food: clear all ready dishes', () => {
+        for (const [id, ticket] of tickets) {
+          if (ticket.state === 'ready') tickets.delete(id);
+        }
+      });
 
       panel.addSeparator();
 
@@ -901,7 +1021,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       // worker together) are the control panel's job, same split customer-flow-harness makes.
       makeTicket(PRESET_DISHES[nextDishSeq++ % PRESET_DISHES.length]);
       makeTicket(PRESET_DISHES[nextDishSeq++ % PRESET_DISHES.length]);
-      spawnReadyTicket();
+      spawnReadyTicket(READY_DISHES[nextReadyDishSeq++ % READY_DISHES.length], TABLE_IDS[nextReadyTableSeq++ % TABLE_IDS.length], 0);
 
       let last = performance.now();
       let fpsAccum = 0;
@@ -928,6 +1048,11 @@ function createKitchenBottleneckHarness(): SceneHarness {
 
         advanceSim(realDt * 1000 * productionSpeed);
         syncScene();
+        // STORY-030 PRD §5.2 "highlight or pulse the oldest ready ticket" — real wall-clock time,
+        // not `simClockMs` (a UI pulse is a presentation concern, not simulation time; see
+        // `customer-flow-harness.ts`'s own `updateCustomerAnimations` call for the same split).
+        harnessElapsedSeconds += realDt;
+        scene?.updateReadyDishAnimations(harnessElapsedSeconds);
 
         if (scene && camera) {
           camera.update(realDt);
@@ -956,6 +1081,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       bins = new Map();
       workers = new Map();
       owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
+      lastReadyDishIds = new Set();
     },
   };
 }
