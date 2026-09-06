@@ -978,4 +978,110 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------------------------------
+   STORY-029 (PRD-027 §5.4/§6/§11/§12 "Large transition toast" / "Notification Policy" /
+   "Screen-space layout" / "Accessibility"). Adapted from `docs/arcade-legibility-ui.css`'s own
+   `.arcade-toast*` rules (`client/src/ui/ArcadeToast.tsx` is the component).
+
+   DELIBERATELY ITS OWN NAMESPACE, NOT A SECOND `.event-banner`: `.event-banner`/
+   `.event-banner-title`/`.event-banner-time` above already style `EventBanner.tsx`'s persistent
+   top-center banner (STORY-016) — a different PRD-027 §4.1 feedback LAYER ("what currently
+   matters", always visible while an event is live) from this one ("what just changed", a few
+   seconds then gone). The source asset's own CSS uses BEM names for a similar-but-not-identical
+   concept (`.event-banner--active`, `.event-banner__eyebrow`); reusing those literal class names
+   here would have silently forked or collided with the existing banner's styling. Every rule
+   below is prefixed `.arcade-toast`, full stop — see STORY-029's own Notes on this exact trap.
+
+   Uses `position: absolute` (not the source asset's `fixed`) to match every other overlay rule in
+   this file — `.app { position: relative; ... }` above is already the positioning context. */
+.arcade-toast {
+  --arcade-toast-tone: var(--ok);
+  position: absolute;
+  left: 50%;
+  /* Below `.event-banner` (top: 12px) AND `.hud-scoreboard` (top: 58px, PRD §11 "arcade toast:
+     upper-center, below banner") — pixel-perfect layout coordination across all of PRD-027's
+     panels is STORY-032's job, not this foundational story's. */
+  top: 108px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: min(420px, calc(100vw - 32px));
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 14px 22px 14px 14px;
+  background: linear-gradient(180deg, rgba(32, 45, 58, 0.97), rgba(18, 26, 37, 0.98));
+  border: 3px solid var(--arcade-toast-tone);
+  border-radius: 16px;
+  box-shadow: 0 6px 0 #081019, 0 10px 26px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  pointer-events: none;
+  /* 3.2s matches `ARCADE_TOAST_DISPLAY_MS` (shared/constants/tuning.js) — same hardcoded-in-CSS
+     pairing `hud-cash-feedback-rise` below already uses for `HUD_CASH_FEEDBACK_DISPLAY_MS`. */
+  animation: arcade-toast-arrive 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.arcade-toast__burst {
+  position: absolute;
+  top: -36px;
+  left: -40px;
+  width: 150px;
+  height: 150px;
+  background: var(--arcade-toast-tone);
+  border-radius: 50%;
+  filter: blur(1px);
+  opacity: 0.22;
+}
+
+.arcade-toast__icon {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  background: var(--arcade-toast-tone);
+  border: 3px solid var(--text);
+  border-radius: 50%;
+  color: #101722;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.arcade-toast__copy {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+.arcade-toast__copy strong {
+  color: var(--arcade-toast-tone);
+  font-size: clamp(18px, 2.6vw, 32px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+}
+.arcade-toast__copy small {
+  color: var(--text);
+  font-size: clamp(11px, 1.1vw, 14px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+@keyframes arcade-toast-arrive {
+  0% { opacity: 0; transform: translate(-50%, -20px) scale(0.85); }
+  8%, 84% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -6px) scale(0.96); }
+}
+
+/* PRD §12 "Respect prefers-reduced-motion" — disables the entrance/exit animation WITHOUT
+   hiding toast content: `animation: none` leaves every property at its plain (unanimated) CSS
+   value, i.e. fully visible, rather than whatever transient keyframe state the animation would
+   otherwise have left it in. */
+@media (prefers-reduced-motion: reduce) {
+  .arcade-toast { animation: none; }
+}
 .invite-expiry { margin: 8px 0 0; font-size: 12px; }
