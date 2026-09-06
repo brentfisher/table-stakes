@@ -48,6 +48,18 @@ export type PresentationEvent =
       type: 'ingredient-blocked';
       ingredientId: string;
       stationId: string;
+    }
+  | {
+      /**
+       * STORY-031. NOT produced by `reducePresentationEvents` — see the .js file header's own
+       * "ONE TYPE IN THE UNION IS NOT PRODUCED HERE AT ALL" comment. `GameClient.ts` builds this
+       * directly from an `interact_rejected` error message (`reason` is the server's own
+       * `action-validator.js` reason string, e.g. `wrong_table`/`not_ready`) and hands it to
+       * `ArcadeToast.tsx` with a freshly-minted key, bypassing `alreadyEmittedKeys` entirely: a
+       * rejection is not a state transition, so there is nothing to deduplicate against.
+       */
+      type: 'delivery-rejected';
+      reason: string;
     };
 
 export type PresentationEventType = PresentationEvent['type'];
@@ -64,6 +76,14 @@ export interface PresentationSnapshotInput {
   selfRestaurantId: string | null;
   orders: OrderSnapshot[];
   events: SnapshotEventEntry[];
+  /**
+   * STORY-031. This viewer's OWN owner's `PlayerSnapshot.carrying` (order ids), straight off the
+   * wire — read by `detectOwnerPickedUpEvents`/`detectOrderDeliveredEvents` to diff pickup/
+   * delivery the same "previous vs. next snapshot" way `orders`/`events` already are. Optional
+   * (defaults to `[]` inside the detectors) so existing callers/fixtures built before STORY-031
+   * that never pass it keep working unchanged.
+   */
+  carrying?: string[];
 }
 
 /** One reducer output: a `PresentationEvent` plus the stable §9 key it was emitted under. */

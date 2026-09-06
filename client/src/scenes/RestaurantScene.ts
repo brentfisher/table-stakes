@@ -75,6 +75,17 @@ export interface ReadyDishRenderState {
   isOldest: boolean;
 }
 
+/** STORY-031 PRD §5.3/§10.2. One entry per DISH the owner is physically carrying, keyed by
+ * `ticketId` — same identity discipline as `ReadyDishRenderState` above (`orderId` is shared by
+ * every dish a party's order decomposed into; `ticketId` is the one unique per-dish key). The
+ * caller (`GameClient.ts`) resolves these by cross-referencing `PlayerSnapshot.carrying` (order
+ * ids) against `orders[]` — see that file's own comment on why `carrying.length` never maps 1:1
+ * to plates on its own. */
+export interface CarriedDishRenderState {
+  ticketId: string;
+  dishId: string;
+}
+
 /** A table's derived on-floor badge — PRD §4.4 "Tables show order, meal, payment, and cleanup
  * states". `dirty` always wins (it blocks seating, the most urgent of the four), and is checked
  * before occupancy; see `updateTableBadges`. */
@@ -162,6 +173,41 @@ const STATION_COLORS_UPGRADED: Record<string, number> = {
 
 /** PRD §7 baseline before any Serving Tray upgrade. */
 const MAX_VISIBLE_CARRY_PLATES = 3;
+
+// --- STORY-031: PRD §5.3/§10.2 carry-socket dish proxies + destination-table target marker ----
+
+/** Generous cap on simultaneously visible carry-socket dish proxies — production
+ * `OWNER_CARRY_CAPACITY` is 1 order, and even the harness's own upgraded-capacity fixture (§13)
+ * never simulates more than 3 orders × a couple of dishes each. Same "hide past a generous cap
+ * rather than overlap" discipline as `MAX_READY_DISH_SLOTS`. */
+const MAX_VISIBLE_CARRIED_DISHES = 6;
+
+/** Local-space offsets (relative to the owner avatar's own origin) for each carry-socket slot —
+ * a small fan in front of the body at roughly chest height, distinct from `MAX_VISIBLE_CARRY_PLATES`'s
+ * shoulder-stacked generic plates (still used by `setCarrying`, STORY-012's simpler count-only
+ * indicator, kept for `asset-showcase-harness.ts`/`upgrade-preview-harness.ts`'s own demos). */
+const CARRY_DISH_SLOT_OFFSETS: readonly { x: number; y: number; z: number }[] = [
+  { x: 0.28, y: 1.28, z: 0.22 },
+  { x: 0.28, y: 1.28, z: -0.22 },
+  { x: -0.28, y: 1.28, z: 0.22 },
+  { x: -0.28, y: 1.28, z: -0.22 },
+  { x: 0, y: 1.48, z: 0.3 },
+  { x: 0, y: 1.48, z: -0.3 },
+];
+/** Dish proxies are built full-size (same geometry as the pass, per §10.2) but the carry socket
+ * is a much smaller stage than the service pass counter — scaled down so a plate does not dwarf
+ * the owner's own capsule body. */
+const CARRY_DISH_SCALE = 0.55;
+
+/** PRD §5.3 reference composition (`docs/rival-restaurant-arcade-legibility-ui.png`): a target
+ * chip + downward arrow floating above the destination table, and a pulsing ring on the floor
+ * beneath it. All three always the §14 blue "opportunity" tone (a delivery is a revenue
+ * opportunity, never a freshness/urgency signal — same reasoning `upsertReadyDish`'s own table
+ * chip comment gives). */
+const CARRY_TARGET_RING_INNER = 0.95;
+const CARRY_TARGET_RING_OUTER = 1.15;
+const CARRY_TARGET_ARROW_Y = 1.6;
+const CARRY_TARGET_CHIP_Y = 2.05;
 
 // --- STORY-030: PRD §5.2/§10.1 dish-specific ready-food proxies at the service pass ----------
 //
@@ -439,7 +485,11 @@ const DISH_PROXY_BUILDERS: Record<string, () => THREE.Group> = {
   espresso: buildEspressoProxy,
 };
 
-function buildDishProxy(dishId: string): THREE.Group {
+/** PRD §10.2 "reuse one dish asset/proxy across pass, carry, and delivery" — STORY-031's carry-
+ * socket proxies (`RestaurantScene#setCarriedDishes`) call this SAME function `upsertReadyDish`
+ * already calls, rather than duplicating any dish geometry. Exported (module-private through
+ * STORY-030) for exactly that reuse — no second builder, no re-derived silhouette. */
+export function buildDishProxy(dishId: string): THREE.Group {
   const builder = DISH_PROXY_BUILDERS[dishId] ?? buildGenericDishProxy;
   return builder();
 }
@@ -488,6 +538,15 @@ export class RestaurantScene {
    * `updateRivalActivity` can recolor them without rebuilding the shell. */
   private readonly competitorTables: THREE.Mesh[] = [];
   private readonly competitorSign: THREE.Mesh;
+  /** STORY-031. Per-player, per-ticket carry-socket dish proxies — a NESTED map (unlike
+   * `readyDishes`' flat one) because two owners can each be carrying at once, and `setCarriedDishes`
+   * needs to diff/prune ONE player's own set without touching the other's. Children of that
+   * player's own `owners` group, so they translate/rotate with the avatar for free. */
+  private readonly carriedDishes = new Map<string, Map<string, THREE.Group>>();
+  /** STORY-031. One target marker (chip + arrow + pulsing ring) per destination table currently
+   * targeted by a carried order, keyed by `tableId` and built lazily — see `updateCarryTargets`'s
+   * own comment on why markers are hidden, not destroyed, when a table stops being targeted. */
+  private readonly carryTargets = new Map<string, THREE.Group>();
   constructor(options: RestaurantSceneOptions = {}) {
     this.scene.background = new THREE.Color(0x1b1f24);
 
@@ -701,6 +760,55 @@ export class RestaurantScene {
     }
   }
 
+  /**
+   * STORY-031 PRD §5.3/§10.2. Supersedes `setCarrying`'s generic plate-count indicator for real
+   * gameplay: one REAL dish proxy per carried DISH (not per order — see `CarriedDishRenderState`'s
+   * own comment), reusing `buildDishProxy` — the exact geometry `upsertReadyDish` builds at the
+   * pass — attached as a child of the owner's own avatar group so it rides along automatically.
+   * `setCarrying` itself is left untouched (`asset-showcase-harness.ts`/`upgrade-preview-harness.ts`
+   * still call it for their own simpler demos; nothing requires migrating them for this story).
+   *
+   * Build-once-per-ticket, diff-by-hand against the previous call's ticket set — same "spawn/
+   * despawn, but keyed within THIS player's own sub-map" discipline `upsertReadyDish`/
+   * `removeReadyDish` use for the pass, just nested one level deeper here because two owners can
+   * each be carrying independently. `slots` is already capped by the caller
+   * (`GameClient.ts` slices `carrying` to `carryCapacity` before resolving dishes) — the
+   * `MAX_VISIBLE_CARRIED_DISHES` slice below is only a defensive backstop against the harness's
+   * own upgraded-capacity fixtures ever exceeding the fixed slot layout.
+   */
+  setCarriedDishes(playerId: string, slots: CarriedDishRenderState[]): void {
+    const group = this.owners.get(playerId);
+    if (!group) return;
+    let byTicket = this.carriedDishes.get(playerId);
+    if (!byTicket) {
+      byTicket = new Map();
+      this.carriedDishes.set(playerId, byTicket);
+    }
+
+    const limited = slots.slice(0, MAX_VISIBLE_CARRIED_DISHES);
+    const seen = new Set<string>();
+    limited.forEach((slot, i) => {
+      seen.add(slot.ticketId);
+      let proxy = byTicket!.get(slot.ticketId);
+      if (!proxy) {
+        proxy = buildDishProxy(slot.dishId);
+        proxy.name = `carry_dish_${slot.ticketId}`;
+        proxy.scale.setScalar(CARRY_DISH_SCALE);
+        group.add(proxy);
+        byTicket!.set(slot.ticketId, proxy);
+      }
+      const offset = CARRY_DISH_SLOT_OFFSETS[i] ?? CARRY_DISH_SLOT_OFFSETS[CARRY_DISH_SLOT_OFFSETS.length - 1];
+      proxy.position.set(offset.x, offset.y, offset.z);
+    });
+    // Delivered or dropped since the last call — remove rather than hide, matching
+    // `removeReadyDish`'s own "no lingering geometry for a ticket that no longer exists" rule.
+    for (const [ticketId, proxy] of byTicket) {
+      if (seen.has(ticketId)) continue;
+      group.remove(proxy);
+      byTicket.delete(ticketId);
+    }
+  }
+
   /** STORY-012 "Faster Grill I": a hotter tint on the OWNER'S OWN grill mesh once purchased.
    * Ownership can change mid-match (unlike everything `buildAll()` builds once from static
    * layout JSON), so this is looked up by name rather than rebuilt — the one live per-entity
@@ -892,6 +1000,100 @@ export class RestaurantScene {
       }
       const pulse = 1.25 + Math.sin(elapsedSeconds * 3.2) * 0.12;
       ring.scale.set(pulse, pulse, 1);
+    }
+  }
+
+  // --- STORY-031: destination-table target marker (chip + arrow + pulsing ring) --------------
+
+  /** Lazily builds one marker, as a child of the table's own mesh (`this.scene.getObjectByName
+   * (tableId)`, the same anchor `updateTableBadges` already uses) so it moves/rotates with the
+   * table for free — tables never move mid-match in this MVP, but this avoids a second
+   * independent position source anyway. Always the §14 blue `opportunity` tone (see this file's
+   * "STORY-031" constants block for why). */
+  private buildCarryTargetMarker(tableId: string): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `carry_target_${tableId}`;
+
+    // Pulsing floor ring — same ring-beneath-the-entity device as the ready-dish freshness ring
+    // and the customer patience ring, so "this is the delivery target" reads instantly.
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(CARRY_TARGET_RING_INNER, CARRY_TARGET_RING_OUTER, 32),
+      new THREE.MeshBasicMaterial({
+        color: STATE_COLORS.opportunity,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    ring.name = 'target_ring';
+    group.add(ring);
+
+    // Downward-pointing arrow hovering above the table — the reference composition's own device
+    // (`docs/rival-restaurant-arcade-legibility-ui.png`) for "the plate belongs HERE".
+    const arrow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.5, 4),
+      new THREE.MeshStandardMaterial({ color: STATE_COLORS.opportunity, roughness: 0.4 }),
+    );
+    arrow.rotation.x = Math.PI; // tip down
+    arrow.position.y = CARRY_TARGET_ARROW_Y;
+    arrow.name = 'target_arrow';
+    group.add(arrow);
+
+    // Table-number chip, reusing `formatTableChip`/`createLabelSprite` exactly as `upsertReadyDish`'s
+    // own pass-side table chip does — same "T04" formatting, same blue tone, one shared vocabulary.
+    const chip = createLabelSprite(formatTableChip(tableId), STATE_COLORS.opportunity, 0.42);
+    chip.position.y = CARRY_TARGET_CHIP_Y;
+    chip.name = 'target_chip';
+    group.add(chip);
+
+    return group;
+  }
+
+  /**
+   * STORY-031 PRD §5.3. `tableIds` is every table currently targeted by a carried order (usually
+   * zero or one; more than one only when a Serving Tray upgrade has the owner carrying several
+   * orders bound for different tables at once). Markers are HIDDEN, never destroyed, when a
+   * table stops being targeted — the same "the target can move between tables across a match"
+   * reasoning `upsertReadyDish`'s slot system uses for tickets, applied to tables here instead.
+   * Only ever called with THIS restaurant's own real table ids (`GameClient.ts` scopes this to
+   * the self player's own carrying — the rival's tables have no individually-rendered mesh to
+   * attach a marker to; see `buildCompetitor`'s own comment).
+   */
+  updateCarryTargets(tableIds: string[]): void {
+    const active = new Set(tableIds);
+    for (const tableId of active) {
+      let marker = this.carryTargets.get(tableId);
+      if (!marker) {
+        marker = this.buildCarryTargetMarker(tableId);
+        const tableMesh = this.scene.getObjectByName(tableId);
+        // Defensive: every id passed in should be a real table from this restaurant's own
+        // `tables[]`, so `tableMesh` should never be missing — falling back to scene-root avoids
+        // silently dropping the marker if a caller ever passes a stale id.
+        (tableMesh ?? this.scene).add(marker);
+        this.carryTargets.set(tableId, marker);
+      }
+      marker.visible = true;
+    }
+    for (const [tableId, marker] of this.carryTargets) {
+      if (!active.has(tableId)) marker.visible = false;
+    }
+  }
+
+  /** Per-frame half of the target marker, same split `updateReadyDishAnimations` makes: a
+   * gentle ring pulse plus a slight arrow bob, real wall-clock time (a presentation concern, not
+   * simulation time). Only currently-visible markers are touched. */
+  updateCarryTargetAnimations(elapsedSeconds: number): void {
+    for (const marker of this.carryTargets.values()) {
+      if (!marker.visible) continue;
+      const ring = marker.getObjectByName('target_ring') as THREE.Mesh | undefined;
+      if (ring) {
+        const pulse = 1 + Math.sin(elapsedSeconds * 3.2) * 0.08;
+        ring.scale.set(pulse, pulse, 1);
+      }
+      const arrow = marker.getObjectByName('target_arrow') as THREE.Mesh | undefined;
+      if (arrow) arrow.position.y = CARRY_TARGET_ARROW_Y + Math.sin(elapsedSeconds * 2.4) * 0.08;
     }
   }
 
@@ -1211,6 +1413,11 @@ export class RestaurantScene {
     if (!group) return;
     this.scene.remove(group);
     this.owners.delete(playerId);
+    // STORY-031. Carry-socket dish proxies are children of `group`, so `scene.remove(group)`
+    // above already sweeps their geometry out of the render graph — this only drops the now-
+    // stale bookkeeping map entry so a later `setCarriedDishes` for this same playerId (a
+    // reconnect, say) starts from a clean slate rather than referencing disposed proxies.
+    this.carriedDishes.delete(playerId);
   }
 
   ownerIds(): string[] {
@@ -1247,6 +1454,8 @@ export class RestaurantScene {
     this.readyDishes.clear();
     this.readyDishSlots.clear();
     this.readyDishSlotUsed.fill(false);
+    this.carriedDishes.clear();
+    this.carryTargets.clear();
     this.scene.clear();
   }
 }

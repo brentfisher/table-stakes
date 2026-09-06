@@ -47,6 +47,7 @@ import {
   type OwnerRenderState,
   type WorkerRenderState,
   type ReadyDishRenderState,
+  type CarriedDishRenderState,
 } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
 import { STATE_COLORS } from '../../client/src/game/state-colors';
@@ -219,7 +220,17 @@ interface OwnerMock {
   spawned: boolean;
   busyRemainingMs: number | null;
   currentAction: OwnerActionKind | null;
-  carryingTicketId: string | null;
+  /**
+   * STORY-031. Was a single `string | null` before this story — now an array so the §13
+   * "owner carrying one/two/three dishes" fixture (a harness-only simulation of an upgraded
+   * `carryCapacity`; production is 1 without the Serving Tray) can hold more than one at once.
+   * Each entry is a `MockTicket.ticketId`, which doubles as its own `orderId` in this harness's
+   * simplified model (`makeTicket`/`spawnReadyTicket` set both to the same generated id) — so
+   * "carrying N dishes" here really is "carrying N single-dish orders", the harness's own
+   * simplification of the real capacity-counts-ORDERS-not-dishes rule (see this story's own
+   * Notes on `PlayerSnapshot.carrying`).
+   */
+  carryingTicketIds: string[];
   repairTargetStation: Station | null;
   /** Which station a 'cook'/'plate' dispatch targeted, purely for `ownerRenderState`'s own
    * positioning — the dispatch itself already resolved instantly (see `resolveOwnerCompletion`'s
@@ -260,7 +271,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
   let stationsMock = new Map<Station, StationMock>();
   let bins = new Map<string, BinMock>();
   let workers = new Map<string, WorkerMock>();
-  let owner: OwnerMock = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
+  let owner: OwnerMock = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketIds: [], repairTargetStation: null, actionTargetStation: null };
   let simClockMs = 0;
   let productionSpeed = 1;
   let nextTicketSeq = 0;
@@ -278,6 +289,15 @@ function createKitchenBottleneckHarness(): SceneHarness {
   let totalCompletions: TotalCompletion[] = [];
   let restockCompletions: number[] = [];
   let repairCompletions: number[] = [];
+  /** STORY-031 PRD §13. The harness's own readout for "what did the last delivery ATTEMPT do" —
+   * both the valid (SERVED) and invalid (REJECTED) fixtures write this; there is no React
+   * `ArcadeToast` mounted in a bare Three.js harness, so a text readout is this file's own stand-
+   * in, matching the existing `setOwnerReadout`/`setDeliveryReadout` pattern below. */
+  let lastDeliveryFeedback = 'none yet';
+  /** STORY-031 PRD §13. Harness-only "Serving Tray" simulation — production `OWNER_CARRY_CAPACITY`
+   * is 1 without the real upgrade; this control panel setting only affects THIS harness's own
+   * pickup fixture, never the real `shared/constants/tuning.js` constant. */
+  let carryCapacityMock = 1;
 
   function makeTicket(dish: DishData, opts?: { atStation?: Station }): MockTicket {
     nextTicketSeq += 1;
@@ -448,16 +468,23 @@ function createKitchenBottleneckHarness(): SceneHarness {
       repairCompletions.push(HARNESS_REPAIR_DURATION_MS);
       if (repairCompletions.length > STEP_LOG_CAP) repairCompletions.shift();
       owner.repairTargetStation = null;
-    } else if (action === 'carry' && owner.carryingTicketId) {
-      const ticket = tickets.get(owner.carryingTicketId);
-      if (ticket) {
+    } else if (action === 'carry' && owner.carryingTicketIds.length > 0) {
+      // STORY-031. Delivers every currently-carried ticket — in practice always exactly one via
+      // THIS button (the pickup site below still guards on `busyRemainingMs !== null`, so a
+      // second click can't stack a second carry mid-walk), but written over the array so it
+      // stays correct if a future fixture ever routes through this same completion path.
+      for (const ticketId of owner.carryingTicketIds) {
+        const ticket = tickets.get(ticketId);
+        if (!ticket) continue;
         ticket.state = 'delivered';
         ticket.deliveredAtMs = simClockMs;
         deliveryCompletions.push({ actor: 'owner', durationMs: simClockMs - (ticket.readyAtMs ?? simClockMs) });
         if (deliveryCompletions.length > STEP_LOG_CAP) deliveryCompletions.shift();
+        lastDeliveryFeedback = `SERVED — TABLE ${ticket.tableId ?? '—'} • ${dishById(ticket.dishId).id.toUpperCase()}`;
       }
-      scene?.setCarrying(OWNER_ID, 0);
-      owner.carryingTicketId = null;
+      // `RestaurantScene#setCarriedDishes`/`updateCarryTargets` are refreshed every frame from
+      // `owner.carryingTicketIds` inside `syncScene()` below — no direct scene call needed here.
+      owner.carryingTicketIds = [];
     }
     // 'cook' / 'plate' / 'restock' already resolved at the moment they were dispatched — the
     // owner's cooldown was pure gating on the NEXT action, exactly as `action-validator.js`'s own
@@ -601,7 +628,12 @@ function createKitchenBottleneckHarness(): SceneHarness {
    * live ready ticket with the smallest `readyAtMs` (equivalently, the largest `readyAgeMs`).
    */
   function readyDishRenderStates(): ReadyDishRenderState[] {
-    const ready = [...tickets.values()].filter((t) => t.state === 'ready');
+    // STORY-031. `claimedBy === 'owner'` excluded — a ticket stays `state: 'ready'` the whole
+    // time it is being carried (the real server's own `order.claimedBy` does the same; only
+    // `claimedBy` changes on pickup, never `state` — see `action-validator.js#resolvePickup`),
+    // so without this exclusion a picked-up ticket would render at the pass AND in the carry
+    // socket simultaneously. Same fix `GameClient.ts#selfReadyOrders` makes for the real client.
+    const ready = [...tickets.values()].filter((t) => t.state === 'ready' && t.claimedBy !== 'owner');
     let oldest: MockTicket | null = null;
     for (const t of ready) {
       if (!oldest || (t.readyAtMs ?? 0) < (oldest.readyAtMs ?? 0)) oldest = t;
@@ -613,6 +645,24 @@ function createKitchenBottleneckHarness(): SceneHarness {
       readyAgeMs: Math.max(0, simClockMs - (t.readyAtMs ?? simClockMs)),
       isOldest: t.ticketId === oldest?.ticketId,
     }));
+  }
+
+  /** STORY-031. `owner.carryingTicketIds` resolved to render slots, the same cross-reference
+   * `GameClient.ts` does against real `orders[]` — here against this harness's own `tickets` map. */
+  function ownerCarrySlots(): CarriedDishRenderState[] {
+    return owner.carryingTicketIds
+      .map((id) => tickets.get(id))
+      .filter((t): t is MockTicket => Boolean(t))
+      .map((t) => ({ ticketId: t.ticketId, dishId: t.dishId }));
+  }
+
+  /** STORY-031. Destination table ids for every currently-carried ticket — feeds
+   * `RestaurantScene#updateCarryTargets`, the same derivation `GameClient.ts` does for the self
+   * player's own `carrying[]`. */
+  function ownerCarryTableIds(): string[] {
+    return owner.carryingTicketIds
+      .map((id) => tickets.get(id)?.tableId)
+      .filter((tableId): tableId is string => Boolean(tableId));
   }
 
   function buildShortages(): NonNullable<RestaurantSnapshot['shortages']> {
@@ -661,8 +711,19 @@ function createKitchenBottleneckHarness(): SceneHarness {
     scene.upsertWorker(cookRenderState());
     scene.upsertWorker(serverRenderState());
 
-    if (owner.spawned) scene.upsertOwner(ownerRenderState());
-    else scene.removeOwner(OWNER_ID);
+    if (owner.spawned) {
+      scene.upsertOwner(ownerRenderState());
+      // STORY-031 PRD §5.3/§10.2 — refreshed every frame from `owner.carryingTicketIds`, the
+      // same "compute once per snapshot, patch the already-final result" split `GameClient.ts`
+      // follows for the real client (this harness has no snapshot cadence to key off, so it just
+      // does it every frame — cheap: a handful of map lookups, no allocation on the hot path
+      // beyond the resolved slot array itself).
+      scene.setCarriedDishes(OWNER_ID, ownerCarrySlots());
+      scene.updateCarryTargets(ownerCarryTableIds());
+    } else {
+      scene.removeOwner(OWNER_ID); // also drops that player's carry-socket proxies — see its own comment
+      scene.updateCarryTargets([]);
+    }
 
     // STORY-030 PRD §5.2. Same present/remove diff `EntityViewRegistry.reconcile` does in the
     // real client — see `readyDishRenderStates`'s own header on why this harness does it by hand.
@@ -717,7 +778,14 @@ function createKitchenBottleneckHarness(): SceneHarness {
       position = STATION_POS[owner.actionTargetStation];
     } else if (owner.currentAction === 'restock') position = PANTRY_POS;
     else if (owner.currentAction === 'repair' && owner.repairTargetStation) position = STATION_POS[owner.repairTargetStation];
-    else if (owner.currentAction === 'carry') position = TABLES[0] ?? PASS_POS;
+    else if (owner.carryingTicketIds.length > 0) {
+      // STORY-031. "Walking the plate to its table" framing — positioned at the FIRST carried
+      // ticket's own destination table rather than an arbitrary `TABLES[0]`, so the fixed-fixture
+      // screenshots actually show the owner standing near the target marker they light up.
+      const firstTableId = tickets.get(owner.carryingTicketIds[0])?.tableId ?? null;
+      const table = firstTableId ? entities.find((e) => e.id === firstTableId) : null;
+      position = table ? entityPos(table.id) : (TABLES[0] ?? PASS_POS);
+    }
     return { playerId: OWNER_ID, position, facing: 0, isSelf: true };
   }
 
@@ -752,7 +820,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         ['cook_1', { workerId: 'cook_1', role: 'cook' as WorkerRole, enabled: true, busyRemainingMs: null, currentTaskKind: null, pendingTicketId: null, needsHelp: null }],
         ['server_1', { workerId: 'server_1', role: 'server' as WorkerRole, enabled: true, busyRemainingMs: null, currentTaskKind: null, pendingTicketId: null, needsHelp: null }],
       ]);
-      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
+      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketIds: [], repairTargetStation: null, actionTargetStation: null };
       simClockMs = 0;
       productionSpeed = 1;
       nextTicketSeq = 0;
@@ -768,6 +836,8 @@ function createKitchenBottleneckHarness(): SceneHarness {
       repairCompletions = [];
       lastReadyDishIds = new Set();
       harnessElapsedSeconds = 0;
+      lastDeliveryFeedback = 'none yet';
+      carryCapacityMock = 1;
 
       // One badge per station, built once — see this file's header on why "broken" gets its own
       // glyph rather than reusing/recoloring the queue or shortage indicators STORY-016 built.
@@ -893,7 +963,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         if (!v) {
           owner.busyRemainingMs = null;
           owner.currentAction = null;
-          owner.carryingTicketId = null;
+          owner.carryingTicketIds = [];
           owner.actionTargetStation = null;
         }
       });
@@ -916,15 +986,79 @@ function createKitchenBottleneckHarness(): SceneHarness {
         owner.actionTargetStation = ticket.station;
       });
       panel.addButton('Owner: carry ready dish to table', () => {
-        if (!owner.spawned || owner.busyRemainingMs !== null || owner.carryingTicketId) return;
+        if (!owner.spawned || owner.busyRemainingMs !== null || owner.carryingTicketIds.length > 0) return;
         const ticket = findOldestReadyUnclaimed();
         if (!ticket) return;
         ticket.claimedBy = 'owner';
-        owner.carryingTicketId = ticket.ticketId;
+        owner.carryingTicketIds = [ticket.ticketId];
         owner.busyRemainingMs = OWNER_TASK_DURATIONS_MS.pickup + OWNER_TASK_DURATIONS_MS.deliver;
         owner.currentAction = 'carry';
-        scene?.setCarrying(OWNER_ID, 1);
+        // `RestaurantScene#setCarriedDishes`/`updateCarryTargets` pick this up every frame from
+        // `syncScene()` — see that method's own comment; no direct scene call needed here.
       });
+
+      // --- STORY-031 PRD §5.3/§13 "Kitchen Bottleneck Harness" carry/delivery fixtures --------
+      // Unlike the timed button above (which walks through the real pickup→busy→deliver
+      // cooldown), these are INSTANT state fixtures for inspection/screenshotting — same
+      // "independently triggerable, held for inspection" discipline the STORY-030 ready-food
+      // fixtures already established.
+      panel.addSelect('Owner carry capacity (Serving Tray sim)', [
+        { value: '1', label: '1 (baseline)' },
+        { value: '2', label: '2 (Serving Tray)' },
+        { value: '3', label: '3 (Serving Tray, upgraded further)' },
+      ], (v) => { carryCapacityMock = Number(v); });
+      panel.addButton('Pickup: claim ready dish(es) up to capacity (pass → owner carry)', () => {
+        if (!owner.spawned) return;
+        while (owner.carryingTicketIds.length < carryCapacityMock) {
+          const ticket = findOldestReadyUnclaimed();
+          if (!ticket) break;
+          ticket.claimedBy = 'owner';
+          owner.carryingTicketIds.push(ticket.ticketId);
+        }
+      });
+      panel.addButton('Side-by-side: spawn 2 ready dishes at pass + pick up 1 more', () => {
+        if (!owner.spawned) return;
+        spawnReadyTicket(READY_DISHES[nextReadyDishSeq++ % READY_DISHES.length], TABLE_IDS[nextReadyTableSeq++ % TABLE_IDS.length], 0);
+        spawnReadyTicket(READY_DISHES[nextReadyDishSeq++ % READY_DISHES.length], TABLE_IDS[nextReadyTableSeq++ % TABLE_IDS.length], 0);
+        const carryDish = spawnReadyTicket(READY_DISHES[nextReadyDishSeq++ % READY_DISHES.length], TABLE_IDS[nextReadyTableSeq++ % TABLE_IDS.length], 0);
+        carryDish.claimedBy = 'owner';
+        if (owner.carryingTicketIds.length < carryCapacityMock) owner.carryingTicketIds.push(carryDish.ticketId);
+      });
+      panel.addButton('Deliver: valid (nearest carried order → its own table)', () => {
+        const ticketId = owner.carryingTicketIds[0];
+        if (!ticketId) { lastDeliveryFeedback = 'nothing carried'; return; }
+        const ticket = tickets.get(ticketId);
+        if (!ticket) return;
+        ticket.state = 'delivered';
+        ticket.deliveredAtMs = simClockMs;
+        deliveryCompletions.push({ actor: 'owner', durationMs: simClockMs - (ticket.readyAtMs ?? simClockMs) });
+        if (deliveryCompletions.length > STEP_LOG_CAP) deliveryCompletions.shift();
+        owner.carryingTicketIds = owner.carryingTicketIds.filter((id) => id !== ticketId);
+        lastDeliveryFeedback = `SERVED — TABLE ${ticket.tableId ?? '—'} • ${dishById(ticket.dishId).id.toUpperCase()} • +$${dishById(ticket.dishId).suggestedPrice.toFixed(2)}`;
+      });
+      panel.addButton('Deliver: invalid (simulate wrong-table rejection)', () => {
+        // Mirrors `action-validator.js#resolveDeliver`'s own `wrong_table` rejection: state is
+        // UNCHANGED (still carrying, ticket still whatever it was) — only the feedback readout
+        // moves, exactly matching the real client's own "no order-delivered event, no carry-asset
+        // removal" AC for a rejected attempt.
+        lastDeliveryFeedback =
+          owner.carryingTicketIds.length > 0
+            ? "CAN'T DELIVER HERE — WRONG TABLE (state unchanged, still carrying)"
+            : "CAN'T DELIVER HERE — NOTHING CARRIED (state unchanged)";
+      });
+      panel.addButton('Clear owner carry state', () => {
+        for (const ticketId of owner.carryingTicketIds) {
+          const ticket = tickets.get(ticketId);
+          if (ticket) ticket.claimedBy = null;
+        }
+        owner.carryingTicketIds = [];
+        lastDeliveryFeedback = 'none yet';
+      });
+      const setCarryReadout = panel.addReadout('Owner carrying');
+      const setDeliveryFeedbackReadout = panel.addReadout('Last delivery feedback');
+
+      panel.addSeparator();
+
       panel.addButton('Owner: restock neediest bin', () => {
         if (!owner.spawned || owner.busyRemainingMs !== null) return;
         const bin = neediestBin();
@@ -986,6 +1120,14 @@ function createKitchenBottleneckHarness(): SceneHarness {
         setOwnerReadout(
           !owner.spawned ? 'not spawned' : owner.currentAction ? `${owner.currentAction} (${fmtMs(owner.busyRemainingMs)} left)` : 'free',
         );
+        // STORY-031 PRD §13.
+        const carrySlots = ownerCarrySlots();
+        setCarryReadout(
+          carrySlots.length === 0
+            ? 'nothing'
+            : `${carrySlots.length}/${carryCapacityMock} — ${carrySlots.map((s) => s.dishId).join(', ')}`,
+        );
+        setDeliveryFeedbackReadout(lastDeliveryFeedback);
 
         const stepWorkerAvg = average(stepCompletions.filter((c) => c.actor === 'worker').map((c) => c.durationMs));
         const stepOwnerAvg = average(stepCompletions.filter((c) => c.actor === 'owner').map((c) => c.durationMs));
@@ -1053,6 +1195,8 @@ function createKitchenBottleneckHarness(): SceneHarness {
         // `customer-flow-harness.ts`'s own `updateCustomerAnimations` call for the same split).
         harnessElapsedSeconds += realDt;
         scene?.updateReadyDishAnimations(harnessElapsedSeconds);
+        // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same real-wall-clock split.
+        scene?.updateCarryTargetAnimations(harnessElapsedSeconds);
 
         if (scene && camera) {
           camera.update(realDt);
@@ -1080,7 +1224,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       stationsMock = new Map();
       bins = new Map();
       workers = new Map();
-      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketId: null, repairTargetStation: null, actionTargetStation: null };
+      owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketIds: [], repairTargetStation: null, actionTargetStation: null };
       lastReadyDishIds = new Set();
     },
   };

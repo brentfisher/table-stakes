@@ -67,6 +67,11 @@ function toastToneFor(event: PresentationEvent): ArcadeToastTone {
       return 'bottleneck';
     case 'ingredient-blocked':
       return 'bottleneck';
+    // STORY-031. Negative action feedback, not a game-state alert — `bottleneck` (orange) reads
+    // as "that didn't work, try again" without the full alarm of `critical` (red), which this
+    // repo's own §14 vocabulary reserves for something actually going wrong in the match.
+    case 'delivery-rejected':
+      return 'bottleneck';
     case 'customer-critical':
     case 'customer-lost-to-rival':
     case 'customer-abandoned':
@@ -75,6 +80,17 @@ function toastToneFor(event: PresentationEvent): ArcadeToastTone {
       return 'healthy';
   }
 }
+
+/** STORY-031. `action-validator.js#resolveDeliver`'s own reason vocabulary, translated to the
+ * plain-language "what to do differently" PRD §4.2 asks a toast's detail line to carry. Every
+ * OTHER reason (a future validator addition) falls through to a generic uppercased/underscore-
+ * stripped rendering of the raw reason string below, rather than a broken blank line. */
+const DELIVERY_REJECTION_DETAIL: Record<string, string> = {
+  wrong_table: 'WRONG TABLE',
+  not_ready: 'ORDER NOT READY YET',
+  out_of_range: 'TOO FAR FROM THE TABLE',
+  no_such_target: 'NOT A TABLE',
+};
 
 /** PRD §4.2 "message must imply a decision": WHAT HAPPENED as the title, WHY IT MATTERS/WHAT TO
  * DO (or the plain-language event effect) as the detail line. Placeholder copy throughout — the
@@ -103,6 +119,11 @@ function toastCopyFor(event: PresentationEvent): { title: string; detail?: strin
       return { title: 'PARTY LOST', detail: 'WAIT TIME EXCEEDED' };
     case 'ingredient-blocked':
       return { title: 'INGREDIENT EMPTY', detail: `${event.stationId.toUpperCase()} BLOCKED` };
+    case 'delivery-rejected':
+      return {
+        title: "CAN'T DELIVER HERE",
+        detail: DELIVERY_REJECTION_DETAIL[event.reason] ?? event.reason.toUpperCase().replace(/_/g, ' '),
+      };
     default:
       return { title: 'UPDATE' };
   }
