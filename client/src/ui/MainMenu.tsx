@@ -3,24 +3,20 @@
 // slots into.
 //
 // Every item on the PRD's acceptance list is present as SOME affordance (never a dead link,
-// per this story's own framing): Play Online and, unless STORY-025 has landed on this branch's
-// base, Play vs Bot render disabled/"coming soon" — implementing that flow is explicitly out of
-// scope here (that story's own job). Join Private Match and, as of STORY-024, Invite Opponent
-// are real, working actions.
+// per this story's own framing): Play Online renders disabled/"coming soon" (no matchmaking
+// queue exists). Join Private Match, Invite Opponent (STORY-024) and, as of STORY-025, Play vs
+// Bot are real, working actions.
 //
-// `PLAY_VS_BOT_AVAILABLE` is the knob STORY-025 flips when it lands — same shape
-// `INVITE_AVAILABLE` used to be before STORY-024 wired its real `onClick` below.
+// STORY-025 wires "Play vs Bot" to `PlayVsBotScreen` — the same `activeModal` pattern
+// `HowToPlay`/`SettingsPanel` already use, rather than a fourth top-level route (see that
+// screen's own header for why).
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { navigate } from '../app/router';
 import { cacheInvite, type CreatedRoom } from '../app/invite-lobby-types';
 import { HowToPlay } from './HowToPlay';
 import { SettingsPanel } from './SettingsPanel';
-
-/** STORY-025 (solo bot match menu flow) has not landed on this branch's base — same shape
- * `INVITE_AVAILABLE` used to be: flipping this is necessary but not sufficient, that story
- * still has to add the real `onClick`. */
-const PLAY_VS_BOT_AVAILABLE = false;
+import { PlayVsBotScreen } from './PlayVsBotScreen';
 
 type VersionState =
   | { status: 'loading' }
@@ -68,7 +64,7 @@ function useVersion(): [VersionState, () => void] {
 export function MainMenu(): JSX.Element {
   const [version, retryVersion] = useVersion();
   const [joinCode, setJoinCode] = useState('');
-  const [activeModal, setActiveModal] = useState<'how-to-play' | 'settings' | null>(null);
+  const [activeModal, setActiveModal] = useState<'how-to-play' | 'settings' | 'play-vs-bot' | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
@@ -142,12 +138,9 @@ export function MainMenu(): JSX.Element {
           <button
             type="button"
             className="main-menu-action"
-            disabled={!PLAY_VS_BOT_AVAILABLE}
-            aria-disabled={!PLAY_VS_BOT_AVAILABLE}
-            title={PLAY_VS_BOT_AVAILABLE ? undefined : 'Coming soon — solo bot match menu (STORY-025)'}
+            onClick={() => setActiveModal('play-vs-bot')}
           >
             Play vs Bot
-            {!PLAY_VS_BOT_AVAILABLE ? <span className="main-menu-action-badge">Coming soon</span> : null}
           </button>
 
           <form className="main-menu-join" onSubmit={submitJoinCode}>
@@ -197,6 +190,7 @@ export function MainMenu(): JSX.Element {
 
       {activeModal === 'how-to-play' ? <HowToPlay onClose={() => setActiveModal(null)} /> : null}
       {activeModal === 'settings' ? <SettingsPanel onClose={() => setActiveModal(null)} /> : null}
+      {activeModal === 'play-vs-bot' ? <PlayVsBotScreen onClose={() => setActiveModal(null)} /> : null}
     </div>
   );
 }

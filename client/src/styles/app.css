@@ -811,6 +811,44 @@ body {
 }
 .settings-reset:hover { color: var(--text); border-color: #48545f; }
 
+.settings-field input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: #1b2128;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+}
+
+/* ------------------------------------------------------------------------------------------
+   STORY-025: the "Play vs Bot" configuration modal (`PlayVsBotScreen.tsx`). Reuses the
+   `.menu-modal`/`.settings-section`/`.settings-field` rules above wholesale — this block only
+   adds the bot-profile radio cards and the submit/error affordances those rules don't cover.
+   ------------------------------------------------------------------------------------------ */
+
+.bot-config-profiles { display: flex; flex-direction: column; gap: 8px; }
+.bot-config-profile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 9px 10px;
+  background: #1b2128;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.bot-config-profile input[type='radio'] { grid-row: 1 / span 2; margin-top: 3px; accent-color: var(--ok); }
+.bot-config-profile-label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.bot-config-profile-description { grid-column: 2; font-size: 12px; }
+.bot-config-profile--selected { border-color: var(--ok); }
+
+.bot-config-error { margin: 0; color: var(--bad); font-size: 13px; }
+
+.bot-config-submit { margin-top: 4px; }
+
 /* ------------------------------------------------------------------------------------------
    STORY-023: shared placeholder for a route whose owning story hasn't landed yet
    (`/join/:token`, `/lobby/:roomId`, `/dev/harnesses`) plus the catch-all 404 case.

@@ -45,33 +45,65 @@ export function apiRouter() {
    * PRD §12 room-flow steps 1-2. STORY-024 widened this from a bare dev endpoint into the
    * PRD's real private-invite flow: `{mode: 'private_human', hostDisplayName}` mints a
    * non-guessable `inviteToken` and a shareable `joinUrl`, and the response's `status` reads
-   * `waiting_for_opponent`. `mode` omitted (or anything else) keeps the EXACT pre-STORY-024
-   * behaviour — a bare dev room with no invite gating — since `POST /dev/match` and every
-   * `scripts/check-*.mjs` caller construct a room through `matchManager.createRoom()` directly
-   * and never hit this branch either way; this endpoint's own old callers (a plain
-   * `POST /api/rooms` with just `seed`/`phasePreset`) get the same room shape as before, plus
-   * three new always-`null` fields (`mode: 'dev'`, `status`, `hostDisplayName: null`) — additive,
-   * not breaking.
+   * `waiting_for_opponent`. `mode` omitted (or anything else BUT `'solo_bot'` below) keeps the
+   * EXACT pre-STORY-024 behaviour — a bare dev room with no invite gating — since
+   * `POST /dev/match` and every `scripts/check-*.mjs` caller construct a room through
+   * `matchManager.createRoom()` directly and never hit this branch either way; this endpoint's
+   * own old callers (a plain `POST /api/rooms` with just `seed`/`phasePreset`) get the same
+   * room shape as before, plus three new always-`null` fields (`mode: 'dev'`, `status`,
+   * `hostDisplayName: null`) — additive, not breaking.
    *
-   * `includeInvite: true` is passed ONLY here — see `roomStatus`'s own header on why the raw
-   * token is never re-served by `GET /api/rooms/:roomId` afterward.
+   * STORY-025 `{mode: 'solo_bot', botDifficulty, marketId}` is the player-facing "Play vs Bot"
+   * menu's room-creation path — the AC's requirement for a NON-`/dev/`-prefixed endpoint that
+   * seats a real bot. It deliberately reuses the exact `matchManager.createRoom` +
+   * `attachBot` sequence `POST /dev/match` already uses (that story's own header: "The bot
+   * itself is attached and JOINS its seat before this handler returns") rather than a second
+   * attachment mechanism — the only things this branch adds are validating `botDifficulty`
+   * through the SAME `normalizeBotDifficulty` STORY-017 shipped (never a parallel enum) and
+   * threading an optional `marketId` through to `Match` (see that constructor's own comment).
+   * `POST /dev/match` itself is UNCHANGED and still exists — this is an additive sibling, not a
+   * replacement; scripts and developers keep using the raw dev endpoint, and this one is what
+   * the menu screen calls.
+   *
+   * `includeInvite: true` is passed for every mode, same as before STORY-025 — a `solo_bot`
+   * room never mints an `inviteToken` (only `mode === 'private_human'` does, in `createRoom`),
+   * so the flag is simply a no-op for it, not a second branch to keep in sync.
    */
   router.post('/rooms', (req, res) => {
     const seed = typeof req.body?.seed === 'string' ? req.body.seed : undefined;
     const phasePreset = matchManager.normalizePhasePreset(req.body?.phasePreset);
-    const mode = req.body?.mode === 'private_human' ? 'private_human' : 'dev';
+    const requestedMode = req.body?.mode;
+    const mode =
+      requestedMode === 'private_human' ? 'private_human' : requestedMode === 'solo_bot' ? 'solo_bot' : 'dev';
+    // PRD §12 step 4's own market data — reused here as the validity check for an explicit
+    // player-chosen scenario (the STORY-025 menu's "market scenario" field): a real catalogue
+    // id passes through, anything else (omitted, mistyped, an id from a different catalogue
+    // version) is left `undefined` so `Match` falls back to its normal seed-drawn market rather
+    // than ever throwing on a client-supplied string.
+    const requestedMarketId = req.body?.marketId;
+    const marketId =
+      typeof requestedMarketId === 'string' && catalogue.marketsById[requestedMarketId]
+        ? requestedMarketId
+        : undefined;
     const room = matchManager.createRoom({
       ...(seed ? { seed } : {}),
       phasePreset,
       mode,
       ...(mode === 'private_human' ? { hostDisplayName: req.body?.hostDisplayName } : {}),
+      ...(mode === 'solo_bot' ? { requiredPlayers: 2, marketId } : {}),
     });
+    let botDifficulty = null;
+    if (mode === 'solo_bot') {
+      botDifficulty = normalizeBotDifficulty(req.body?.botDifficulty);
+      attachBot(room, { difficulty: botDifficulty });
+    }
     const status = matchManager.roomStatus(room, { includeInvite: true });
     res.status(201).json({
       ...status,
       ...(room.inviteToken
         ? { joinUrl: `${req.protocol}://${req.get('host')}/join/${room.inviteToken}` }
         : {}),
+      ...(mode === 'solo_bot' ? { bot: true, botDifficulty } : {}),
     });
   });
 

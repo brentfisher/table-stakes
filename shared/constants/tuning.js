@@ -988,9 +988,28 @@ export const STATION_QUEUE_ATTENTION_THRESHOLD = 1;
 /** The named RNG sub-stream every bot draw comes from. Decision 18. */
 export const BOT_RNG_STREAM = 'bot';
 
-/** The only two difficulty levels STORY-017 ships. Both run the SAME bot code
- * (`bot-controller.js`) — difficulty is a cadence/threshold knob, never a second AI. */
-export const BOT_DIFFICULTIES = Object.freeze(['easy', 'hard']);
+/**
+ * The two difficulty levels STORY-017 shipped (`easy`/`hard`), plus three STORY-025 added for
+ * its player-facing "Play vs Bot" menu (`balanced`/`fast_service`/`premium`). All five run the
+ * SAME bot code (`bot-controller.js`) — difficulty is a cadence/threshold knob, never a second
+ * AI. `easy`/`hard` and `BOT_DEFAULT_DIFFICULTY` below are BYTE-IDENTICAL to STORY-017: every
+ * existing caller (`POST /dev/match`, every `scripts/check-*.mjs`) passes one of those two
+ * literal strings or omits `difficulty` entirely, and this append-only widening cannot change
+ * what any of them observe.
+ *
+ * WHY THREE MORE, RATHER THAN REUSING `hard` UNDER THREE DISPLAY NAMES: the STORY-025 menu
+ * needs Balanced/Fast Service/Premium as real, distinct options — a picker where three of four
+ * choices are the identical `hard` knobs wearing different labels is not configuration, and
+ * mapping three UI labels onto ONE underlying value would also BE the "parallel enum next to
+ * `normalizeBotDifficulty`" that story's own notes forbid (a label table plus a hidden
+ * many-to-one mapping is still a second source of truth about what the bot can be). Adding
+ * three real members here instead means `normalizeBotDifficulty` — unchanged — is still the
+ * only gate, and every one of the five values it accepts actually plays differently. The
+ * client's dev-only "Practice" profile is NOT a sixth member: it is `easy` itself, given a
+ * friendlier label only in `client/src/ui/bot-profiles.ts` (no shared/server concept needed,
+ * since `easy` already exists and already behaves like a low-pressure opponent).
+ */
+export const BOT_DIFFICULTIES = Object.freeze(['easy', 'hard', 'balanced', 'fast_service', 'premium']);
 export const BOT_DEFAULT_DIFFICULTY = 'easy';
 
 /**
@@ -998,8 +1017,19 @@ export const BOT_DEFAULT_DIFFICULTY = 'easy';
  * shorter interval reacts to a changing floor faster and wastes less time walking toward a
  * target that stopped being the best choice — this is the single biggest lever on how
  * "on top of it" the bot's restaurant looks, which is why difficulty turns on it first.
+ *
+ * The three STORY-025 profiles sit at real, distinct points on this same axis rather than
+ * reusing `hard`'s number: `fast_service` reacts even faster than `hard` (the profile's whole
+ * point), `premium` reacts more deliberately, and `balanced` sits at the midpoint between
+ * `easy` and `hard`.
  */
-export const BOT_DECISION_INTERVAL_MS = Object.freeze({ easy: 900, hard: 220 });
+export const BOT_DECISION_INTERVAL_MS = Object.freeze({
+  easy: 900,
+  hard: 220,
+  balanced: 450,
+  fast_service: 180,
+  premium: 300,
+});
 
 /**
  * Probability, per decision tick, that the bot does nothing that tick instead of acting —
@@ -1009,12 +1039,32 @@ export const BOT_DECISION_INTERVAL_MS = Object.freeze({ easy: 900, hard: 220 });
  * rather than broken); `hard` misses almost none, which is what "punishes idleness" means in
  * practice — an idle human owner gets no help at all, while a hard bot owner is a near-constant
  * second pair of hands.
+ *
+ * STORY-025's three profiles: `balanced` sits between `easy` and `hard`; `fast_service` trades
+ * a little precision for its much faster `BOT_DECISION_INTERVAL_MS` above (still far sharper
+ * than `easy`); `premium` is the most precise of all five, on the theory that a "premium"
+ * restaurant's owner rarely fumbles, even though — see `BOT_DECISION_INTERVAL_MS` — it is not
+ * the fastest-reacting profile.
  */
-export const BOT_MISTAKE_PROBABILITY = Object.freeze({ easy: 0.35, hard: 0.05 });
+export const BOT_MISTAKE_PROBABILITY = Object.freeze({
+  easy: 0.35,
+  hard: 0.05,
+  balanced: 0.2,
+  fast_service: 0.1,
+  premium: 0.02,
+});
 
-/** Whether the bot spends its stamina sprinting between tasks. `easy` walks; `hard` sprints
- * whenever `movement-system.js`'s own stamina rules allow it, same as a sharp human would. */
-export const BOT_SPRINT_ENABLED = Object.freeze({ easy: false, hard: true });
+/** Whether the bot spends its stamina sprinting between tasks. `easy` walks; every other
+ * difficulty — `hard` and, as of STORY-025, `balanced`/`fast_service`/`premium` — sprints
+ * whenever `movement-system.js`'s own stamina rules allow it, same as a sharp human would;
+ * `easy` alone stays the unhurried, practice-grade opponent. */
+export const BOT_SPRINT_ENABLED = Object.freeze({
+  easy: false,
+  hard: true,
+  balanced: true,
+  fast_service: true,
+  premium: true,
+});
 
 /** `setup_submit` menu-choice weighting (`bot/bot-setup.js`). One point per dish tag that
  * matches the active market's `preferredTags` — the AC's named signal — plus a smaller nudge

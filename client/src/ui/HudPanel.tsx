@@ -28,6 +28,7 @@ import upgradesData from '../../../shared/game-data/upgrades.json';
 import type { GameClientStatus } from '../game/GameClient';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
 import { eventTitle } from './event-titles';
+import { botProfileLabel } from './bot-profiles';
 
 const DISH_NAMES = new Map<string, string>(
   (dishesData.dishes as Array<{ id: string; name: string }>).map((d) => [d.id, d.name]),
@@ -126,6 +127,12 @@ export function HudPanel({
 
   const self = status?.restaurants.find((r) => r.restaurantId === status.playerId) ?? null;
   const rival = status?.restaurants.find((r) => r.restaurantId !== status.playerId) ?? null;
+  // STORY-025. "The bot is represented ... using the existing rival summary/HUD surfaces" —
+  // `rival` above is already that surface (the bot occupies a normal restaurant slot); this is
+  // only the label, so the scoreboard header reads "Bot (Premium)" instead of a plain "Rival"
+  // that gives no hint the seat across the floor is server-controlled.
+  const rivalBot = status?.bots.find((bot) => bot.playerId === rival?.restaurantId) ?? null;
+  const rivalLabel = rivalBot ? `Bot (${botProfileLabel(rivalBot.difficulty)})` : 'Rival';
 
   // PRD §18 "Customer count / queue warning": CURRENTLY in the dining room plus currently
   // waiting — distinct from `guestsServed` (the scoreboard's cumulative, all-match count).
@@ -231,7 +238,7 @@ export function HudPanel({
               <tr>
                 <th />
                 <th>You</th>
-                <th>Rival</th>
+                <th>{rivalLabel}</th>
               </tr>
             </thead>
             <tbody>
