@@ -51,6 +51,8 @@ export interface OwnerRenderState {
 export interface CustomerRenderState {
   customerId: string;
   position: { x: number; y: number; z: number };
+  /** A party is one server entity but should read as several diners once seated. */
+  partySize?: number;
   patienceRemaining: number;
   unhappy: boolean;
   /** §14 MVP entity table "segment-cued customers" — an id in customer-segments.json, tinting
@@ -118,21 +120,16 @@ const WORKER_ROLE_GLYPHS: Record<string, string> = {
   host: 'H',
 };
 
-/** PRD §17's closed `WorkerTaskKind` vocabulary, one SINGLE-CHARACTER glyph each — a live
- * legibility check on the first cut of this file used two-character codes (`ST`, `TK`, `CL`,
- * `PY`) and found them genuinely hard to read at the default camera height even zoomed in for a
- * screenshot (roughly 6px per character at ~32 units away, fov 46): "legible from the default
- * camera height without zooming" is this story's own AC, not a nice-to-have. One character per
- * task, all seven mutually distinct (collisions with `WORKER_ROLE_GLYPHS` are fine — the two
- * vocabularies render at different heights above the worker and are never read as one glyph). */
-const WORKER_TASK_GLYPHS: Record<string, string> = {
-  tend_station: 'K',
-  restock: 'R',
-  deliver_order: 'D',
-  seat_party: 'A',
-  take_order: 'T',
-  clear_table: 'X',
-  collect_payment: '$',
+/** Worker role icons identify the person; these explicit task chips describe what that person
+ * is doing. In particular, the old `A` for `seat_party` looked like the walker's name. */
+const WORKER_TASK_LABELS: Record<string, string> = {
+  tend_station: 'COOKING',
+  restock: 'RESTOCK',
+  deliver_order: 'DELIVER',
+  seat_party: 'SEATING',
+  take_order: 'ORDER',
+  clear_table: 'CLEAR',
+  collect_payment: 'PAYMENT',
 };
 
 /** How many queued-ticket boxes a station's indicator shows before it just reads "a lot" —
@@ -1028,21 +1025,21 @@ export class RestaurantScene {
       // guidance), independent of freshness, exactly as the reference composition
       // (`docs/rival-restaurant-arcade-legibility-ui.png`) shows a blue T04 chip regardless of
       // how green/orange the plate's own glow reads.
-      const tableChip = createLabelSprite(formatTableChip(state.tableId), STATE_COLORS.opportunity, 0.42);
-      tableChip.position.set(0, 0.95, 0);
+      const tableChip = createLabelSprite(formatTableChip(state.tableId), STATE_COLORS.opportunity, 0.62);
+      tableChip.position.set(0, 1.4, 0);
       tableChip.name = 'table_chip';
       group.add(tableChip);
 
       // PRD §5.2 "compact state label — READY while fresh, GOING COLD once exceeded". Both built
       // once, each already tinted its own fixed semantic color, and toggled by visibility —
-      // never recolored at runtime, matching `WORKER_TASK_GLYPHS`'s "build every option once"
+      // never recolored at runtime, matching the worker task chips' "build every option once"
       // discipline above.
-      const readyLabel = createLabelSprite('READY', STATE_COLORS.healthy, 0.34);
-      readyLabel.position.set(0, 0.62, 0);
+      const readyLabel = createLabelSprite('READY', STATE_COLORS.healthy, 0.52);
+      readyLabel.position.set(0, 0.83, 0);
       readyLabel.name = 'label_ready';
       group.add(readyLabel);
-      const coldLabel = createLabelSprite('GOING COLD', STATE_COLORS.bottleneck, 0.34);
-      coldLabel.position.set(0, 0.62, 0);
+      const coldLabel = createLabelSprite('GOING COLD', STATE_COLORS.bottleneck, 0.52);
+      coldLabel.position.set(0, 0.83, 0);
       coldLabel.name = 'label_cold';
       group.add(coldLabel);
 
@@ -1229,11 +1226,10 @@ export class RestaurantScene {
     let group = this.customers.get(state.customerId);
     if (!group) {
       group = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.26, 0.55, 5, 10),
-        new THREE.MeshStandardMaterial({ color: segmentColor, roughness: 0.7 }),
-      );
-      body.position.y = 0.62;
+      // One snapshot entity represents the whole party. Draw up to four seated diners around
+      // the table instead of a single body hidden under its center; their heads remain visible
+      // above the tabletop while the lower torso reads as seated in the authored chairs.
+      const body = new THREE.Group();
       body.name = 'body';
       group.add(body);
       const ring = new THREE.Mesh(
@@ -1249,6 +1245,33 @@ export class RestaurantScene {
       this.scene.add(group);
     }
     group.position.set(state.position.x, state.position.y, state.position.z);
+    const body = group.getObjectByName('body') as THREE.Group;
+    const partySize = Math.max(1, Math.min(4, state.partySize ?? 1));
+    const seatOffsets = [
+      [-1.02, 0], [1.02, 0], [0, -1.02], [0, 1.02],
+    ] as const;
+    while (body.children.length < partySize) {
+      const diner = new THREE.Group();
+      diner.name = 'diner';
+      const torso = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.18, 0.2, 5, 10),
+        new THREE.MeshStandardMaterial({ color: segmentColor, roughness: 0.7 }),
+      );
+      torso.position.y = 0.45;
+      diner.add(torso);
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.17, 12, 10),
+        new THREE.MeshStandardMaterial({ color: 0xf0d5b8, roughness: 0.8 }),
+      );
+      head.position.y = 0.82;
+      diner.add(head);
+      body.add(diner);
+    }
+    body.children.forEach((child, index) => {
+      child.visible = index < partySize;
+      const [x, z] = seatOffsets[index] ?? seatOffsets[0];
+      child.position.set(x, 0, z);
+    });
     const ring = group.getObjectByName('patience_ring') as THREE.Mesh;
     (ring.material as THREE.MeshBasicMaterial).color.setHex(ringColor);
     // PRD §4.4 "visibly look impatient" — `updateCustomerAnimations` (per render frame) reads
@@ -1283,12 +1306,12 @@ export class RestaurantScene {
       if (!body) continue;
       if (amplitude === 0) {
         body.rotation.z = 0;
-        body.position.y = 0.62;
+        body.position.y = 0;
         continue;
       }
       const speed = speedByBand[band] ?? 0;
       body.rotation.z = Math.sin(elapsedSeconds * speed) * amplitude;
-      body.position.y = 0.62 + Math.abs(Math.sin(elapsedSeconds * speed * 1.7)) * amplitude * 0.4;
+      body.position.y = Math.abs(Math.sin(elapsedSeconds * speed * 1.7)) * amplitude * 0.4;
     }
   }
 
@@ -1311,15 +1334,14 @@ export class RestaurantScene {
       );
       body.position.y = 0.8;
       group.add(body);
-      // 0.6, not 0.4 — see WORKER_TASK_GLYPHS's own comment on the live legibility check that
-      // caught these reading too small at the default camera height.
+      // Role glyphs stay compact because the task chip above them supplies the readable action.
       const roleGlyph = createGlyphSprite(WORKER_ROLE_GLYPHS[state.role] ?? '?', color, 0.6);
       roleGlyph.position.set(0, 1.55, 0);
       group.add(roleGlyph);
-      // One glyph per possible task kind, plus one "needs help", all built once and toggled —
+      // One explicit task chip per possible task, plus one "needs help", all built once and toggled —
       // see this method's own header on why only one is ever visible at a time.
-      for (const kind of Object.keys(WORKER_TASK_GLYPHS)) {
-        const jobGlyph = createGlyphSprite(WORKER_TASK_GLYPHS[kind], STATE_COLORS.opportunity, 0.6);
+      for (const kind of Object.keys(WORKER_TASK_LABELS)) {
+        const jobGlyph = createLabelSprite(WORKER_TASK_LABELS[kind], STATE_COLORS.opportunity, 0.38);
         jobGlyph.position.set(0, 1.95, 0);
         jobGlyph.visible = false;
         jobGlyph.name = `job_${kind}`;
@@ -1336,7 +1358,7 @@ export class RestaurantScene {
     }
     group.position.set(state.position.x, state.position.y, state.position.z);
 
-    for (const kind of Object.keys(WORKER_TASK_GLYPHS)) {
+    for (const kind of Object.keys(WORKER_TASK_LABELS)) {
       const sprite = group.getObjectByName(`job_${kind}`) as THREE.Sprite | undefined;
       if (sprite) sprite.visible = false;
     }

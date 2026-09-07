@@ -1,8 +1,8 @@
 // Canvas-drawn glyph sprites for the PRD §14 3D indicators that need a legible symbol rather
 // than only a color (role icons, task icons, the ingredient-shortage glyph, the food-ready
 // glyph, table-state badges). A `THREE.Sprite` always faces the camera, which is what keeps a
-// small icon readable from the fixed high-angle camera (`CameraController`'s default height 24,
-// distance 21) without the geometry-facing tricks a flat plane would need.
+// small icon readable from the close high-angle camera without the geometry-facing tricks a
+// flat plane would need.
 //
 // BUILD THE TEXTURE ONCE PER GLYPH, REUSE IT FOREVER. The canvas draw (measuring text, filling
 // a rounded rect, etc.) only has to happen once per distinct glyph string — customers alone can

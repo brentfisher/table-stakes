@@ -217,7 +217,7 @@ function routePlanFor(
 
 // --- On-screen state label -------------------------------------------------------------------
 // Deliberately just the state name, nothing appended — the same live-legibility lesson
-// `RestaurantScene.ts`'s own `WORKER_TASK_GLYPHS` comment documents: cramming party size or a
+// `RestaurantScene.ts`'s worker-task chip comment documents: cramming party size or a
 // decision reason into this sprite too made it unreadable at the default camera height in an
 // early pass. Party size shows instead as a body-scale cue (`syncCustomer` below) and in the
 // "Selected party" dropdown's own label text; decision reason shows in the selected-party
@@ -342,6 +342,7 @@ function createCustomerFlowHarness(): SceneHarness {
     const renderState: CustomerRenderState = {
       customerId: customer.customerId,
       position: plan.position,
+      partySize: customer.partySize,
       patienceRemaining: customer.patienceRemaining,
       unhappy: customer.unhappy,
       segmentId: customer.segmentId,
@@ -350,10 +351,9 @@ function createCustomerFlowHarness(): SceneHarness {
 
     const group = scene?.scene.getObjectByName(`customer_${customer.customerId}`);
     if (group) {
-      // §15.2 "change party size" — the shared entity mesh itself has no notion of party size
-      // (one capsule per `CustomerSnapshot`, regardless of headcount), so a modest scale bump
-      // is this harness's own crowd-size cue; it never touches `RestaurantScene`'s geometry.
-      group.scale.setScalar(1 + (customer.partySize - 1) * 0.12);
+      // §15.2 "change party size" now uses the production scene's seated-party rendering.
+      // The harness only owns the state label; it does not add a competing crowd-size cue.
+      group.scale.setScalar(1);
       syncLabel(group, customer.state, plan.lineColor, showLabels);
     }
     syncRoutes(customer.customerId, plan.paths, plan.lineColor, showRoutes);

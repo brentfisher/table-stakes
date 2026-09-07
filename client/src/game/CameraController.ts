@@ -11,14 +11,14 @@ export interface CameraSettings {
   fov: number;
 }
 
-// Framed so the whole PRD §14 footprint — street/entry through to the pantry and
-// dishwashing at the back of house — is visible at once. Readability of queues, tables,
-// stations and staff from one view is the §4.4 requirement the camera exists to satisfy.
+// Framed around the actual restaurant rather than the surrounding street. The owner can still
+// see the whole dining room and kitchen, while dishes, customers, and task labels read without
+// needing an overview toggle.
 export const DEFAULT_CAMERA: CameraSettings = {
-  height: 26,
-  distance: 23,
+  height: 19,
+  distance: 17,
   angle: Math.PI - 0.28,
-  fov: 46,
+  fov: 40,
 };
 
 export class CameraController {
