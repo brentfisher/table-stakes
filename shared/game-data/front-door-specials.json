@@ -1,0 +1,8 @@
+{
+  "specials": [
+    { "id": "lunch_express", "name": "Lunch Express", "durationMs": 30000, "cooldownMs": 45000, "cost": 12, "eligibility": "office_rush", "benefit": "Improves quick, value-conscious consideration.", "downside": "Lower average check." },
+    { "id": "happy_hour", "name": "Happy Hour", "durationMs": 30000, "cooldownMs": 45000, "cost": 15, "eligibility": "price_sensitive_wave", "benefit": "Improves value conversion and add-on interest.", "downside": "Lower margin and higher volume." },
+    { "id": "game_day_combo", "name": "Game-Day Combo", "durationMs": 30000, "cooldownMs": 45000, "cost": 18, "eligibility": "stadium_wave", "benefit": "Improves hearty group consideration.", "downside": "Raises table and server pressure." },
+    { "id": "waitlist_honesty", "name": "Waitlist Honesty", "durationMs": 30000, "cooldownMs": 45000, "cost": 8, "eligibility": "long_queue", "benefit": "Protects queue satisfaction.", "downside": "May lower immediate conversion." }
+  ]
+}

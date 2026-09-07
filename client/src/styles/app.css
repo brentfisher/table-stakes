@@ -1082,3 +1082,6 @@ body {
   .arcade-toast { animation: none; }
 }
 .invite-expiry { margin: 8px 0 0; font-size: 12px; }
+.front-door-board { position: fixed; right: 22px; bottom: 88px; z-index: 12; display: grid; gap: 6px; max-width: 300px; padding: 12px; border: 2px solid #d88a32; background: rgba(30, 20, 15, .92); color: #fff2d8; font-size: 12px; box-shadow: 0 4px 18px #0008; }
+.front-door-board strong { color: #ffd27a; letter-spacing: .08em; }
+.front-door-board small { color: #cbb99c; }

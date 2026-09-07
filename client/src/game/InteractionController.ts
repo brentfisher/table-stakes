@@ -141,6 +141,11 @@ export class InteractionController {
     return entity !== undefined && distanceXZ(position, this.entityVec(entity)) <= OWNER_INTERACT_RANGE;
   }
 
+  /** Shared proximity read for command-post overlays; it never authorizes an action. */
+  inRangeOf(position: Vec3, entityId: string): boolean {
+    return this.inRange(position, entityId);
+  }
+
   private entityVec(entity: LayoutEntity): Vec3 {
     const [x, y, z] = entity.position;
     return { x, y, z };

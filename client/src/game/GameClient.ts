@@ -160,6 +160,8 @@ export interface GameClientStatus {
    * whether `UpgradeTerminal`'s shop overlay renders. Recomputed every frame, patched on
    * change, same discipline as `prompt`. */
   nearUpgradeTerminal: boolean;
+  /** STORY-032. Drives the read-only front-door board while the owner is at the host stand. */
+  nearHostStand: boolean;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -301,6 +303,7 @@ export class GameClient {
     cash: null,
     purchasedUpgradeIds: [],
     nearUpgradeTerminal: false,
+    nearHostStand: false,
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -885,6 +888,8 @@ export class GameClient {
       if (nearTerminal !== this.status.nearUpgradeTerminal) {
         this.patchStatus({ nearUpgradeTerminal: nearTerminal });
       }
+      const nearHostStand = this.interaction.inRangeOf(self.position, 'host_stand');
+      if (nearHostStand !== this.status.nearHostStand) this.patchStatus({ nearHostStand });
     }
 
     this.sinceInputSend += dt * 1000;

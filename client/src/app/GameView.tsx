@@ -30,6 +30,7 @@ import { EventBanner } from '../ui/EventBanner';
 import { ArcadeToast } from '../ui/ArcadeToast';
 import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 import { LobbyScreen } from '../ui/LobbyScreen';
+import { FrontDoorBoard } from '../ui/FrontDoorBoard';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -165,6 +166,9 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           purchasedUpgradeIds={status.purchasedUpgradeIds}
           onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
         />
+      ) : null}
+      {status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <FrontDoorBoard status={status} />
       ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
