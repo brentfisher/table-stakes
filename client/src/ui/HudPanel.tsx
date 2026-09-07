@@ -25,7 +25,7 @@
 
 import dishesData from '../../../shared/game-data/dishes.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
-import type { GameClientStatus } from '../game/GameClient';
+import { FRONT_DOOR_UPGRADE_IDS, type GameClientStatus } from '../game/GameClient';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
 import { eventTitle } from './event-titles';
 import { botProfileLabel } from './bot-profiles';
@@ -38,6 +38,14 @@ const UPGRADE_NAMES = new Map<string, string>(
 );
 const dishName = (dishId: string) => DISH_NAMES.get(dishId) ?? dishId;
 const upgradeName = (upgradeId: string) => UPGRADE_NAMES.get(upgradeId) ?? upgradeId;
+const FRONT_DOOR_EFFECT_LABELS: Record<string, string> = {
+  host_stand_toolkit_1: 'HOST -30%',
+  street_signage_1: 'STREET +6PT',
+  queue_pager_1: 'QUEUE ×1.2',
+  guest_recovery_kit_1: 'RECOVERY ×1.5',
+  maitre_d_radio_1: 'HANDOFF -20%',
+  window_display_1: 'SPECIAL LIFT ×1.25',
+};
 
 const PHASE_LABELS: Record<string, string> = {
   lobby: 'Lobby',
@@ -144,6 +152,7 @@ export function HudPanel({
 
   const activeEvent = status?.events.find((e) => e.state === 'active') ?? null;
   const activeSpecial = status?.frontDoor[status.playerId ?? '']?.activeSpecialId ?? null;
+  const frontDoorUpgradeIds = status?.purchasedUpgradeIds.filter((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)) ?? [];
   const upcomingEvent =
     status?.events
       .filter((e) => e.state === 'warning' && typeof e.startsInMs === 'number')
@@ -159,6 +168,11 @@ export function HudPanel({
       <div className="hud">
         <h1>Rival Restaurant</h1>
         {activeSpecial ? <div className="hud-special">SPECIAL: {activeSpecial.replace(/_/g, ' ').toUpperCase()}</div> : null}
+        {frontDoorUpgradeIds.length > 0 ? (
+          <div className="hud-special">
+            FRONT DOOR: {frontDoorUpgradeIds.map((id) => FRONT_DOOR_EFFECT_LABELS[id] ?? upgradeName(id)).join(' · ')}
+          </div>
+        ) : null}
         <dl>
           {!inService ? <>
             <dt>Server</dt>

@@ -9,7 +9,7 @@
 // match.
 //
 // REUSES THE REAL VISUAL HOOKS, DOESN'T REBUILD THEM. `RestaurantScene#setStationUpgraded`,
-// `#setPantryUpgraded` and `#setCarrying` are the exact methods `GameClient.ts` calls when a
+// `#setPantryUpgraded`, `#setCarrying`, and `#setFrontDoorUpgrades` are the exact methods `GameClient.ts` calls when a
 // purchase actually lands (see its own `purchasedUpgradeIds.includes(...)` calls) — toggling a
 // checkbox here calls the identical methods with the identical arguments, so what this harness
 // shows IS what the live client would show, not a lookalike. `client/src/game/GameClient.ts`'s
@@ -17,7 +17,7 @@
 // authority for which effect keys a purchase is even allowed for is
 // `server/src/game/systems/upgrade-system.js`'s `KNOWN_EFFECT_KEYS`, which harnesses cannot
 // import (`harnesses/tsconfig.json` doesn't include `server/`). So this file keeps its OWN
-// switch over the same four keys that module reads — `resolveOwnedEffects` below — and an
+// switch over the same effect keys that module reads — `resolveOwnedEffects` below — and an
 // upgrade whose `effects` names anything else falls into the generic branch, labelled as
 // unwired. That switch, not an imported id list, is what has to change the day a sixth effect
 // key gets wired — same discipline `event-visualization-harness.ts` uses for not branching on
@@ -77,7 +77,7 @@ interface UpgradeDef {
   effects: UpgradeEffects;
 }
 // `as unknown as` — same justification as `event-visualization-harness.ts`'s cast of
-// `eventsData.events`: eleven heterogeneous `effects` shapes infer an eleven-way union that no
+// `eventsData.events`: heterogeneous `effects` shapes infer a union that no
 // single `UpgradeEffects` interface satisfies directly; the JSON is trusted input.
 const UPGRADES = upgradesData.upgrades as unknown as UpgradeDef[];
 
@@ -105,10 +105,16 @@ interface ResolvedEffects {
   stationSpeedMultipliers: Record<string, number>;
   seatedPatienceMultiplier: number;
   restockTravelTimeMultiplier: number;
+  seatingProcessMultiplier: number;
+  undecidedConsiderationBonus: number;
+  queuePatienceMultiplier: number;
+  recoveryPatienceMultiplier: number;
+  serverSeatingDurationMultiplier: number;
+  activeSpecialVisibilityMultiplier: number;
 }
 
 /** The same fold `upgrade-system.js#resolveEffects` runs server-side, over whichever upgrades
- * are checked in the ownership list. Only the four keys that module actually reads are folded —
+ * are checked in the ownership list. Only keys that module actually reads are folded —
  * an owned upgrade naming any other key contributes nothing here, matching live behaviour. */
 function resolveOwnedEffects(owned: Set<string>): ResolvedEffects {
   const effects: ResolvedEffects = {
@@ -116,6 +122,12 @@ function resolveOwnedEffects(owned: Set<string>): ResolvedEffects {
     stationSpeedMultipliers: {},
     seatedPatienceMultiplier: 1,
     restockTravelTimeMultiplier: 1,
+    seatingProcessMultiplier: 1,
+    undecidedConsiderationBonus: 0,
+    queuePatienceMultiplier: 1,
+    recoveryPatienceMultiplier: 1,
+    serverSeatingDurationMultiplier: 1,
+    activeSpecialVisibilityMultiplier: 1,
   };
   for (const id of owned) {
     const upgrade = UPGRADES.find((u) => u.id === id);
@@ -131,6 +143,18 @@ function resolveOwnedEffects(owned: Set<string>): ResolvedEffects {
         effects.seatedPatienceMultiplier *= value;
       } else if (key === 'restockTravelTimeMultiplier' && typeof value === 'number') {
         effects.restockTravelTimeMultiplier *= value;
+      } else if (key === 'undecidedConsiderationBonus' && typeof value === 'number') {
+        effects.undecidedConsiderationBonus += value;
+      } else if (key === 'seatingProcessMultiplier' && typeof value === 'number') {
+        effects.seatingProcessMultiplier *= value;
+      } else if (key === 'queuePatienceMultiplier' && typeof value === 'number') {
+        effects.queuePatienceMultiplier *= value;
+      } else if (key === 'recoveryPatienceMultiplier' && typeof value === 'number') {
+        effects.recoveryPatienceMultiplier *= value;
+      } else if (key === 'serverSeatingDurationMultiplier' && typeof value === 'number') {
+        effects.serverSeatingDurationMultiplier *= value;
+      } else if (key === 'activeSpecialVisibilityMultiplier' && typeof value === 'number') {
+        effects.activeSpecialVisibilityMultiplier *= value;
       }
     }
   }
@@ -155,6 +179,18 @@ function performanceOverlayLines(upgrade: UpgradeDef): string[] {
       lines.push(`Seated patience (avg segment): ${AVERAGE_PATIENCE_SECONDS.toFixed(0)}s → ${after.toFixed(0)}s (×${value})`);
     } else if (key === 'restockTravelTimeMultiplier' && typeof value === 'number') {
       lines.push(`Restock travel time: ${INVENTORY_RESTOCK_TRAVEL_MS}ms → ${Math.round(INVENTORY_RESTOCK_TRAVEL_MS * value)}ms (×${value})`);
+    } else if (key === 'seatingProcessMultiplier' && typeof value === 'number') {
+      lines.push(`Host processing time: 100% → ${Math.round(value * 100)}% when a table is available`);
+    } else if (key === 'undecidedConsiderationBonus' && typeof value === 'number') {
+      lines.push(`Street consideration: +${Math.round(value * 100)} points; restaurant choice remains probabilistic`);
+    } else if (key === 'queuePatienceMultiplier' && typeof value === 'number') {
+      lines.push(`Queue patience duration: ×${value}`);
+    } else if (key === 'recoveryPatienceMultiplier' && typeof value === 'number') {
+      lines.push(`Manager recovery strength: ×${value}, once per party`);
+    } else if (key === 'serverSeatingDurationMultiplier' && typeof value === 'number') {
+      lines.push(`Server seating handoff time: 100% → ${Math.round(value * 100)}%`);
+    } else if (key === 'activeSpecialVisibilityMultiplier' && typeof value === 'number') {
+      lines.push(`Eligible active-special consideration lift: ×${value}`);
     } else {
       lines.push(`${key}: ${JSON.stringify(value)} — not yet wired to a live system (a purchase of this upgrade is rejected server-side; see upgrade-system.js KNOWN_EFFECT_KEYS)`);
     }
@@ -215,6 +251,7 @@ function createUpgradePreviewHarness(): SceneHarness {
     }
     scene.setPantryUpgraded(effects.restockTravelTimeMultiplier < 1);
     scene.setCarrying(OWNER_ID, Math.max(0, Math.min(3, effects.ownerCarryCapacity)));
+    scene.setFrontDoorUpgrades([...ownedUpgradeIds]);
     if (additionalTableGroup) additionalTableGroup.visible = ownedUpgradeIds.has('additional_table_1');
   }
 
@@ -369,7 +406,10 @@ function createUpgradePreviewHarness(): SceneHarness {
         const effects = resolveOwnedEffects(ownedUpgradeIds);
         setEffectsReadout(
           `carry ${effects.ownerCarryCapacity} · grill ×${(effects.stationSpeedMultipliers.grill ?? 1).toFixed(2)} · ` +
-          `patience ×${effects.seatedPatienceMultiplier.toFixed(2)} · restock ×${effects.restockTravelTimeMultiplier.toFixed(2)}`,
+          `patience ×${effects.seatedPatienceMultiplier.toFixed(2)} · restock ×${effects.restockTravelTimeMultiplier.toFixed(2)} · ` +
+          `host ×${effects.seatingProcessMultiplier.toFixed(2)} · queue ×${effects.queuePatienceMultiplier.toFixed(2)} · ` +
+          `street +${Math.round(effects.undecidedConsiderationBonus * 100)}pt · recovery ×${effects.recoveryPatienceMultiplier.toFixed(2)} · ` +
+          `handoff ×${effects.serverSeatingDurationMultiplier.toFixed(2)} · special ×${effects.activeSpecialVisibilityMultiplier.toFixed(2)}`,
         );
 
         const upgrade = selectedUpgrade();

@@ -8,7 +8,7 @@ worktree_path: /Users/brent/table-stakes-worktrees/story-012-upgrades-and-termin
 base_branch: master
 pr_url: https://github.com/brentfisher/table-stakes/pull/14
 is_architectural: false
-approach_summary: "upgrade-system.js is a new per-restaurant facade (owned upgrades, a derived cashAvailable, match.upgradeEffects republished every tick) mirroring order-system.js's/event-system.js's own facade pattern. Wires 5 of 11 catalogue upgrades into existing tuning hooks in order/customer/inventory/action-validator; the other 6 are declared but rejected effect_not_implemented on purchase (Decision 7's discipline applied to effect keys). action-validator.js#handlePurchaseUpgrade is the new authority chokepoint for purchase_upgrade, mirroring handleInteract."
+approach_summary: "upgrade-system.js is a per-restaurant facade (owned upgrades, a derived cashAvailable, match.upgradeEffects republished every tick) mirroring order-system.js's/event-system.js's own facade pattern. STORY-012 initially wired 5 of 11 catalogue upgrades into existing tuning hooks; later stories can activate declared effects through the same validated path. action-validator.js#handlePurchaseUpgrade is the authority chokepoint for purchase_upgrade, mirroring handleInteract."
 created: 2026-08-28
 updated: 2026-08-31
 ---
@@ -66,8 +66,8 @@ upgrades that alter decisions or spatial flow over ones that only raise a scalar
   real and tested (a 6000ms grill step becomes 5100ms), but whether that translates to more
   parties served in practice depends on how STORY-007's cook/server actually route around it —
   not measured here, out of this story's scope.
-- The 6 unwired catalogue upgrades (`prep_counter_1`, `server_radio_1`, `additional_table_1`,
-  `street_signage_1`, `maintenance_plan_1`, `complimentary_snacks_1`) are rejected
+- The 5 remaining unwired catalogue upgrades (`prep_counter_1`, `server_radio_1`, `additional_table_1`,
+  `maintenance_plan_1`, `complimentary_snacks_1`) are rejected
   `effect_not_implemented` on purchase — legal catalogue data, no live system reads them yet.
 - Could not capture a live screenshot of the terminal overlay or the 3D visual changes — same
   browser-automation `requestAnimationFrame`-throttling limitation documented on STORY-008's

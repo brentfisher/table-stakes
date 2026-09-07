@@ -3,9 +3,9 @@
 // interaction. This module is the authority `action-validator.js#handlePurchaseUpgrade` calls
 // into — it never receives a network message itself.
 //
-// SCOPE: `shared/game-data/upgrades.json` carries 11 catalogue entries; only the 5 named in
-// `KNOWN_EFFECT_KEYS` below have a system that reads their effect. A purchase of any other
-// entry is REJECTED `effect_not_implemented` rather than silently accepted-with-no-effect or
+// SCOPE: only effects named in `KNOWN_EFFECT_KEYS` below have a system that reads them. A
+// purchase of any other entry is REJECTED `effect_not_implemented` rather than silently
+// accepted-with-no-effect or
 // silently charged — the same Decision 7 discipline `shared/schemas/messages.js` applies to a
 // declared-but-unimplemented message type, applied here to a declared-but-unimplemented effect
 // key. A later story that wires `prep_counter_1`'s `stationConcurrentCapacity` only has to add
@@ -28,6 +28,12 @@ const KNOWN_EFFECT_KEYS = new Set([
   'stationSpeedMultipliers',
   'seatedPatienceMultiplier',
   'restockTravelTimeMultiplier',
+  'seatingProcessMultiplier',
+  'undecidedConsiderationBonus',
+  'queuePatienceMultiplier',
+  'recoveryPatienceMultiplier',
+  'serverSeatingDurationMultiplier',
+  'activeSpecialVisibilityMultiplier',
 ]);
 
 function fail(reason, detail) {
@@ -62,6 +68,12 @@ function resolveEffects(owned) {
     stationSpeedMultipliers: {},
     seatedPatienceMultiplier: 1,
     restockTravelTimeMultiplier: 1,
+    seatingProcessMultiplier: 1,
+    undecidedConsiderationBonus: 0,
+    queuePatienceMultiplier: 1,
+    recoveryPatienceMultiplier: 1,
+    serverSeatingDurationMultiplier: 1,
+    activeSpecialVisibilityMultiplier: 1,
   };
   for (const upgradeId of owned) {
     const upgrade = catalogue.upgradesById[upgradeId];
@@ -77,6 +89,13 @@ function resolveEffects(owned) {
         effects.seatedPatienceMultiplier *= value;
       } else if (key === 'restockTravelTimeMultiplier') {
         effects.restockTravelTimeMultiplier *= value;
+      } else if (key === 'undecidedConsiderationBonus') {
+        effects.undecidedConsiderationBonus += value;
+      } else if (
+        ['seatingProcessMultiplier', 'queuePatienceMultiplier', 'recoveryPatienceMultiplier',
+          'serverSeatingDurationMultiplier', 'activeSpecialVisibilityMultiplier'].includes(key)
+      ) {
+        effects[key] *= value;
       }
       // An unknown key never reaches here: `purchase()` rejects it before it is ever owned.
     }
@@ -132,6 +151,21 @@ function createUpgradeFacade(match, state) {
     restockTravelTimeMultiplier(restaurantId) {
       const restaurant = state.restaurants.get(restaurantId);
       return restaurant ? resolveEffects(restaurant.owned).restockTravelTimeMultiplier : 1;
+    },
+
+    seatingProcessMultiplier(restaurantId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      return restaurant ? resolveEffects(restaurant.owned).seatingProcessMultiplier : 1;
+    },
+
+    recoveryPatienceMultiplier(restaurantId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      return restaurant ? resolveEffects(restaurant.owned).recoveryPatienceMultiplier : 1;
+    },
+
+    serverSeatingDurationMultiplier(restaurantId) {
+      const restaurant = state.restaurants.get(restaurantId);
+      return restaurant ? resolveEffects(restaurant.owned).serverSeatingDurationMultiplier : 1;
     },
 
     /** Starting cash plus revenue earned so far, minus every upgrade bought. See the module

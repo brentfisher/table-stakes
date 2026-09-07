@@ -324,8 +324,9 @@ function createFloorFacade(match, state) {
   return {
     /** §17 server rule 2's candidates: parties standing in the queue. */
     waitingParties(restaurantId) {
+      const seatingDelay = CUSTOMER_VISIBLE_QUEUE_MS * (match.upgrades?.seatingProcessMultiplier(restaurantId) ?? 1);
       return partiesAt(restaurantId, CUSTOMER_STATES.APPROACH_OR_QUEUE)
-        .filter((party) => party.waitingMs >= CUSTOMER_VISIBLE_QUEUE_MS);
+        .filter((party) => party.waitingMs >= seatingDelay);
     },
 
     /** Is there a clean, free table this party would fit at right now? Asked before a server
@@ -342,7 +343,8 @@ function createFloorFacade(match, state) {
       if (!party || party.state !== CUSTOMER_STATES.APPROACH_OR_QUEUE) {
         return { ok: false, reason: 'not_waiting' };
       }
-      if (match.elapsedMs - party.stateEnteredAtMs < CUSTOMER_VISIBLE_QUEUE_MS) {
+      const seatingDelay = CUSTOMER_VISIBLE_QUEUE_MS * (match.upgrades?.seatingProcessMultiplier(party.restaurantId) ?? 1);
+      if (match.elapsedMs - party.stateEnteredAtMs < seatingDelay) {
         return { ok: false, reason: 'still_arriving' };
       }
       tryToSeat(match, state, party);
@@ -442,7 +444,8 @@ function createFloorFacade(match, state) {
         return { ok: false, reason: 'not_unhappy' };
       }
       party.complaintHandled = true;
-      const relief = party.patienceSeconds * 1000 * OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC;
+      const recoveryMultiplier = match.upgrades?.recoveryPatienceMultiplier(party.restaurantId) ?? 1;
+      const relief = party.patienceSeconds * 1000 * OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC * recoveryMultiplier;
       party.patienceMsRemaining = Math.min(
         party.patienceSeconds * 1000,
         party.patienceMsRemaining + relief,
@@ -803,12 +806,14 @@ function scoreRestaurant(match, state, view, party, effects) {
   const priced = mains.length > 0 ? mains : menu;
   const specialEffects = match.frontDoor?.activeSpecial(view.restaurantId)?.effects ?? {};
   const featuredDishId = match.frontDoor?.featuredDishId(view.restaurantId) ?? null;
+  const specialVisibility = match.upgradeEffects?.[view.restaurantId]?.activeSpecialVisibilityMultiplier ?? 1;
+  const amplifySpecial = (multiplier) => 1 + ((multiplier ?? 1) - 1) * specialVisibility;
 
   const components = {
     // A party needs ONE dish it wants, not an average of the whole board: adding a dish must
     // never lower a restaurant's fit. Same reasoning as Decision 22's "strongest matching tag".
     menuFit: menu.length === 0 ? 0 : Math.max(...menu.map((entry) => clamp(
-      dishFit(entry.dish, party) * (entry.dish.id === featuredDishId ? (specialEffects.featuredDishConsiderationMultiplier ?? 1) : 1),
+      dishFit(entry.dish, party) * (entry.dish.id === featuredDishId ? amplifySpecial(specialEffects.featuredDishConsiderationMultiplier) : 1),
       0,
       1,
     ))),
@@ -826,10 +831,10 @@ function scoreRestaurant(match, state, view, party, effects) {
   };
   // STORY-032: a front-door special only improves the named audience's consideration signal;
   // the softmax draw below remains probabilistic and capacity can still make this a poor choice.
-  if (party.segmentId === 'office_worker') components.menuFit = clamp(components.menuFit * (specialEffects.officeWorkerConsiderationMultiplier ?? 1), 0, 1);
-  if (party.segmentId === 'event_fan') components.menuFit = clamp(components.menuFit * (specialEffects.eventFanConsiderationMultiplier ?? 1), 0, 1);
-  if (party.segmentId === 'affluent_couple') components.menuFit = clamp(components.menuFit * (specialEffects.affluentCoupleConsiderationMultiplier ?? 1), 0, 1);
-  if (party.priceWeight >= 0.3) components.price = clamp(components.price * (specialEffects.priceSensitiveConsiderationMultiplier ?? 1), 0, 1);
+  if (party.segmentId === 'office_worker') components.menuFit = clamp(components.menuFit * amplifySpecial(specialEffects.officeWorkerConsiderationMultiplier), 0, 1);
+  if (party.segmentId === 'event_fan') components.menuFit = clamp(components.menuFit * amplifySpecial(specialEffects.eventFanConsiderationMultiplier), 0, 1);
+  if (party.segmentId === 'affluent_couple') components.menuFit = clamp(components.menuFit * amplifySpecial(specialEffects.affluentCoupleConsiderationMultiplier), 0, 1);
+  if (party.priceWeight >= 0.3) components.price = clamp(components.price * amplifySpecial(specialEffects.priceSensitiveConsiderationMultiplier), 0, 1);
 
   const waitMs = projectedWaitMs(match, state, view, party.partySize);
   const tolerableMs = party.patienceSeconds * 1000 * DISTRICT_WAIT_INTOLERABLE_MULTIPLE;
@@ -852,6 +857,7 @@ function scoreRestaurant(match, state, view, party, effects) {
     contributions[key] = (weights[key] * components[key]) / weightTotal;
     utility += contributions[key];
   }
+  utility = clamp(utility + (match.upgradeEffects?.[view.restaurantId]?.undecidedConsiderationBonus ?? 0), 0, 1);
 
   return {
     restaurantId: view.restaurantId,
@@ -1258,7 +1264,7 @@ function advanceParty(match, state, party, dtMs) {
         ? (match.upgradeEffects?.[party.restaurantId]?.seatedPatienceMultiplier ?? 1)
         : 1;
     const queuePatienceMultiplier = party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE
-      ? (match.frontDoor?.activeSpecial(party.restaurantId)?.effects?.queuePatienceMultiplier ?? 1)
+      ? (match.frontDoor?.activeSpecial(party.restaurantId)?.effects?.queuePatienceMultiplier ?? 1) * (match.upgradeEffects?.[party.restaurantId]?.queuePatienceMultiplier ?? 1)
       : 1;
     party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs / (seatedPatienceMultiplier * queuePatienceMultiplier));
     // STORY-008. Sticky, not a live threshold check on every read: a party that crossed into
@@ -1440,7 +1446,7 @@ function queueDisplayPosition(state, party) {
   return { x: x - column * 1.05, y, z: z - row * 1.1 };
 }
 
-function toPublicCustomerSnapshot(state, party, elapsedMs) {
+function toPublicCustomerSnapshot(state, party, elapsedMs, match = null) {
   const inQueue = party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE;
   const queueWaitMs = inQueue ? Math.max(0, elapsedMs - party.stateEnteredAtMs) : 0;
   const position = inQueue ? queueDisplayPosition(state, party) : party.position;
@@ -1452,7 +1458,7 @@ function toPublicCustomerSnapshot(state, party, elapsedMs) {
     restaurantId: party.restaurantId,
     position: { x: position.x, y: position.y, z: position.z },
     queueWaitMs,
-    readyToSeat: inQueue && queueWaitMs >= CUSTOMER_VISIBLE_QUEUE_MS,
+    readyToSeat: inQueue && queueWaitMs >= CUSTOMER_VISIBLE_QUEUE_MS * (match?.upgrades?.seatingProcessMultiplier(party.restaurantId) ?? 1),
     patienceRemaining: patienceFraction(party),
     satisfaction: party.satisfaction,
     tableId: party.tableId,
@@ -1549,7 +1555,7 @@ export const customerSystem = {
 
     // match.js's toSnapshot() serializes whatever is here verbatim — see the top-of-file note.
     // Only ever assign the sanitized projection, never the internal `state.parties` values.
-    match.customers = [...state.parties.values()].map((party) => toPublicCustomerSnapshot(state, party, match.elapsedMs));
+    match.customers = [...state.parties.values()].map((party) => toPublicCustomerSnapshot(state, party, match.elapsedMs, match));
     match.restaurants = [...state.restaurants.values()].map((view) =>
       toPublicRestaurantSnapshot(match, state, view),
     );
