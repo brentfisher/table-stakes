@@ -31,9 +31,5 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-018 | [Customer flow harness](STORY-018-customer-flow-harness.md) | merged |
 | STORY-019 | [Kitchen bottleneck harness](STORY-019-kitchen-bottleneck-harness.md) | merged |
 | STORY-020 | [Event visualization harness](STORY-020-event-visualization-harness.md) | pending |
-| STORY-021 | [Upgrade preview harness](STORY-021-upgrade-preview-harness.md) | pending |
+| STORY-021 | [Upgrade preview harness](STORY-021-upgrade-preview-harness.md) | rejected |
 | STORY-022 | [Reconnect handling and match telemetry logging](STORY-022-telemetry-and-reconnect.md) | pending |
-| STORY-027 | [Low-poly city environment and interactive camera for the default harness](STORY-027-city-environment-and-camera-controls.md) | pending |
-
-> STORY-027 is a supplemental dev-tooling/aesthetics story with no PRD source (`prd_source: null`),
-> added outside the original PRD slice — see its own file for scope.
