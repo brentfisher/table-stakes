@@ -1,0 +1,13 @@
+{
+  "contracts": [
+    { "id": "relief_server", "name": "Relief Server", "role": "server", "taskPriorities": ["deliver_order", "take_order", "seat_party", "collect_payment", "clear_table"], "hireFee": 18, "wage": 4, "wageIntervalMs": 10000, "arrivalDelayMs": 5000, "maxCount": 1, "durationMs": 60000, "commitmentMs": 20000, "benefit": "Adds delivery, ordering, seating, and payment capacity.", "downside": "Payroll continues even when the kitchen is the bottleneck." },
+    { "id": "busser", "name": "Busser", "role": "busser", "taskPriorities": ["clear_table"], "hireFee": 12, "wage": 3, "wageIntervalMs": 10000, "arrivalDelayMs": 4000, "maxCount": 1, "durationMs": 60000, "commitmentMs": 20000, "benefit": "Adds dedicated dirty-table clearing capacity.", "downside": "Does not cook, deliver, take orders, or fix stockouts." }
+  ],
+  "priorities": [
+    { "id": "balanced", "name": "Balanced Service", "benefit": "Uses the normal dining-room task order.", "downside": "No single bottleneck receives special attention." },
+    { "id": "ready_food", "name": "Run Ready Food", "benefit": "Keeps the oldest ready plate first.", "downside": "Turnover and guest recovery may wait." },
+    { "id": "turnover", "name": "Turn Tables", "benefit": "Moves dirty-table clearing ahead of other service work.", "downside": "Ready food and ordering may wait." },
+    { "id": "guest_recovery", "name": "Guest Recovery", "benefit": "Moves greeting and payment work ahead of routine service.", "downside": "Delivery and turnover may wait." }
+  ],
+  "priorityCooldownMs": 8000
+}

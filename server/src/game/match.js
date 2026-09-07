@@ -576,7 +576,8 @@ export class Match {
       restaurants: this.restaurants ?? [],
       customers: this.customers ?? [],
       orders: this.orders ?? [],
-      frontDoor: Object.fromEntries([...this.players.keys()].map((id) => [id, this.frontDoor?.publicFor(id) ?? { activeSpecialId: null, activeForMs: 0, cooldownForMs: 0 }])),
+      frontDoor: Object.fromEntries([...this.players.keys()].map((id) => [id, this.frontDoor?.publicFor(id) ?? { activeSpecialId: null, featuredDishId: null, activeForMs: 0, cooldownForMs: 0, eligibleSpecialIds: [] }])),
+      serviceStation: Object.fromEntries([...this.players.keys()].map((id) => [id, this.serviceStation?.publicFor(id) ?? { priorityId: 'balanced', priorityCooldownForMs: 0, payrollBurn: 0, laborExpenses: 0, contracts: [] }])),
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
         position: { x: p.position.x, y: p.position.y, z: p.position.z },

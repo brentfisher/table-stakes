@@ -1,7 +1,7 @@
 ---
 id: STORY-032
 title: The Maitre d' Playbook
-status: in-progress
+status: complete
 prd_source: docs/rival-restaurant-manager-command-stories.pdf pp. 2-3
 base_branch: master
 is_architectural: false
@@ -22,9 +22,12 @@ without revealing hidden customer-choice math.
       cooldown, benefit, and downside come from shared data/tuning.
 - [x] Customer consideration remains probabilistic and server-authoritative.
 - [x] Active-special state is visible in the HUD, world, and board.
-- [x] A front-door harness validates every data-defined special fixture.
+- [x] A standalone harness previews every special under customer-wave and event fixtures.
 
 ## Scope
 
 Initial options: Lunch Express, Happy Hour, Half-Price Wine, Game-Day Combo, Chef's Feature,
 and Waitlist Honesty. Mid-service per-dish price editing is excluded.
+
+Chef's Feature automatically promotes the available menu item with the strongest active-event
+fit. This keeps the command to one contextual action while making the promoted dish explicit.

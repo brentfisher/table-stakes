@@ -31,6 +31,7 @@ import { ArcadeToast } from '../ui/ArcadeToast';
 import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 import { LobbyScreen } from '../ui/LobbyScreen';
 import { FrontDoorBoard } from '../ui/FrontDoorBoard';
+import { ServiceStationBoard } from '../ui/ServiceStationBoard';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -107,6 +108,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           `.arcade-toast*` CSS namespace — see `app.css`'s own comment on why it never touches
           `.event-banner*`. */}
       <ArcadeToast status={status} />
+      {status?.serviceStationNotice ? <div className="service-station-confirmation" role="status">{status.serviceStationNotice}</div> : null}
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
           this one is reading `status`, which stops updating the instant the socket drops, so
@@ -167,8 +169,15 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
         />
       ) : null}
-      {status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
-        <FrontDoorBoard status={status} onActivate={(id) => clientRef.current?.activateSpecial(id)} />
+      {status?.nearHostStand && status.showFrontDoorBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <FrontDoorBoard
+          status={status}
+          onActivate={(id) => clientRef.current?.activateSpecial(id)}
+          onSeat={() => clientRef.current?.seatWaitingParty()}
+        />
+      ) : null}
+      {status?.nearServiceStation && status.showServiceStationBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <ServiceStationBoard status={status} onCommand={(command) => clientRef.current?.serviceStationCommand(command)} />
       ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
@@ -189,7 +198,14 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       </div>
       {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
           this is it, verbatim — nothing here decides whether pressing E will succeed. */}
-      {status?.prompt ? (
+      {status?.nearServiceStation && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <div className="interact-prompt"><kbd>E</kbd>Manage Dining Room</div>
+      ) : status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <div className="interact-prompt">
+          <kbd>E</kbd>
+          Manage Front Door
+        </div>
+      ) : status?.prompt ? (
         <div className="interact-prompt">
           <kbd>E</kbd>
           {status.prompt.label}

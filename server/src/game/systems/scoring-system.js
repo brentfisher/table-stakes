@@ -140,8 +140,9 @@ function buildRestaurantResult(
   const inventoryCost = setup.inventoryCost ?? 0;
   const upgradeCostAtSetup = setup.upgradeCost ?? 0;
   const cashSpentOnUpgrades = upgrade.cashSpentOnUpgrades ?? 0;
+  const laborExpenses = match.serviceStation?.expensesFor(restaurantId).laborExpenses ?? 0;
   const revenue = order.revenue ?? 0;
-  const expenses = toCents(inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades);
+  const expenses = toCents(inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades + laborExpenses);
   // "Net profit" and "net revenue" are the same number — one field, `netProfit`, doubling as
   // both names §11 uses for it.
   const netProfit = toCents(revenue - expenses);
@@ -233,6 +234,7 @@ function buildRestaurantResult(
     abandonedParties: district.abandonedParties ?? 0,
     // The §11 additions:
     expenses,
+    laborExpenses,
     netProfit,
     customersLostToRival: district.counts?.[CUSTOMER_STATES.CHOOSE_RIVAL] ?? 0,
     averageWaitTimeMs: district.averageWaitTimeMs ?? 0,

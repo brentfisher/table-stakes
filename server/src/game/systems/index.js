@@ -49,6 +49,7 @@ import { hudBottleneckSystem } from './hud-bottleneck-system.js';
 import { scoringSystem } from './scoring-system.js';
 import { telemetrySystem } from './telemetry-system.js';
 import { frontDoorSystem } from './front-door-system.js';
+import { serviceStationSystem } from './service-station-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -81,6 +82,7 @@ export function registerAllSystems() {
   // `upgrades` runs last of the gameplay systems — see the header comment above.
   registerSystem(upgradeSystem);
   registerSystem(frontDoorSystem);
+  registerSystem(serviceStationSystem);
   // `hud-bottlenecks` — see the header comment above. Strictly between `upgrades` and `scoring`.
   registerSystem(hudBottleneckSystem);
   // `scoring` MUST be registered LAST, after every other gameplay system. `match.districtSummary`

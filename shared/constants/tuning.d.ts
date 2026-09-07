@@ -203,12 +203,16 @@ export declare const OWNER_INTERACT_RANGE: number;
 export declare const OWNER_DELIVERY_RANGE: number;
 
 export interface OwnerActionBaseDurationsMs {
+  activate_special: number;
+  service_command: number;
   pickup: number;
   drop_carry: number;
 }
 export declare const OWNER_ACTION_BASE_DURATIONS_MS: OwnerActionBaseDurationsMs;
 
 export interface OwnerTaskDurationsMs {
+  activate_special: number;
+  service_command: number;
   cook: number;
   plate: number;
   pickup: number;

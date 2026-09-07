@@ -48,6 +48,7 @@ export const WORKER_ROLE_COLORS: Record<string, number> = {
   server: 0x3ab0d9,
   prep_worker: 0x8fa33a,
   host: 0xb08a5e,
+  busser: 0x7667c9,
 };
 
 /** Fallback for a role this map has not been told about (WORKER_ROLES may grow). Neutral gray,

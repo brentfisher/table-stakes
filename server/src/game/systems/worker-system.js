@@ -421,6 +421,27 @@ function selectServerTask(match, state, staff) {
   const restaurantId = staff.restaurantId;
   const kitchen = match.kitchen;
   const floor = match.floor;
+  const priority = match.serviceStation?.priorityFor(restaurantId) ?? 'balanced';
+
+  if (priority === 'turnover') {
+    const [dirty] = floor?.dirtyTables(restaurantId) ?? [];
+    if (dirty) return makeTask({
+      kind: 'clear_table', itemId: workItemId('clear_table', `${dirty.tableId}:${dirty.soilCount}`),
+      targetId: dirty.tableId, route: [dirty.position], workMs: workDuration(state, 'clear_table'),
+    });
+  }
+  if (priority === 'guest_recovery') {
+    const [seated] = floor?.partiesToGreet(restaurantId) ?? [];
+    if (seated) return makeTask({
+      kind: 'take_order', itemId: workItemId('take_order', seated.customerId), targetId: seated.customerId,
+      route: [floor.tablePositionOf(restaurantId, seated.tableId) ?? SERVICE_PASS_POSITION], workMs: workDuration(state, 'take_order'),
+    });
+    const [paying] = floor?.partiesAwaitingPayment(restaurantId) ?? [];
+    if (paying) return makeTask({
+      kind: 'collect_payment', itemId: workItemId('collect_payment', paying.customerId), targetId: paying.customerId,
+      route: [floor.tablePositionOf(restaurantId, paying.tableId) ?? SERVICE_PASS_POSITION], workMs: workDuration(state, 'collect_payment'),
+    });
+  }
 
   // 1. Deliver food that is ready. The oldest plate on the pass first — it is the one losing
   //    freshness fastest, which is the only thing §17 order quality scores a wait on.
@@ -487,6 +508,15 @@ function selectServerTask(match, state, staff) {
 
   // 6. Idle near the service area — no task, and `advanceWorker` walks it home to its post.
   return null;
+}
+
+function selectBusserTask(match, state, staff) {
+  const [dirty] = match.floor?.dirtyTables(staff.restaurantId) ?? [];
+  if (!dirty) return null;
+  return makeTask({
+    kind: 'clear_table', itemId: workItemId('clear_table', `${dirty.tableId}:${dirty.soilCount}`),
+    targetId: dirty.tableId, route: [dirty.position], workMs: workDuration(state, 'clear_table'),
+  });
 }
 
 // --- routine-work accounting --------------------------------------------------------------------
@@ -683,8 +713,10 @@ function decide(match, state, staff, worker) {
     return;
   }
 
-  if (worker.task) return; // the server finishes what it picked up
-  worker.task = selectServerTask(match, state, staff);
+  if (worker.task) return; // front-of-house workers finish what they picked up
+  worker.task = worker.role === 'busser'
+    ? selectBusserTask(match, state, staff)
+    : selectServerTask(match, state, staff);
 }
 
 // --- the facade the kitchen and the floor ask ------------------------------------------------------
@@ -719,7 +751,7 @@ function createBrigadeFacade(state) {
       return hasRole(restaurantId, 'server');
     },
     ownsTableClearing(restaurantId) {
-      return hasRole(restaurantId, 'server');
+      return hasRole(restaurantId, 'server') || hasRole(restaurantId, 'busser');
     },
 
     /** §17 cook rule 4. STORY-006's abstracted restocker stands down for a restaurant that has a
@@ -753,6 +785,24 @@ function createBrigadeFacade(state) {
     /** Server-side worker records for one restaurant, as copies. */
     workersOf(restaurantId) {
       return (staffOf(restaurantId)?.workers ?? []).map((w) => ({ ...w, position: { ...w.position } }));
+    },
+    addTemporaryWorker(restaurantId, workerId, role, taskPriorities) {
+      const staff = staffOf(restaurantId);
+      if (!staff || staff.workers.some((worker) => worker.workerId === workerId)) return false;
+      const postId = role === 'busser' ? 'dining_room' : 'pass';
+      const worker = buildWorker({ id: workerId, role, posts: [postId] }, { [workerId]: postId });
+      worker.taskPriorities = [...taskPriorities];
+      worker.position = { ...SERVICE_PASS_POSITION };
+      staff.workers.push(worker);
+      return true;
+    },
+    removeTemporaryWorker(restaurantId, workerId) {
+      const staff = staffOf(restaurantId);
+      if (!staff) return false;
+      const index = staff.workers.findIndex((worker) => worker.workerId === workerId);
+      if (index < 0) return false;
+      staff.workers.splice(index, 1);
+      return true;
     },
   };
 }

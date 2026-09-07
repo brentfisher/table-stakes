@@ -162,7 +162,12 @@ export interface GameClientStatus {
   nearUpgradeTerminal: boolean;
   /** STORY-032. Drives the read-only front-door board while the owner is at the host stand. */
   nearHostStand: boolean;
-  frontDoor: Record<string, { activeSpecialId: string | null; activeForMs: number; cooldownForMs: number }>;
+  showFrontDoorBoard: boolean;
+  frontDoor: Record<string, { activeSpecialId: string | null; featuredDishId: string | null; activeForMs: number; cooldownForMs: number; eligibleSpecialIds: string[] }>;
+  nearServiceStation: boolean;
+  showServiceStationBoard: boolean;
+  serviceStationNotice: string | null;
+  serviceStation: Record<string, { priorityId: string; priorityCooldownForMs: number; payrollBurn: number; laborExpenses: number; contracts: Array<{ contractId: string; workerId: string; status: 'arriving' | 'active'; arrivalForMs: number; activeForMs: number; committedForMs: number }> }>;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -305,7 +310,12 @@ export class GameClient {
     purchasedUpgradeIds: [],
     nearUpgradeTerminal: false,
     nearHostStand: false,
+    showFrontDoorBoard: false,
     frontDoor: {},
+    nearServiceStation: false,
+    showServiceStationBoard: false,
+    serviceStationNotice: null,
+    serviceStation: {},
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -340,6 +350,7 @@ export class GameClient {
   private readonly emittedPresentationEventKeys = new Set<string>();
 
   private cashFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  private serviceStationNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
   /** STORY-022. Cleared in `dispose()` so a pending retry never fires after teardown. */
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** STORY-022. Set on the FIRST unexpected drop, cleared on a successful reopen. Compared
@@ -416,6 +427,14 @@ export class GameClient {
     // no-op otherwise — there is nothing else PRD §8 names for it that this MVP can act on
     // (see `INTERACT_ACTIONS`'s comment in messages.js for why `drop_carry` exists at all).
     this.input.onInteract = () => {
+      if (this.status.nearServiceStation) {
+        this.patchStatus({ showServiceStationBoard: !this.status.showServiceStationBoard });
+        return;
+      }
+      if (this.status.nearHostStand) {
+        this.patchStatus({ showFrontDoorBoard: !this.status.showFrontDoorBoard });
+        return;
+      }
       if (this.status.prompt) {
         // STORY-031. See `lastInteractAction`'s own comment — recorded here, at the send site,
         // so the `error` handler can tell a `deliver` rejection apart from any other.
@@ -719,6 +738,22 @@ export class GameClient {
         cashFeedbackPatch = { cashFeedback: { amount: feedback.amount, atMs: Date.now() } };
       }
 
+      const serviceStation = (message.serviceStation ?? {}) as GameClientStatus['serviceStation'];
+      const previousContracts = this.status.serviceStation[this.status.playerId ?? '']?.contracts ?? [];
+      const nextContracts = serviceStation[this.status.playerId ?? '']?.contracts ?? [];
+      const arrived = nextContracts.find((contract) => contract.status === 'active' && previousContracts.find((old) => old.workerId === contract.workerId)?.status === 'arriving');
+      const hired = nextContracts.find((contract) => !previousContracts.some((old) => old.workerId === contract.workerId));
+      const serviceStationNotice = arrived
+        ? `${arrived.contractId.replace(/_/g, ' ').toUpperCase()} ARRIVED`
+        : hired ? `${hired.contractId.replace(/_/g, ' ').toUpperCase()} CALLED` : null;
+      if (serviceStationNotice) {
+        if (this.serviceStationNoticeTimeout !== null) clearTimeout(this.serviceStationNoticeTimeout);
+        this.serviceStationNoticeTimeout = setTimeout(() => {
+          this.serviceStationNoticeTimeout = null;
+          this.patchStatus({ serviceStationNotice: null });
+        }, 2200);
+      }
+
       this.patchStatus({
         playerCount: players.length,
         // STORY-024. `players[]` on the wire also carries `ready` (see match.js#toSnapshot),
@@ -754,6 +789,8 @@ export class GameClient {
         events,
         eventForecast,
         frontDoor: (message.frontDoor ?? {}) as GameClientStatus['frontDoor'],
+        serviceStation,
+        ...(serviceStationNotice ? { serviceStationNotice } : {}),
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.
         criticalAlerts: capCriticalAlerts(
@@ -856,6 +893,10 @@ export class GameClient {
 
   activateSpecial(specialId: string): void { this.network.sendInteract(`special_${specialId}`, 'activate_special'); }
 
+  seatWaitingParty(): void { this.network.sendInteract('host_stand', 'seat'); }
+
+  serviceStationCommand(command: string): void { this.network.sendInteract(`service_${command}`, 'service_command'); }
+
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
@@ -895,7 +936,13 @@ export class GameClient {
         this.patchStatus({ nearUpgradeTerminal: nearTerminal });
       }
       const nearHostStand = this.interaction.inRangeOf(self.position, 'host_stand');
-      if (nearHostStand !== this.status.nearHostStand) this.patchStatus({ nearHostStand });
+      if (nearHostStand !== this.status.nearHostStand) {
+        this.patchStatus({ nearHostStand, showFrontDoorBoard: nearHostStand ? this.status.showFrontDoorBoard : false });
+      }
+      const nearServiceStation = this.interaction.inRangeOf(self.position, 'service_station');
+      if (nearServiceStation !== this.status.nearServiceStation) {
+        this.patchStatus({ nearServiceStation, showServiceStationBoard: nearServiceStation ? this.status.showServiceStationBoard : false });
+      }
     }
 
     this.sinceInputSend += dt * 1000;
@@ -920,6 +967,7 @@ export class GameClient {
     this.disposed = true;
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     if (this.cashFeedbackTimeout !== null) clearTimeout(this.cashFeedbackTimeout);
+    if (this.serviceStationNoticeTimeout !== null) clearTimeout(this.serviceStationNoticeTimeout);
     this.input.dispose();
     this.network.disconnect();
     this.interpolator.clear();

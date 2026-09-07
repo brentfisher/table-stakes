@@ -798,11 +798,15 @@ export const OWNER_DELIVERY_RANGE = 3.1;
  * scaled by the same advantage for consistency.
  */
 export const OWNER_ACTION_BASE_DURATIONS_MS = Object.freeze({
+  activate_special: 400,
+  service_command: 400,
   pickup: 400,
   drop_carry: 200,
 });
 
 export const OWNER_TASK_DURATIONS_MS = Object.freeze({
+  activate_special: Math.round(OWNER_ACTION_BASE_DURATIONS_MS.activate_special / OWNER_TASK_SPEED_ADVANTAGE),
+  service_command: Math.round(OWNER_ACTION_BASE_DURATIONS_MS.service_command / OWNER_TASK_SPEED_ADVANTAGE),
   cook: Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE),
   plate: Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE),
   pickup: Math.round(OWNER_ACTION_BASE_DURATIONS_MS.pickup / OWNER_TASK_SPEED_ADVANTAGE),

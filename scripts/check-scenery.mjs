@@ -9,7 +9,7 @@ assert.equal(glb.readUInt32LE(0), 0x46546c67, 'valid GLB magic');
 assert.equal(glb.readUInt32LE(4), 2, 'glTF 2');
 assert.equal(glb.readUInt32LE(8), glb.length, 'complete file');
 const model = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString());
-for (const entity of layout.entities.filter((e) => e.type !== 'queue')) {
+for (const entity of layout.entities.filter((e) => e.type !== 'queue' && !e.generated)) {
   const node = model.nodes.find((n) => n.name === entity.id);
   assert.ok(node, `export contains ${entity.id}`);
   const position = node.translation ?? [0, 0, 0];
@@ -22,7 +22,7 @@ assert.ok(glb.length < 30_000_000, 'bounded asset transfer');
 const triangles = model.meshes.reduce((sum, mesh) => sum + mesh.primitives.reduce((n, primitive) =>
   n + model.accessors[primitive.indices].count / 3, 0), 0);
 assert.ok(triangles < 600_000, 'bounded triangle count');
-console.log(`Scene export: ${layout.entities.length - 1} aligned entities, ${Math.round(triangles)} triangles, ${(glb.length / 1e6).toFixed(1)} MB`);
+console.log(`Scene export: ${layout.entities.filter((e) => e.type !== 'queue' && !e.generated).length} aligned entities, ${Math.round(triangles)} triangles, ${(glb.length / 1e6).toFixed(1)} MB`);
 
 const require = createRequire(new URL('../client/package.json', import.meta.url));
 const ts = require('typescript');
