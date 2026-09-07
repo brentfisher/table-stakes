@@ -8,8 +8,8 @@
 // of these rules (range, cost, prerequisite, already-owned, effect wired) and rejects an
 // illegal purchase whatever this screen allowed.
 //
-// SCOPE: only `WIRED_UPGRADE_IDS` — the 5 of 11 catalogue entries with a live effect — are
-// offered here. The other 6 exist in `upgrades.json` but nothing reads their effect yet
+// SCOPE: only `WIRED_UPGRADE_IDS` — catalogue entries with a live effect — are
+// offered here. The remaining entries exist in `upgrades.json` but nothing reads their effect yet
 // (`upgrade-system.js`'s `KNOWN_EFFECT_KEYS`); listing them as buyable would let a player spend
 // real cash for nothing, so they simply are not shown.
 

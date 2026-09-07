@@ -19,6 +19,12 @@ import type { GameClientStatus } from '../game/GameClient';
 import type { RestaurantSnapshot, BottleneckKind } from '../../../shared/schemas/game-state';
 import { eventTitle } from './event-titles';
 import { botProfileLabel } from './bot-profiles';
+import upgradesData from '../../../shared/game-data/upgrades.json';
+import { FRONT_DOOR_UPGRADE_IDS } from '../game/GameClient';
+
+const UPGRADE_INFO = new Map(
+  (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
+);
 
 /** Short badge text for a bottleneck kind — distinct from `HudPanel`'s full alert sentences,
  * since this panel shows every active kind for both restaurants at once, not a ranked top few. */
@@ -118,6 +124,15 @@ export function TacticalOverviewPanel({ status }: { status: GameClientStatus }):
         <RestaurantColumn title={rivalTitle} restaurant={rival} isSelf={false} />
       </div>
       <div className="tactical-events">
+        <h3>Front-door investments</h3>
+        {status.purchasedUpgradeIds.some((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)) ? (
+          <ul>
+            {status.purchasedUpgradeIds.filter((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)).map((id) => {
+              const upgrade = UPGRADE_INFO.get(id);
+              return <li key={id}><strong>{upgrade?.name ?? id}:</strong> {upgrade?.description}</li>;
+            })}
+          </ul>
+        ) : <p>None</p>}
         <h3>Events</h3>
         {activeEvents.length === 0 && upcomingEvents.length === 0 ? (
           <p className="muted">Nothing active or forecast right now.</p>

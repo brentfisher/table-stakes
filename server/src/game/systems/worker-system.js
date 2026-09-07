@@ -248,10 +248,10 @@ function ensureState(match) {
  * sub-stream (Decision 18), so a worker is a person rather than a metronome and the match still
  * replays exactly from its seed. Travel is never jittered — that is geometry, not a person.
  */
-function workDuration(state, kind) {
+function workDuration(state, kind, multiplier = 1) {
   const base = WORKER_TASK_DURATIONS_MS[kind];
   if (!Number.isFinite(base)) return 0;
-  return Math.max(1, Math.round(base * (1 + (state.rng() * 2 - 1) * WORKER_TASK_JITTER)));
+  return Math.max(1, Math.round(base * multiplier * (1 + (state.rng() * 2 - 1) * WORKER_TASK_JITTER)));
 }
 
 /**
@@ -466,7 +466,7 @@ function selectServerTask(match, state, staff) {
       itemId: workItemId('seat_party', party.customerId),
       targetId: party.customerId,
       route: [floor.queuePosition()],
-      workMs: workDuration(state, 'seat_party'),
+      workMs: workDuration(state, 'seat_party', match.upgrades?.serverSeatingDurationMultiplier(restaurantId) ?? 1),
     });
   }
 

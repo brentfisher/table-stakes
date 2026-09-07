@@ -10,10 +10,9 @@
 // exercised `upgrade-system.js`'s own facade in isolation would pass against effect hooks
 // wired to nothing.
 //
-// SCOPE: only the 5 upgrades this story wires an effect for (`serving_tray_1`, `serving_tray_2`,
-// `faster_grill_1`, `better_seating_1`, `pantry_shelves_1`) get an end-to-end assertion. The
-// other 6 catalogue entries are covered by exactly one check — that buying one is rejected,
-// not silently accepted or charged.
+// SCOPE: the original STORY-012 upgrades and STORY-035's front-door investments get
+// end-to-end assertions. Catalogue entries without a live effect are covered by a rejection
+// check so they cannot silently charge the player.
 //
 // WHAT THIS SCRIPT DOES NOT COVER. `UpgradeTerminal.tsx`'s rendering and
 // `InteractionController.ts#nearUpgradeTerminal` are client TypeScript with no server-side
@@ -25,7 +24,7 @@
 import { Match } from '../server/src/game/match.js';
 import { registerSystem, clearSystems, stepMatch } from '../server/src/game/simulation-loop.js';
 import { movementSystem } from '../server/src/game/systems/movement-system.js';
-import { customerSystem } from '../server/src/game/systems/customer-system.js';
+import { customerSystem, _internal as customerInternal } from '../server/src/game/systems/customer-system.js';
 import { orderSystem } from '../server/src/game/systems/order-system.js';
 import { setupSystem } from '../server/src/game/systems/setup-system.js';
 import { eventSystem } from '../server/src/game/systems/event-system.js';
@@ -41,6 +40,8 @@ import {
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
   INVENTORY_RESTOCK_TRAVEL_MS,
   INVENTORY_RESTOCK_MS_PER_UNIT,
+  CUSTOMER_VISIBLE_QUEUE_MS,
+  OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC,
 } from '../shared/constants/tuning.js';
 import { CUSTOMER_STATES } from '../shared/schemas/game-state.js';
 
@@ -659,6 +660,130 @@ function cookProbe(id, { cashRemaining = 1000, startingUpgradeId = null, mains =
     'affording something ELSE later logs a second rising-edge event',
     restaurant.affordableAtMs.length === 2,
     JSON.stringify(restaurant.affordableAtMs),
+  );
+}
+
+// =============================================================================================
+// 13. STORY-035 — all six front-door investments use the real authority and correct layers
+// =============================================================================================
+{
+  const ids = [
+    'host_stand_toolkit_1',
+    'street_signage_1',
+    'queue_pager_1',
+    'guest_recovery_kit_1',
+    'maitre_d_radio_1',
+    'window_display_1',
+  ];
+  const match = cookProbe('m_maitre_d', { cashRemaining: 1000 });
+  const cashBefore = match.upgrades.cashAvailable('p1');
+  const purchases = ids.map((id) => purchase(match, 'p1', id));
+  const expectedSpend = ids.reduce((sum, id) => sum + catalogue.upgradesById[id].cost, 0);
+
+  check(
+    'all six Maitre d investments purchase through the authoritative in-range service action',
+    purchases.every((result) => result.ok === true) && ids.every((id) => match.upgrades.ownedUpgrades('p1').includes(id)),
+    JSON.stringify(purchases),
+  );
+  check(
+    'front-door purchases debit their exact shared catalogue costs',
+    match.upgrades.cashAvailable('p1') === cashBefore - expectedSpend,
+    `${cashBefore} -> ${match.upgrades.cashAvailable('p1')}, spend ${expectedSpend}`,
+  );
+
+  step(match, 1); // publish resolved effects for systems that read match.upgradeEffects
+  const effects = match.upgradeEffects.p1;
+  check(
+    'the six purchases resolve to bounded, layer-specific front-door effects',
+    effects.seatingProcessMultiplier === 0.7 &&
+      effects.undecidedConsiderationBonus === 0.06 &&
+      effects.queuePatienceMultiplier === 1.2 &&
+      effects.recoveryPatienceMultiplier === 1.5 &&
+      effects.serverSeatingDurationMultiplier === 0.8 &&
+      effects.activeSpecialVisibilityMultiplier === 1.25,
+    JSON.stringify(effects),
+  );
+
+  const categoryTiers = new Map();
+  for (const upgrade of Object.values(catalogue.upgradesById)) {
+    categoryTiers.set(upgrade.category, Math.max(categoryTiers.get(upgrade.category) ?? 0, upgrade.tier));
+  }
+  check(
+    'no upgrade category exceeds the three-tier limit',
+    [...categoryTiers.values()].every((tier) => tier <= 3),
+    JSON.stringify(Object.fromEntries(categoryTiers)),
+  );
+
+  const queued = plantParty(match, { customerId: 'party_probe_pager', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  const queuedBefore = queued.patienceMsRemaining;
+  step(match, 20);
+  check(
+    'Queue Pager slows only the real queue patience clock by its 1.2 multiplier',
+    Math.abs((queuedBefore - queued.patienceMsRemaining) - 1000 / 1.2) < 1,
+    `decayed ${(queuedBefore - queued.patienceMsRemaining).toFixed(1)}ms`,
+  );
+
+  const recovering = plantParty(match, {
+    customerId: 'party_probe_recovery',
+    state: CUSTOMER_STATES.SEATED,
+    tableId: 'table_4',
+  });
+  recovering.everUnhappy = true;
+  recovering.patienceMsRemaining = 30_000;
+  const recoveryBefore = recovering.patienceMsRemaining;
+  const recovered = match.floor.handleComplaint(recovering.customerId);
+  const expectedRelief = recovering.patienceSeconds * 1000 * OWNER_COMPLAINT_PATIENCE_RELIEF_FRAC * 1.5;
+  const secondRecovery = match.floor.handleComplaint(recovering.customerId);
+  check(
+    'Guest Recovery Kit strengthens the real recovery while retaining its once-per-party limit',
+    recovered.ok === true &&
+      recovering.patienceMsRemaining === recoveryBefore + expectedRelief &&
+      secondRecovery.ok === false && secondRecovery.reason === 'not_unhappy',
+    `${recoveryBefore} -> ${recovering.patienceMsRemaining}; second=${JSON.stringify(secondRecovery)}`,
+  );
+
+  const party = plantParty(match, { customerId: 'party_probe_attraction', state: CUSTOMER_STATES.ENTER_DISTRICT });
+  Object.assign(party, {
+    menuFitWeight: 0.25,
+    priceWeight: 0.25,
+    serviceSpeedWeight: 0.25,
+    reputationWeight: 0.25,
+  });
+  const state = match._customerSimState;
+  const view = state.restaurants.get('p1');
+  const neutralEffects = { ...effects, undecidedConsiderationBonus: 0, activeSpecialVisibilityMultiplier: 1 };
+  match.upgradeEffects.p1 = neutralEffects;
+  const neutralScore = customerInternal.scoreRestaurant(match, state, view, party, customerInternal.getEventEffects(match));
+  match.upgradeEffects.p1 = { ...neutralEffects, undecidedConsiderationBonus: 0.06 };
+  const chalkboardScore = customerInternal.scoreRestaurant(match, state, view, party, customerInternal.getEventEffects(match));
+  check(
+    'Street Chalkboard adds six bounded utility points before the probabilistic choice draw',
+    Math.abs(chalkboardScore.utility - neutralScore.utility - 0.06) < 1e-9 && chalkboardScore.utility <= 1,
+    `${neutralScore.utility.toFixed(3)} -> ${chalkboardScore.utility.toFixed(3)}`,
+  );
+
+  match.frontDoor = {
+    activeSpecial: () => ({ effects: { officeWorkerConsiderationMultiplier: 1.2 } }),
+    featuredDishId: () => null,
+  };
+  match.upgradeEffects.p1 = neutralEffects;
+  const ordinarySpecial = customerInternal.scoreRestaurant(match, state, view, party, customerInternal.getEventEffects(match));
+  match.upgradeEffects.p1 = { ...neutralEffects, activeSpecialVisibilityMultiplier: 1.25 };
+  const displayedSpecial = customerInternal.scoreRestaurant(match, state, view, party, customerInternal.getEventEffects(match));
+  check(
+    'Window Display increases consideration only when an eligible special is active',
+    displayedSpecial.utility > ordinarySpecial.utility,
+    `${ordinarySpecial.utility.toFixed(3)} -> ${displayedSpecial.utility.toFixed(3)}`,
+  );
+
+  const seatingParty = plantParty(match, { customerId: 'party_probe_toolkit', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  const enteredAt = seatingParty.stateEnteredAtMs;
+  match.elapsedMs = enteredAt + Math.round(CUSTOMER_VISIBLE_QUEUE_MS * 0.7);
+  const toolkitSeat = match.floor.seatParty(seatingParty.customerId);
+  check(
+    'Host Stand Toolkit shortens real processing only once a fitting table is available',
+    toolkitSeat.ok === true && Boolean(seatingParty.tableId),
+    JSON.stringify(toolkitSeat),
   );
 }
 

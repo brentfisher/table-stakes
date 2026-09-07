@@ -21,6 +21,7 @@
 import dishesData from '../../../shared/game-data/dishes.json';
 import segmentsData from '../../../shared/game-data/customer-segments.json';
 import eventsData from '../../../shared/game-data/events.json';
+import upgradesData from '../../../shared/game-data/upgrades.json';
 import type { GameClientStatus } from '../game/GameClient';
 import type { MatchResult } from '../../../shared/schemas/messages';
 import { botProfileLabel } from './bot-profiles';
@@ -34,10 +35,14 @@ const SEGMENT_NAMES = new Map<string, string>(
 const EVENT_TITLES = new Map<string, string>(
   (eventsData.events as Array<{ id: string; title: string }>).map((e) => [e.id, e.title]),
 );
+const UPGRADE_INFO = new Map<string, { name: string; description: string }>(
+  (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
+);
 
 const dishName = (dishId: string) => DISH_NAMES.get(dishId) ?? dishId;
 const segmentName = (segmentId: string) => SEGMENT_NAMES.get(segmentId) ?? segmentId;
 const eventTitle = (eventId: string) => EVENT_TITLES.get(eventId) ?? eventId;
+const upgradeName = (upgradeId: string) => UPGRADE_INFO.get(upgradeId)?.name ?? upgradeId;
 
 /** §17 decision-reason vocabulary (customer-system.js's `REASON_BY_COMPONENT`, plus the
  * capacity-driven `restaurant_full`), in plain language for a narrative sentence. */
@@ -294,7 +299,9 @@ function StatColumn({ title, result }: { title: string; result: MatchResult }): 
       {result.upgradesPurchased.length > 0 ? (
         <>
           <h3>Upgrades</h3>
-          <p>{result.upgradesPurchased.join(', ')}</p>
+          <ul>{result.upgradesPurchased.map((id) => (
+            <li key={id}><strong>{upgradeName(id)}:</strong> {UPGRADE_INFO.get(id)?.description ?? 'Purchased during service.'}</li>
+          ))}</ul>
         </>
       ) : null}
     </div>

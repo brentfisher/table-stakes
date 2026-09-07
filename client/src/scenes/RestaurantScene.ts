@@ -615,6 +615,40 @@ export class RestaurantScene {
     stand.add(label);
   }
 
+  /** STORY-035. Persistent, in-world props for each front-door investment. The server-published
+   * owned-id set controls visibility; these meshes carry no game rules. */
+  setFrontDoorUpgrades(ownedIds: string[]): void {
+    const owned = new Set(ownedIds);
+    const definitions = [
+      ['host_stand_toolkit_1', 3.35, -8.75, 0x5fbf9e, 'TABLET'],
+      ['street_signage_1', -1.5, -10.7, 0x2d2922, 'SPECIALS'],
+      ['queue_pager_1', 4.0, -9.2, 0x7667c9, 'PAGERS'],
+      ['guest_recovery_kit_1', 2.4, -9.15, 0xd96b55, 'RECOVERY'],
+      ['maitre_d_radio_1', 3.7, -8.9, 0x3ab0d9, 'RADIO'],
+      ['window_display_1', 0, -8.3, 0xd9b23a, 'FEATURE'],
+    ] as const;
+    for (const [id, x, z, color, labelText] of definitions) {
+      let group = this.scene.getObjectByName(`front_upgrade_${id}`) as THREE.Group | undefined;
+      if (!group) {
+        group = new THREE.Group();
+        group.name = `front_upgrade_${id}`;
+        group.position.set(x, 0, z);
+        const prop = this.box(
+          id === 'street_signage_1' || id === 'window_display_1' ? 1.8 : 0.45,
+          id === 'street_signage_1' ? 1.5 : 0.55,
+          0.18,
+          color,
+        );
+        group.add(prop);
+        const label = createLabelSprite(labelText, 0xf4ead5, 0.32);
+        label.position.set(0, id === 'street_signage_1' ? 1.7 : 0.8, 0);
+        group.add(label);
+        this.scene.add(group);
+      }
+      group.visible = owned.has(id);
+    }
+  }
+
   private buildWayfinding(): void {
     for (const entity of this.layout.entities) {
       const label = entity.type === 'table' ? formatTableChip(entity.id)

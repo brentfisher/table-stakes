@@ -73,9 +73,9 @@ interface UpgradeInfo {
 const UPGRADE_BY_ID = new Map<string, UpgradeInfo>(
   (upgradesData.upgrades as UpgradeInfo[]).map((u) => [u.id, u]),
 );
-/** STORY-012. Only these 5 of the 11 catalogue entries have a live effect hook — see
+/** STORY-012 / STORY-035. These catalogue entries have a live effect hook — see
  * `server/src/game/systems/upgrade-system.js`'s `KNOWN_EFFECT_KEYS`. The affordability
- * indicator and the terminal overlay both restrict to this list; the other 6 are legal
+ * indicator and the terminal overlay both restrict to this list; the remaining entries are legal
  * catalogue data with nothing yet reading them. */
 export const WIRED_UPGRADE_IDS = [
   'serving_tray_1',
@@ -83,6 +83,20 @@ export const WIRED_UPGRADE_IDS = [
   'faster_grill_1',
   'better_seating_1',
   'pantry_shelves_1',
+  'host_stand_toolkit_1',
+  'street_signage_1',
+  'queue_pager_1',
+  'guest_recovery_kit_1',
+  'maitre_d_radio_1',
+  'window_display_1',
+];
+export const FRONT_DOOR_UPGRADE_IDS = [
+  'host_stand_toolkit_1',
+  'street_signage_1',
+  'queue_pager_1',
+  'guest_recovery_kit_1',
+  'maitre_d_radio_1',
+  'window_display_1',
 ];
 
 /** What the §18 setup screen sends. PRD §12 client-to-server example 4, plus §7's extras. */
@@ -633,6 +647,7 @@ export class GameClient {
       if (purchasedUpgradeIds.join(',') !== this.status.purchasedUpgradeIds.join(',')) {
         this.scene.restaurant.setStationUpgraded('grill', purchasedUpgradeIds.includes('faster_grill_1'));
         this.scene.restaurant.setPantryUpgraded(purchasedUpgradeIds.includes('pantry_shelves_1'));
+        this.scene.restaurant.setFrontDoorUpgrades(purchasedUpgradeIds);
       }
 
       // STORY-016 PRD §4.4/§14 "visual state language". Customers and this restaurant's own

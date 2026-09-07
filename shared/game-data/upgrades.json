@@ -77,12 +77,12 @@
     },
     {
       "id": "street_signage_1",
-      "name": "Street Signage",
-      "category": "reputation",
-      "cost": 220,
+      "name": "Street Chalkboard",
+      "category": "front_door_attraction",
+      "cost": 150,
       "tier": 1,
-      "description": "Improves consideration among undecided customers in the district.",
-      "effects": { "undecidedConsiderationBonus": 0.12 }
+      "description": "Adds a small consideration bonus for undecided street traffic; entry remains probabilistic.",
+      "effects": { "undecidedConsiderationBonus": 0.06 }
     },
     {
       "id": "maintenance_plan_1",
@@ -101,6 +101,51 @@
       "tier": 1,
       "description": "A comp recovers more satisfaction and can be offered more often.",
       "effects": { "recoverySatisfactionBonus": 12, "recoveryCooldownMs": 20000 }
+    },
+    {
+      "id": "host_stand_toolkit_1",
+      "name": "Host Stand Toolkit",
+      "category": "front_door_seating",
+      "cost": 120,
+      "tier": 1,
+      "description": "Parties finish host-stand processing 30% faster when a table is available.",
+      "effects": { "seatingProcessMultiplier": 0.7 }
+    },
+    {
+      "id": "queue_pager_1",
+      "name": "Queue Pager System",
+      "category": "front_door_queue",
+      "cost": 135,
+      "tier": 1,
+      "description": "Queued parties lose patience 20% more slowly.",
+      "effects": { "queuePatienceMultiplier": 1.2 }
+    },
+    {
+      "id": "guest_recovery_kit_1",
+      "name": "Guest Recovery Kit",
+      "category": "front_door_recovery",
+      "cost": 110,
+      "tier": 1,
+      "description": "A manager recovery restores 50% more patience; each party can still be recovered only once.",
+      "effects": { "recoveryPatienceMultiplier": 1.5 }
+    },
+    {
+      "id": "maitre_d_radio_1",
+      "name": "Maitre d Radio",
+      "category": "front_door_handoff",
+      "cost": 145,
+      "tier": 1,
+      "description": "Host-to-server seating handoff work is 20% faster.",
+      "effects": { "serverSeatingDurationMultiplier": 0.8 }
+    },
+    {
+      "id": "window_display_1",
+      "name": "Window Display",
+      "category": "front_door_special",
+      "cost": 175,
+      "tier": 1,
+      "description": "Amplifies the consideration effect of an eligible active special by 25%.",
+      "effects": { "activeSpecialVisibilityMultiplier": 1.25 }
     }
   ]
 }
