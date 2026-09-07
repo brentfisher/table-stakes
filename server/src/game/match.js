@@ -576,6 +576,7 @@ export class Match {
       restaurants: this.restaurants ?? [],
       customers: this.customers ?? [],
       orders: this.orders ?? [],
+      frontDoor: Object.fromEntries([...this.players.keys()].map((id) => [id, this.frontDoor?.publicFor(id) ?? { activeSpecialId: null, activeForMs: 0, cooldownForMs: 0 }])),
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
         position: { x: p.position.x, y: p.position.y, z: p.position.z },

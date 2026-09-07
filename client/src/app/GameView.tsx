@@ -168,7 +168,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
         />
       ) : null}
       {status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
-        <FrontDoorBoard status={status} />
+        <FrontDoorBoard status={status} onActivate={(id) => clientRef.current?.activateSpecial(id)} />
       ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:

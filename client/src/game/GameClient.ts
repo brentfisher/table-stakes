@@ -162,6 +162,7 @@ export interface GameClientStatus {
   nearUpgradeTerminal: boolean;
   /** STORY-032. Drives the read-only front-door board while the owner is at the host stand. */
   nearHostStand: boolean;
+  frontDoor: Record<string, { activeSpecialId: string | null; activeForMs: number; cooldownForMs: number }>;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -304,6 +305,7 @@ export class GameClient {
     purchasedUpgradeIds: [],
     nearUpgradeTerminal: false,
     nearHostStand: false,
+    frontDoor: {},
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -751,6 +753,7 @@ export class GameClient {
         orders,
         events,
         eventForecast,
+        frontDoor: (message.frontDoor ?? {}) as GameClientStatus['frontDoor'],
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.
         criticalAlerts: capCriticalAlerts(
@@ -773,6 +776,7 @@ export class GameClient {
         // STORY-025. Verbatim off the wire — see `GameClientStatus.bots`'s own field comment.
         bots: (message.bots ?? []) as BotSnapshotEntry[],
       });
+      this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[this.status.playerId ?? '']?.activeSpecialId ?? null);
       return;
     }
     if (message.type === 'match_complete') {
@@ -849,6 +853,8 @@ export class GameClient {
   buyUpgrade(upgradeId: string): void {
     this.network.sendPurchaseUpgrade(upgradeId);
   }
+
+  activateSpecial(specialId: string): void { this.network.sendInteract(`special_${specialId}`, 'activate_special'); }
 
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.

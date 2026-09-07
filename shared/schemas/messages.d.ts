@@ -82,6 +82,7 @@ export type EventState = 'warning' | 'active' | 'ended';
 export type MatchEndReason = 'completed' | 'player_disconnected';
 
 export type InteractAction =
+  | 'activate_special'
   | 'cook'
   | 'plate'
   | 'deliver'

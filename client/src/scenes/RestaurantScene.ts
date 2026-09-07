@@ -603,6 +603,17 @@ export class RestaurantScene {
     this.scenery.setVisible(visible);
   }
 
+  setHostStandSpecial(specialId: string | null): void {
+    const stand = this.scene.getObjectByName('host_stand');
+    const old = stand?.getObjectByName('label_host_stand');
+    if (!stand || !old) return;
+    if (old.userData.specialId === specialId) return;
+    old.parent?.remove(old);
+    const label = createLabelSprite(specialId ? specialId.replace(/_/g, ' ').toUpperCase() : 'WELCOME', 0xd4e7dd, 0.42);
+    label.name = 'label_host_stand'; label.userData.specialId = specialId; label.position.copy(old.position);
+    stand.add(label);
+  }
+
   private buildWayfinding(): void {
     for (const entity of this.layout.entities) {
       const label = entity.type === 'table' ? formatTableChip(entity.id)

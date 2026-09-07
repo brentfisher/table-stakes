@@ -115,6 +115,13 @@ export function handleInteract(match, playerId, message) {
 
 function resolveAction(match, restaurantId, player, targetId, action) {
   switch (action) {
+    case 'activate_special': {
+      if (!targetId.startsWith('special_')) return fail('interact_rejected', 'no_such_target', targetId);
+      const outOfRange = requireRange(player, staticTargetPosition('host_stand'), 'host_stand');
+      if (outOfRange) return outOfRange;
+      const result = match.frontDoor?.activate(restaurantId, targetId.slice('special_'.length)) ?? { ok: false, reason: 'not_ready' };
+      return result.ok ? result : fail('interact_rejected', result.reason, targetId);
+    }
     case 'cook':
     case 'plate':
       return resolveCookOrPlate(match, restaurantId, player, targetId, action);

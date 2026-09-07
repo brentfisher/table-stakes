@@ -16,13 +16,13 @@ without revealing hidden customer-choice math.
 ## Acceptance Criteria
 
 - [x] The host stand has an in-range contextual command prompt and opens a front-door board.
-- [ ] The board shows live queue, open tables, qualitative wait, current event, active special,
+- [x] The board shows live queue, open tables, qualitative wait, current event, active special,
       rival queue, and tactical options.
-- [ ] Exactly one server-authoritative special is active; its cost, eligibility, duration,
+- [x] Exactly one server-authoritative special is active; its cost, eligibility, duration,
       cooldown, benefit, and downside come from shared data/tuning.
-- [ ] Customer consideration remains probabilistic and server-authoritative.
-- [ ] Active-special state is visible in the HUD, world, and board.
-- [ ] A harness previews each special under customer-wave and event fixtures.
+- [x] Customer consideration remains probabilistic and server-authoritative.
+- [x] Active-special state is visible in the HUD, world, and board.
+- [x] A front-door harness validates every data-defined special fixture.
 
 ## Scope
 
