@@ -1082,3 +1082,23 @@ body {
   .arcade-toast { animation: none; }
 }
 .invite-expiry { margin: 8px 0 0; font-size: 12px; }
+.front-door-board { position: fixed; right: 22px; bottom: 88px; z-index: 12; display: grid; gap: 6px; max-width: 300px; padding: 12px; border: 2px solid #d88a32; background: rgba(30, 20, 15, .92); color: #fff2d8; font-size: 12px; box-shadow: 0 4px 18px #0008; }
+.front-door-board strong { color: #ffd27a; letter-spacing: .08em; }
+.front-door-board > button { padding: 8px; border: 1px solid #d88a32; background: #563920; color: #fff2d8; font-weight: 700; }
+.front-door-board > button:disabled { opacity: .42; }
+.hud-special { color: #ffd27a; font-weight: 800; font-size: 12px; letter-spacing: .06em; }
+.front-door-board small { color: #cbb99c; }
+.front-door-options { display: grid; gap: 5px; max-height: 300px; overflow: auto; }
+.front-door-options button { display: grid; gap: 2px; padding: 7px; border: 1px solid #8f6841; background: #33261d; color: #fff2d8; text-align: left; }
+.front-door-options button:disabled { opacity: .42; }
+.front-door-options button small { font-size: 10px; }
+.service-station-board { position: fixed; left: 22px; bottom: 88px; z-index: 12; display: grid; gap: 7px; width: min(390px, calc(100vw - 44px)); max-height: 72vh; overflow: auto; padding: 14px; border: 2px solid #3ab0d9; background: rgba(18,28,34,.95); color: #e7f8ff; font-size: 12px; box-shadow: 0 4px 18px #0008; }
+.service-station-board > strong { color: #7ed9f5; letter-spacing: .08em; }
+.service-contracts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.service-contracts > div { display: grid; gap: 4px; padding: 8px; border: 1px solid #426a78; background: #1e3943; }
+.service-contracts small { color: #b8ced5; }
+.service-station-board button { padding: 6px; border: 1px solid #4b879b; background: #244d5c; color: #e7f8ff; }
+.service-station-board button:disabled { opacity: .42; }
+.service-priorities { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.service-priorities .is-active { border-color: #ffd27a; color: #ffd27a; }
+.service-station-confirmation { position: fixed; z-index: 22; left: 50%; top: 128px; transform: translateX(-50%); padding: 10px 18px; border: 2px solid #7ed9f5; background: #163640; color: #e7f8ff; font-weight: 900; letter-spacing: .08em; box-shadow: 0 4px 18px #0009; }

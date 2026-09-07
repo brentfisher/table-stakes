@@ -13,6 +13,8 @@ import { kitchenBottleneckHarness } from './kitchen-bottleneck-harness';
 import { eventVisualizationHarness } from './event-visualization-harness';
 import { upgradePreviewHarness } from './upgrade-preview-harness';
 import { assetShowcaseHarness } from './asset-showcase-harness';
+import { frontDoorPolicyHarness } from './front-door-policy-harness';
+import { serviceStationHarness } from './service-station-harness';
 import type { SceneHarness } from './harness-shell';
 
 export const harnesses: SceneHarness[] = [
@@ -22,4 +24,6 @@ export const harnesses: SceneHarness[] = [
   eventVisualizationHarness,
   upgradePreviewHarness,
   assetShowcaseHarness,
+  frontDoorPolicyHarness,
+  serviceStationHarness,
 ];

@@ -170,6 +170,8 @@ export const EVENT_STATES = Object.freeze(['warning', 'active', 'ended']);
  * non-empty string.
  */
 export const INTERACT_ACTIONS = Object.freeze([
+  'activate_special',
+  'service_command',
   'cook',
   'plate',
   'deliver',

@@ -41,7 +41,7 @@ export type DecisionReason =
   | 'restaurant_full'
   | 'customer_abandoned_queue';
 
-export type WorkerRole = 'cook' | 'server' | 'prep_worker' | 'host';
+export type WorkerRole = 'cook' | 'server' | 'prep_worker' | 'host' | 'busser';
 
 /**
  * STORY-007. The jobs a worker can be doing, PRD §17's two priority lists as a closed

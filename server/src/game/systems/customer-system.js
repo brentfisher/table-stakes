@@ -801,11 +801,17 @@ function scoreRestaurant(match, state, view, party, effects) {
   const menu = availableMenu(match, view);
   const mains = menu.filter((entry) => !entry.isAddon);
   const priced = mains.length > 0 ? mains : menu;
+  const specialEffects = match.frontDoor?.activeSpecial(view.restaurantId)?.effects ?? {};
+  const featuredDishId = match.frontDoor?.featuredDishId(view.restaurantId) ?? null;
 
   const components = {
     // A party needs ONE dish it wants, not an average of the whole board: adding a dish must
     // never lower a restaurant's fit. Same reasoning as Decision 22's "strongest matching tag".
-    menuFit: menu.length === 0 ? 0 : Math.max(...menu.map((entry) => dishFit(entry.dish, party))),
+    menuFit: menu.length === 0 ? 0 : Math.max(...menu.map((entry) => clamp(
+      dishFit(entry.dish, party) * (entry.dish.id === featuredDishId ? (specialEffects.featuredDishConsiderationMultiplier ?? 1) : 1),
+      0,
+      1,
+    ))),
     price:
       priced.length === 0
         ? 0
@@ -818,6 +824,12 @@ function scoreRestaurant(match, state, view, party, effects) {
     ),
     eventAffinity: eventAffinityFor(menu, effects),
   };
+  // STORY-032: a front-door special only improves the named audience's consideration signal;
+  // the softmax draw below remains probabilistic and capacity can still make this a poor choice.
+  if (party.segmentId === 'office_worker') components.menuFit = clamp(components.menuFit * (specialEffects.officeWorkerConsiderationMultiplier ?? 1), 0, 1);
+  if (party.segmentId === 'event_fan') components.menuFit = clamp(components.menuFit * (specialEffects.eventFanConsiderationMultiplier ?? 1), 0, 1);
+  if (party.segmentId === 'affluent_couple') components.menuFit = clamp(components.menuFit * (specialEffects.affluentCoupleConsiderationMultiplier ?? 1), 0, 1);
+  if (party.priceWeight >= 0.3) components.price = clamp(components.price * (specialEffects.priceSensitiveConsiderationMultiplier ?? 1), 0, 1);
 
   const waitMs = projectedWaitMs(match, state, view, party.partySize);
   const tolerableMs = party.patienceSeconds * 1000 * DISTRICT_WAIT_INTOLERABLE_MULTIPLE;
@@ -1245,7 +1257,10 @@ function advanceParty(match, state, party, dtMs) {
       party.state !== CUSTOMER_STATES.APPROACH_OR_QUEUE
         ? (match.upgradeEffects?.[party.restaurantId]?.seatedPatienceMultiplier ?? 1)
         : 1;
-    party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs / seatedPatienceMultiplier);
+    const queuePatienceMultiplier = party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE
+      ? (match.frontDoor?.activeSpecial(party.restaurantId)?.effects?.queuePatienceMultiplier ?? 1)
+      : 1;
+    party.patienceMsRemaining = Math.max(0, party.patienceMsRemaining - dtMs / (seatedPatienceMultiplier * queuePatienceMultiplier));
     // STORY-008. Sticky, not a live threshold check on every read: a party that crossed into
     // "unhappy" and was never helped stays a `recoveryActions` candidate even if it recovers
     // patience crossing into its next phase (`patienceAtSeatedFrac` etc. resample per phase).

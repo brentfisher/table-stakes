@@ -79,7 +79,7 @@ export const DECISION_REASONS = Object.freeze([
 ]);
 
 /** PRD §7 "Staffing setup". MVP runs one cook, one server and the owner-player. */
-export const WORKER_ROLES = Object.freeze(['cook', 'server', 'prep_worker', 'host']);
+export const WORKER_ROLES = Object.freeze(['cook', 'server', 'prep_worker', 'host', 'busser']);
 
 /** PRD §8 "Operational bottlenecks" — the signals the HUD and the harnesses surface. */
 export const BOTTLENECK_KINDS = Object.freeze([

@@ -82,6 +82,8 @@ export type EventState = 'warning' | 'active' | 'ended';
 export type MatchEndReason = 'completed' | 'player_disconnected';
 
 export type InteractAction =
+  | 'activate_special'
+  | 'service_command'
   | 'cook'
   | 'plate'
   | 'deliver'
@@ -365,6 +367,8 @@ export interface MatchResult {
   /** §11 "Expenses": ingredient allocation cost plus every upgrade's cost (the starting one
    * chosen at setup, and every one bought during service). */
   expenses: number;
+  /** STORY-034. Temporary-staff hire fees and recurring wages included in expenses. */
+  laborExpenses: number;
   /** §11 "Net profit" (the same number the score formula calls "net revenue" — one field
    * doubling as both names): revenue minus `expenses`. */
   netProfit: number;

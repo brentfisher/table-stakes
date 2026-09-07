@@ -120,6 +120,7 @@ const WORKER_ROLE_GLYPHS: Record<string, string> = {
   server: 'S',
   prep_worker: 'P',
   host: 'H',
+  busser: 'B',
 };
 
 /** Worker role icons identify the person; these explicit task chips describe what that person
@@ -603,12 +604,23 @@ export class RestaurantScene {
     this.scenery.setVisible(visible);
   }
 
+  setHostStandSpecial(specialId: string | null): void {
+    const stand = this.scene.getObjectByName('host_stand');
+    const old = stand?.getObjectByName('label_host_stand');
+    if (!stand || !old) return;
+    if (old.userData.specialId === specialId) return;
+    old.parent?.remove(old);
+    const label = createLabelSprite(specialId ? specialId.replace(/_/g, ' ').toUpperCase() : 'WELCOME', 0xd4e7dd, 0.42);
+    label.name = 'label_host_stand'; label.userData.specialId = specialId; label.position.copy(old.position);
+    stand.add(label);
+  }
+
   private buildWayfinding(): void {
     for (const entity of this.layout.entities) {
       const label = entity.type === 'table' ? formatTableChip(entity.id)
         : entity.type === 'station' ? entity.station!.toUpperCase()
         : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
-            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME' } as Record<string, string>)[entity.id];
+            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE' } as Record<string, string>)[entity.id];
       if (!label) continue;
       const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.42);
       sprite.name = `label_${entity.id}`;
@@ -748,6 +760,8 @@ export class RestaurantScene {
         return this.box(1.1, 1.1, 0.7, 0xb08a5e);
       case 'upgrade_terminal':
         return this.box(1.0, 1.2, 0.8, 0x5fbf9e);
+      case 'service_station':
+        return this.box(1.2, 1.0, 0.8, 0x3ab0d9);
       case 'queue':
         return this.box(3.4, 0.06, 1.2, 0x2f3843);
       default:

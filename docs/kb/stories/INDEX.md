@@ -34,3 +34,9 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-021 | [Upgrade preview harness](STORY-021-upgrade-preview-harness.md) | rejected |
 | STORY-022 | [Reconnect handling and match telemetry logging](STORY-022-telemetry-and-reconnect.md) | pending |
 | STORY-028 | [Customer presence, queueing, and service clarity](STORY-028-customer-presence-queue-and-service-clarity.md) | in progress |
+| STORY-032 | [The Maitre d' Playbook](STORY-032-maitre-d-playbook.md) | complete |
+| STORY-033 | [The Pantry Is Open](STORY-033-pantry-is-open.md) | pending |
+| STORY-034 | [The Service Station](STORY-034-service-station.md) | complete |
+| STORY-035 | [The Maitre d' Advantage](STORY-035-maitre-d-advantage.md) | pending |
+| STORY-036 | [The Kitchen Command Board](STORY-036-kitchen-command-board.md) | pending |
+| STORY-037 | [The Manager's Ledger](STORY-037-managers-ledger.md) | pending |
