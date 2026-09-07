@@ -45,6 +45,7 @@ import {
   OWNER_TASK_SPEED_ADVANTAGE,
   CUSTOMER_PAYING_MS,
   CUSTOMER_SEATED_GREET_MS,
+  CUSTOMER_VISIBLE_QUEUE_MS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
   WORKER_MOVE_SPEED,
   WORKER_RESTOCK_THRESHOLD_UNITS,
@@ -683,7 +684,8 @@ function plantReadyOrder(match, { customerId, tableId }) {
 
   // Every lower-priority job is available at once. Peeling them off one at a time is what proves
   // the order, because at each step the remaining jobs are all still there and still closer.
-  plantParty(match, { customerId: 'party_probe_wait', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  const queuedParty = plantParty(match, { customerId: 'party_probe_wait', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  queuedParty.stateEnteredAtMs -= CUSTOMER_VISIBLE_QUEUE_MS;
   plantParty(match, { customerId: 'party_probe_seated', state: CUSTOMER_STATES.SEATED, tableId: 'table_2' });
   plantParty(match, { customerId: 'party_probe_paying', state: CUSTOMER_STATES.PAYING, tableId: 'table_3' });
   const dirtyTable = view.tables.get('table_6');

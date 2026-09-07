@@ -21,7 +21,7 @@
 
 import dishesData from '../../../shared/game-data/dishes.json';
 import layoutData from '../../../shared/game-data/restaurant-layout.json';
-import { OWNER_INTERACT_RANGE } from '../../../shared/constants/tuning';
+import { OWNER_DELIVERY_RANGE, OWNER_INTERACT_RANGE } from '../../../shared/constants/tuning';
 import type { CustomerSnapshot, InteractAction, OrderSnapshot, RestaurantSnapshot } from '../../../shared/schemas/messages';
 
 interface DishInfo {
@@ -160,7 +160,7 @@ export class InteractionController {
       const order = this.orders.find((o) => o.orderId === orderId);
       if (!order?.tableId) continue;
       const tablePos = this.tablePosition(order.tableId);
-      if (!tablePos || distanceXZ(position, tablePos) > OWNER_INTERACT_RANGE) continue;
+      if (!tablePos || distanceXZ(position, tablePos) > OWNER_DELIVERY_RANGE) continue;
       return { targetId: order.tableId, action: 'deliver', label: `Deliver ${dishName(order.dishId)}` };
     }
     return null;
@@ -198,7 +198,7 @@ export class InteractionController {
   private seatCandidate(position: Vec3): InteractionPrompt | null {
     if (!this.inRange(position, 'host_stand')) return null;
     const waiting = this.customers.some(
-      (c) => c.restaurantId === this.restaurantId && c.state === 'APPROACH_OR_QUEUE',
+      (c) => c.restaurantId === this.restaurantId && c.state === 'APPROACH_OR_QUEUE' && c.readyToSeat,
     );
     if (!waiting) return null;
     return { targetId: 'host_stand', action: 'seat', label: 'Seat Party' };

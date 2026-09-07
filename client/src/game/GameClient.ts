@@ -622,7 +622,19 @@ export class GameClient {
       // update through the single `updateFloorState` call below, which does its own
       // restaurant-scoped filtering (see that method's own header).
       const selfCustomers = customers.filter((c) => c.restaurantId === this.status.playerId);
-      this.registry.reconcile('customers', selfCustomers.map((c) => ({ ...c, id: c.customerId })));
+      const orderLabelForCustomer = (customer: CustomerSnapshot): string | null => {
+        if (!customer.orderId) return null;
+        const dishes = orders
+          .filter((order) => order.orderId === customer.orderId)
+          .map((order) => order.dishId.replace(/_/g, ' ').toUpperCase());
+        const distinct = [...new Set(dishes)];
+        return distinct.length > 0 ? distinct.slice(0, 2).join(' + ') : null;
+      };
+      this.registry.reconcile('customers', selfCustomers.map((c) => ({
+        ...c,
+        id: c.customerId,
+        orderLabel: orderLabelForCustomer(c),
+      })));
       const selfRestaurantForWorkers = restaurants.find((r) => r.restaurantId === this.status.playerId);
       this.registry.reconcile(
         'workers',

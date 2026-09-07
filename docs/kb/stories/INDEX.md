@@ -33,3 +33,4 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-020 | [Event visualization harness](STORY-020-event-visualization-harness.md) | pending |
 | STORY-021 | [Upgrade preview harness](STORY-021-upgrade-preview-harness.md) | rejected |
 | STORY-022 | [Reconnect handling and match telemetry logging](STORY-022-telemetry-and-reconnect.md) | pending |
+| STORY-028 | [Customer presence, queueing, and service clarity](STORY-028-customer-presence-queue-and-service-clarity.md) | in progress |

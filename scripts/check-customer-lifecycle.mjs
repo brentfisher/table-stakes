@@ -474,7 +474,7 @@ function freshParty(match, state) {
   const allowedKeys = new Set([
     'customerId', 'segmentId', 'partySize', 'state', 'restaurantId',
     'position', 'x', 'y', 'z', 'patienceRemaining', 'satisfaction',
-    'tableId', 'orderId', 'decisionReason',
+    'tableId', 'orderId', 'decisionReason', 'queueWaitMs', 'readyToSeat',
     // STORY-008: PRD §8 "unhappy customer" bottleneck signal, the target `handle_complaint`
     // resolves against. Sticky-underneath but live on the wire — see customer-system.js.
     'unhappy',

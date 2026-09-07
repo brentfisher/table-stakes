@@ -59,6 +59,7 @@ import {
   CUSTOMER_RNG_STREAM,
   CUSTOMER_ENTER_DISTRICT_MS,
   CUSTOMER_EVALUATE_RESTAURANTS_MS,
+  CUSTOMER_VISIBLE_QUEUE_MS,
   CUSTOMER_SEATED_GREET_MS,
   CUSTOMER_ORDERING_MS,
   CUSTOMER_EATING_MS_RANGE,
@@ -323,7 +324,8 @@ function createFloorFacade(match, state) {
   return {
     /** §17 server rule 2's candidates: parties standing in the queue. */
     waitingParties(restaurantId) {
-      return partiesAt(restaurantId, CUSTOMER_STATES.APPROACH_OR_QUEUE);
+      return partiesAt(restaurantId, CUSTOMER_STATES.APPROACH_OR_QUEUE)
+        .filter((party) => party.waitingMs >= CUSTOMER_VISIBLE_QUEUE_MS);
     },
 
     /** Is there a clean, free table this party would fit at right now? Asked before a server
@@ -339,6 +341,9 @@ function createFloorFacade(match, state) {
       const party = findParty(customerId);
       if (!party || party.state !== CUSTOMER_STATES.APPROACH_OR_QUEUE) {
         return { ok: false, reason: 'not_waiting' };
+      }
+      if (match.elapsedMs - party.stateEnteredAtMs < CUSTOMER_VISIBLE_QUEUE_MS) {
+        return { ok: false, reason: 'still_arriving' };
       }
       tryToSeat(match, state, party);
       return party.tableId
@@ -1405,14 +1410,34 @@ function cleanupExitedParties(match, state) {
  * (hidden or not) cannot leak by omission of a `delete`. Compare against CustomerSnapshot in
  * shared/schemas/game-state.d.ts, which this must keep matching field-for-field.
  */
-function toPublicCustomerSnapshot(party) {
+function queueDisplayPosition(state, party) {
+  const queued = [...state.parties.values()]
+    .filter((candidate) =>
+      candidate.restaurantId === party.restaurantId && candidate.state === CUSTOMER_STATES.APPROACH_OR_QUEUE,
+    )
+    .sort((a, b) => a.stateEnteredAtMs - b.stateEnteredAtMs || a.customerId.localeCompare(b.customerId));
+  const index = Math.max(0, queued.findIndex((candidate) => candidate.customerId === party.customerId));
+  // Four parties across, then one row farther from the host stand. Every party remains in the
+  // street/entry zone instead of stacking at `queue_line`'s single coordinate.
+  const column = index % 4;
+  const row = Math.floor(index / 4);
+  const [x, y, z] = state.queuePosition;
+  return { x: x - column * 1.05, y, z: z - row * 1.1 };
+}
+
+function toPublicCustomerSnapshot(state, party, elapsedMs) {
+  const inQueue = party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE;
+  const queueWaitMs = inQueue ? Math.max(0, elapsedMs - party.stateEnteredAtMs) : 0;
+  const position = inQueue ? queueDisplayPosition(state, party) : party.position;
   return {
     customerId: party.customerId,
     segmentId: party.segmentId,
     partySize: party.partySize,
     state: party.state,
     restaurantId: party.restaurantId,
-    position: { x: party.position.x, y: party.position.y, z: party.position.z },
+    position: { x: position.x, y: position.y, z: position.z },
+    queueWaitMs,
+    readyToSeat: inQueue && queueWaitMs >= CUSTOMER_VISIBLE_QUEUE_MS,
     patienceRemaining: patienceFraction(party),
     satisfaction: party.satisfaction,
     tableId: party.tableId,
@@ -1509,7 +1534,7 @@ export const customerSystem = {
 
     // match.js's toSnapshot() serializes whatever is here verbatim — see the top-of-file note.
     // Only ever assign the sanitized projection, never the internal `state.parties` values.
-    match.customers = [...state.parties.values()].map(toPublicCustomerSnapshot);
+    match.customers = [...state.parties.values()].map((party) => toPublicCustomerSnapshot(state, party, match.elapsedMs));
     match.restaurants = [...state.restaurants.values()].map((view) =>
       toPublicRestaurantSnapshot(match, state, view),
     );

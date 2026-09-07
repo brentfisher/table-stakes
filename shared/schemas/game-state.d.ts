@@ -312,6 +312,10 @@ export interface CustomerSnapshot {
   /** Null until the party has chosen; PRD §6 choice is probabilistic, never argmax. */
   restaurantId: string | null;
   position: Vec3;
+  /** Queue dwell time, published only while outside. */
+  queueWaitMs: number;
+  /** The server's current seating gate for this party. */
+  readyToSeat: boolean;
   /** 0..1 of the segment's `patienceSeconds` still remaining. */
   patienceRemaining: number;
   satisfaction: number;

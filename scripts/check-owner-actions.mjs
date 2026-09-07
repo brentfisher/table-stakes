@@ -39,6 +39,7 @@ import {
   OWNER_CARRY_CAPACITY,
   OWNER_SPRINT_MAX_MS,
   OWNER_SPRINT_COOLDOWN_MS,
+  CUSTOMER_VISIBLE_QUEUE_MS,
   UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD,
   WORKER_RESTOCK_THRESHOLD_UNITS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
@@ -531,7 +532,9 @@ function cookProbe(id) {
 // =============================================================================================
 {
   const match = cookProbe('m_seat');
-  plantParty(match, { customerId: 'party_probe_seat', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  const queuedParty = plantParty(match, { customerId: 'party_probe_seat', state: CUSTOMER_STATES.APPROACH_OR_QUEUE });
+  // STORY-028 leaves arrivals visible outside before host service can seat them.
+  queuedParty.stateEnteredAtMs -= CUSTOMER_VISIBLE_QUEUE_MS;
   standAt(match, 'p1', 'host_stand');
   const result = interact(match, 'p1', 'host_stand', 'seat');
   const party = match._customerSimState.parties.get('party_probe_seat');

@@ -53,6 +53,8 @@ export interface CustomerRenderState {
   position: { x: number; y: number; z: number };
   /** A party is one server entity but should read as several diners once seated. */
   partySize?: number;
+  /** Set after ordering from the authoritative public order tickets. */
+  orderLabel?: string | null;
   patienceRemaining: number;
   unhappy: boolean;
   /** §14 MVP entity table "segment-cued customers" — an id in customer-segments.json, tinting
@@ -839,7 +841,13 @@ export class RestaurantScene {
       this.owners.set(state.playerId, group);
       this.scene.add(group);
     }
-    group.position.set(state.position.x, state.position.y, state.position.z);
+    const target = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
+    if (!group.userData.positionTarget) {
+      group.position.copy(target);
+      group.userData.positionTarget = target;
+    } else {
+      group.userData.positionTarget.copy(target);
+    }
     group.rotation.y = state.facing;
   }
 
@@ -1241,10 +1249,12 @@ export class RestaurantScene {
       ring.name = 'patience_ring';
       group.add(ring);
       group.name = `customer_${state.customerId}`;
+      group.position.set(state.position.x, state.position.y, state.position.z);
+      group.userData.positionTarget = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
       this.customers.set(state.customerId, group);
       this.scene.add(group);
     }
-    group.position.set(state.position.x, state.position.y, state.position.z);
+    (group.userData.positionTarget as THREE.Vector3).set(state.position.x, state.position.y, state.position.z);
     const body = group.getObjectByName('body') as THREE.Group;
     const partySize = Math.max(1, Math.min(4, state.partySize ?? 1));
     const seatOffsets = [
@@ -1272,6 +1282,19 @@ export class RestaurantScene {
       const [x, z] = seatOffsets[index] ?? seatOffsets[0];
       child.position.set(x, 0, z);
     });
+    const existingOrderLabel = group.getObjectByName('order_label') as THREE.Sprite | undefined;
+    if (state.orderLabel) {
+      if (existingOrderLabel?.userData.text !== state.orderLabel) {
+        existingOrderLabel?.parent?.remove(existingOrderLabel);
+        const label = createLabelSprite(`WANTS ${state.orderLabel}`, STATE_COLORS.opportunity, 0.38);
+        label.name = 'order_label';
+        label.userData.text = state.orderLabel;
+        label.position.set(0, 1.35, 0);
+        group.add(label);
+      }
+    } else if (existingOrderLabel) {
+      existingOrderLabel.parent?.remove(existingOrderLabel);
+    }
     const ring = group.getObjectByName('patience_ring') as THREE.Mesh;
     (ring.material as THREE.MeshBasicMaterial).color.setHex(ringColor);
     // PRD §4.4 "visibly look impatient" — `updateCustomerAnimations` (per render frame) reads
@@ -1300,6 +1323,8 @@ export class RestaurantScene {
     const amplitudeByBand: Record<string, number> = { healthy: 0, attention: 0.03, bottleneck: 0.07, critical: 0.13 };
     const speedByBand: Record<string, number> = { healthy: 0, attention: 2.2, bottleneck: 3.4, critical: 5.0 };
     for (const group of this.customers.values()) {
+      const target = group.userData.positionTarget as THREE.Vector3 | undefined;
+      if (target) group.position.lerp(target, 0.035);
       const band = (group.userData.band as string) ?? 'healthy';
       const amplitude = amplitudeByBand[band] ?? 0;
       const body = group.getObjectByName('body');

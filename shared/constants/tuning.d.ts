@@ -60,6 +60,7 @@ export declare const EVENT_DEMAND_SHIFT_BAND: EventDemandShiftBand;
 
 export declare const CUSTOMER_RNG_STREAM: string;
 export declare const CUSTOMER_ENTER_DISTRICT_MS: number;
+export declare const CUSTOMER_VISIBLE_QUEUE_MS: number;
 export declare const CUSTOMER_EVALUATE_RESTAURANTS_MS: number;
 export declare const CUSTOMER_SEATED_GREET_MS: number;
 export declare const CUSTOMER_ORDERING_MS: number;
@@ -199,6 +200,7 @@ export declare const WORKER_TICKET_URGENCY_BUCKET_MS: number;
 export declare const WORKER_RESTOCK_THRESHOLD_UNITS: number;
 
 export declare const OWNER_INTERACT_RANGE: number;
+export declare const OWNER_DELIVERY_RANGE: number;
 
 export interface OwnerActionBaseDurationsMs {
   pickup: number;

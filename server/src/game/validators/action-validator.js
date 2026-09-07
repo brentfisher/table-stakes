@@ -44,6 +44,7 @@
 
 import {
   OWNER_INTERACT_RANGE,
+  OWNER_DELIVERY_RANGE,
   OWNER_TASK_DURATIONS_MS,
   OWNER_CARRY_CAPACITY,
   WORKER_RESTOCK_THRESHOLD_UNITS,
@@ -192,7 +193,10 @@ function resolvePickup(match, restaurantId, player, targetId) {
 
 function resolveDeliver(match, restaurantId, player, targetId) {
   if (!isTableId(targetId)) return fail('interact_rejected', 'no_such_target', targetId);
-  const outOfRange = requireRange(player, match.floor.tablePositionOf(restaurantId, targetId), targetId);
+  const tablePosition = match.floor.tablePositionOf(restaurantId, targetId);
+  const outOfRange = !tablePosition || distance(player.position, tablePosition) > OWNER_DELIVERY_RANGE
+    ? fail('interact_rejected', 'out_of_range', targetId)
+    : null;
   if (outOfRange) return outOfRange;
 
   const carried = player.carrying.find((c) => c.tableId === targetId);

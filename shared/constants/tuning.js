@@ -165,16 +165,21 @@ export const CUSTOMER_RNG_STREAM = 'customers';
 export const CUSTOMER_ENTER_DISTRICT_MS = 400;
 export const CUSTOMER_EVALUATE_RESTAURANTS_MS = 600;
 
+/** A party visibly occupies the entry queue before anyone can seat it. This prevents the
+ * server from teleporting a newly-arrived party straight from the street to a table and gives
+ * the player time to see the restaurant's actual arrival pressure. */
+export const CUSTOMER_VISIBLE_QUEUE_MS = 3_500;
+
 /** Seated but not yet ordering — greeted, handed a menu. */
 export const CUSTOMER_SEATED_GREET_MS = 1_000;
 /** Deciding on and placing an order. STORY-005 may replace this with real menu-browsing time. */
-export const CUSTOMER_ORDERING_MS = 6_000;
+export const CUSTOMER_ORDERING_MS = 7_500;
 /* CUSTOMER_FOOD_WAIT_MS_RANGE IS GONE (STORY-005). It was a synthetic kitchen wait standing in
  * until a kitchen existed. One does now: how long a party waits for food is the sum of its
  * dishes' `stationSteps` durations from dishes.json plus whatever those tickets spent queueing
  * behind other tickets, and it is not a tunable number any more. Nothing replaces it here. */
 /** How long a party spends eating once food arrives. */
-export const CUSTOMER_EATING_MS_RANGE = [8_000, 16_000];
+export const CUSTOMER_EATING_MS_RANGE = [12_000, 18_000];
 export const CUSTOMER_PAYING_MS = 3_000;
 /** Walking out, after which the party enters REVIEW (Decision 13: one step, not two). */
 export const CUSTOMER_LEAVING_MS = 1_500;
@@ -777,6 +782,10 @@ export const WORKER_RESTOCK_THRESHOLD_UNITS = INVENTORY_RESTOCK_THRESHOLD_UNITS;
  * `restaurant-layout.json` is the one deliberate exception (a terminal purchase is STORY-012's,
  * not read here). */
 export const OWNER_INTERACT_RANGE = 2.2;
+
+/** Tables have chairs and a pass-facing edge, so delivery gets a slightly more generous radius
+ * than small equipment targets. The client prompt and server validation share this value. */
+export const OWNER_DELIVERY_RANGE = 3.1;
 
 /**
  * The owner's per-action duration, derived from the worker's — never a second set of numbers,

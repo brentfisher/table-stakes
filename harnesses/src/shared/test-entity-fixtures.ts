@@ -158,6 +158,8 @@ export function mockDiningCustomer(
     state: 'SEATED',
     restaurantId: SHOWCASE_RESTAURANT_ID,
     position: { x: 0, y: 0, z: 0 },
+    queueWaitMs: 0,
+    readyToSeat: false,
     patienceRemaining: 1,
     satisfaction: 80,
     tableId: null,
