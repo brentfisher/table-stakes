@@ -1,0 +1,10 @@
+{
+  "asset": "assets/copper-and-thyme/restaurant.glb",
+  "source": "docs/copper-and-thyme.zip",
+  "author": "User-supplied Astra/Blender scene, adapted for Rival Restaurant",
+  "license": "User-supplied generated asset; no separate license declared in the archive",
+  "attributionRequired": null,
+  "attributionText": "Copper & Thyme scene supplied by the repository owner",
+  "retrieved": "2026-09-06",
+  "notes": "Procedural geometry and materials from the supplied build_scene.py. No external texture or model downloads. Original archive remains unchanged."
+}

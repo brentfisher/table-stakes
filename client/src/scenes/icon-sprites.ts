@@ -105,7 +105,14 @@ function labelTexture(text: string): THREE.CanvasTexture {
   // A single size fits every PRD §5.2 label this ships with ("READY", "GOING COLD", "T04",
   // "T12") — all short enough at this chip width; a future longer label would need its own
   // measurement pass, not a concern for this story's fixed vocabulary.
-  ctx.font = 'bold 34px system-ui, sans-serif';
+  let fontSize = 34;
+  ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+  // Destination names and restaurant identity share this chip style with ready-food labels.
+  // Fit their text inside the backing instead of clipping longer names such as UPGRADES.
+  while (ctx.measureText(text).width > LABEL_TEXTURE_WIDTH - 28 && fontSize > 16) {
+    fontSize -= 1;
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, LABEL_TEXTURE_WIDTH / 2, LABEL_TEXTURE_HEIGHT / 2 + 2);

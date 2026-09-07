@@ -177,3 +177,10 @@ HUD; the visual state language; a bot opponent; four more harnesses; and telemet
 - Data ids and WebSocket message types are `snake_case`; durations are milliseconds with a
   `Ms` suffix.
 - Every reused external asset needs license metadata in `assets/licenses/`.
+
+### Copper & Thyme restaurant artwork
+
+The main game and all development harnesses load the adapted Copper & Thyme restaurant.
+See [scene integration and authoring](docs/kb/copper-and-thyme-integration.md) for export steps,
+asset provenance, runtime behavior and visual checks. In Restaurant Layout, toggle
+**Copper & Thyme artwork** to compare it with the procedural fallback.

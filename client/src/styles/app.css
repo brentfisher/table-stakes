@@ -441,13 +441,10 @@ body {
 
 .hud-scoreboard {
   position: absolute;
-  /* STORY-016: `.event-banner` claims the true top-center strip (top: 12px) — pushed down a
-     fixed amount so the two never overlap, whether or not an event happens to be active right
-     now (a layout that only shifts WHEN an event fires would be its own distracting jump). */
+  /* Keep the cutaway kitchen's center visible. The event banner retains the top strip. */
   top: 58px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 300px;
+  right: 12px;
+  width: 270px;
   padding: 10px 14px;
   background: var(--panel);
   border: 1px solid var(--border);

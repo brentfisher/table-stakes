@@ -43,6 +43,7 @@
 // (`Math.hypot(dx, dz) > radius`, X/Z only) so the readout can never disagree with the real rule.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import { RestaurantScene, CameraController, type OwnerRenderState } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
@@ -183,7 +184,7 @@ const DEFAULT_TERMINAL_RADIUS = TERMINAL_ENTITY?.interactionRadius ?? OWNER_INTE
 const ADDITIONAL_TABLE_POS: Vec3 = { x: 6, y: 0, z: 0.3 };
 
 const OWNER_ID = 'harness_owner';
-const UPGRADE_CAMERA = { height: 20, distance: 19, angle: -0.5, fov: 46 } as const;
+const UPGRADE_CAMERA = { height: 20, distance: 19, angle: Math.PI - 0.28, fov: 46 } as const;
 
 export const upgradePreviewHarness: SceneHarness = createUpgradePreviewHarness();
 
@@ -283,6 +284,7 @@ function createUpgradePreviewHarness(): SceneHarness {
 
       scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: false });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);

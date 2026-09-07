@@ -6,6 +6,7 @@
 // is what lets harnesses/ mount this same scene with mocked state and no backend.
 
 import * as THREE from 'three';
+import { CopperAndThyme } from './CopperAndThyme';
 import layout from '../../../shared/game-data/restaurant-layout.json';
 import { STATIONS, type Station } from '../../../shared/schemas/messages';
 import type {
@@ -151,10 +152,10 @@ const STATION_SHORTAGE_ANCHOR = { x: 0.9, y: 1.1, z: 0.5 } as const;
 // PRD §14 "Visual state language" — the shared palette. STORY-016 extends this to the full
 // green/yellow/orange/red/blue/purple semantics; Milestone 0 needs only structural colors.
 export const ZONE_COLORS: Record<string, number> = {
-  street: 0x3a4046,
-  dining: 0x54606b,
-  pass: 0x6b7480,
-  kitchen: 0x474f58,
+  street: 0x777c76,
+  dining: 0x946543,
+  pass: 0xbab3a3,
+  kitchen: 0x66746d,
 };
 
 const STATION_COLORS: Record<string, number> = {
@@ -498,11 +499,14 @@ export interface RestaurantSceneOptions {
   showDebugGrid?: boolean;
   showCompetitor?: boolean;
   night?: boolean;
+  scenery?: boolean;
 }
 
 export class RestaurantScene {
   readonly scene = new THREE.Scene();
   readonly layout = layout;
+  private readonly scenery: CopperAndThyme;
+  readonly sceneryReady: Promise<boolean>;
 
   private readonly owners = new Map<string, THREE.Group>();
   private readonly grid: THREE.GridHelper;
@@ -529,6 +533,7 @@ export class RestaurantScene {
    * same seam as `customers`/`workers` above (`GameClient.ts` reconciles a 'readyDishes' kind
    * through `EntityViewRegistry`), unlike the fixed-count `tableBadges`/`stationIndicators`
    * above. Supersedes STORY-016's single `foodReadyIcon` sprite (removed). */
+  private readonly upgradedStations = new Map<string, boolean>();
   private readonly readyDishes = new Map<string, THREE.Group>();
   /** Which of `MAX_READY_DISH_SLOTS` fixed pass positions each live ticket currently occupies —
    * see `readyDishSlotPosition`'s own comment on why slots are stable, not reflowed. */
@@ -554,7 +559,14 @@ export class RestaurantScene {
     this.scene.add(this.ambient);
 
     this.keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
-    this.keyLight.position.set(8, 16, 6);
+    this.keyLight.color.setHex(0xffdfb0);
+    this.keyLight.position.set(-12, 18, -6);
+    this.keyLight.castShadow = true;
+    this.keyLight.shadow.mapSize.set(2048, 2048);
+    Object.assign(this.keyLight.shadow.camera, { left: -18, right: 18, top: 20, bottom: -20, near: 1, far: 60 });
+    this.keyLight.shadow.normalBias = 0.035;
+    this.keyLight.shadow.bias = -0.0002;
+    this.scene.add(new THREE.HemisphereLight(0xc5dcf2, 0x695138, 0.65));
     this.scene.add(this.keyLight);
 
     this.buildZones();
@@ -571,7 +583,93 @@ export class RestaurantScene {
     this.scene.add(this.competitor);
     this.competitorSign = this.competitor.getObjectByName('competitor_sign') as THREE.Mesh;
 
+    this.buildWayfinding();
+    this.buildStreetscape();
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    this.scenery = new CopperAndThyme(this.scene);
+    this.sceneryReady = this.scenery.ready.then((loaded) => {
+      if (loaded) for (const [station, upgraded] of this.upgradedStations) this.setStationUpgraded(station, upgraded);
+      return loaded;
+    });
+    this.scenery.setVisible(options.scenery ?? true);
     this.setNight(options.night ?? false);
+  }
+
+  setSceneryVisible(visible: boolean): void {
+    this.scenery.setVisible(visible);
+  }
+
+  private buildWayfinding(): void {
+    for (const entity of this.layout.entities) {
+      const label = entity.type === 'table' ? formatTableChip(entity.id)
+        : entity.type === 'station' ? entity.station!.toUpperCase()
+        : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
+            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME' } as Record<string, string>)[entity.id];
+      if (!label) continue;
+      const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.42);
+      sprite.name = `label_${entity.id}`;
+      // Table ids sit alongside the tabletop, leaving the existing state badge above it.
+      sprite.position.set(0, entity.type === 'table' ? 0.18 : 0.15,
+        entity.type === 'table' ? -1.7 : entity.type === 'station' ? -1.25 : -0.85);
+      this.scene.getObjectByName(entity.id)?.add(sprite);
+    }
+    const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 0.9);
+    title.position.set(0, 3.6, 11.8);
+    title.name = 'restaurant_identity';
+    this.scene.add(title);
+    const rival = createLabelSprite('RIVAL', 0xf0c2ad, 0.8);
+    rival.position.set(0, 3.8, -26);
+    this.competitor.add(rival);
+  }
+
+  private buildStreetscape(): void {
+    const district = new THREE.Group();
+    district.name = 'district_backdrop';
+    const ground = this.box(64, 0.15, 64, 0x89978a);
+    ground.position.set(0, -0.7, -8);
+    district.add(ground);
+    const street = this.box(54, 0.12, 8, 0x4b5758);
+    street.position.set(0, -0.5, -16);
+    district.add(street);
+    for (let x = -25; x <= 25; x += 5) {
+      const stripe = this.box(2, 0.02, 0.12, 0xd4c8a5);
+      stripe.position.set(x, -0.42, -16);
+      district.add(stripe);
+    }
+    for (const x of [-11, 11]) {
+      const sidewalk = this.box(2.4, 0.25, 28, 0xa8aba0);
+      sidewalk.position.set(x, -0.35, 0);
+      district.add(sidewalk);
+      for (const z of [-9, 8]) {
+        const pot = this.box(1.2, 0.6, 1.2, 0x93694d);
+        pot.position.set(x, 0.15, z);
+        district.add(pot);
+        const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 1),
+          new THREE.MeshStandardMaterial({ color: 0x456943, roughness: 0.9 }));
+        leaves.position.set(x, 0.95, z);
+        district.add(leaves);
+      }
+    }
+    // Background shop facades sit outside movement bounds and below the dining sightline.
+    for (const x of [-19, 19]) {
+      const shop = this.box(8, 3.5, 12, x < 0 ? 0xaaa08e : 0x9eafa5);
+      shop.position.set(x, 1.1, 6);
+      district.add(shop);
+      const roof = this.box(8.3, 0.2, 12.3, 0x566962);
+      roof.position.set(x, 2.95, 6);
+      district.add(roof);
+      for (const dx of [-2.5, 0, 2.5]) {
+        const window = this.box(1.6, 1.8, 0.1, 0x334e4c);
+        window.position.set(x + dx, 1.25, -0.06);
+        district.add(window);
+      }
+    }
+    this.scene.add(district);
   }
 
   private buildZones(): void {
@@ -815,12 +913,24 @@ export class RestaurantScene {
    * update path this file has; see the header comment on why it stays this narrow rather than
    * growing into a general visual-state system (that generalization is STORY-016's). */
   setStationUpgraded(station: string, upgraded: boolean): void {
+    this.upgradedStations.set(station, upgraded);
     const mesh = this.scene.getObjectByName(`station_${station}`) as THREE.Mesh | undefined;
     if (!mesh) return;
     const material = mesh.material as THREE.MeshStandardMaterial;
     material.color.setHex(
       upgraded ? (STATION_COLORS_UPGRADED[station] ?? STATION_COLORS[station]) : (STATION_COLORS[station] ?? 0x808890),
     );
+    mesh.getObjectByName(`copper_station_${station}`)?.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      // Clone once: glTF materials are shared across the kitchen and dining room.
+      if (!object.userData.upgradeMaterial) {
+        object.material = (object.material as THREE.MeshStandardMaterial).clone();
+        object.userData.upgradeMaterial = true;
+      }
+      const surface = object.material as THREE.MeshStandardMaterial;
+      surface.emissive.setHex(upgraded ? 0xa34813 : 0x000000);
+      surface.emissiveIntensity = upgraded ? 0.25 : 0;
+    });
   }
 
   /** STORY-012 "Pantry Shelves": read as "more storage" with a taller box and a darker,
@@ -1433,12 +1543,15 @@ export class RestaurantScene {
   }
 
   setNight(night: boolean): void {
-    this.ambient.intensity = night ? 0.28 : 0.75;
-    this.keyLight.intensity = night ? 0.45 : 1.15;
-    this.scene.background = new THREE.Color(night ? 0x0d1015 : 0x1b1f24);
+    this.ambient.intensity = night ? 0.32 : 0.6;
+    this.keyLight.intensity = night ? 0.65 : 2.5;
+    this.scene.background = new THREE.Color(night ? 0x17262d : 0xb7c8c5);
   }
 
   dispose(): void {
+    this.scenery.dispose();
+    this.keyLight.shadow.dispose();
+    this.scene.userData.disposeEnvironment?.();
     this.scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (mesh.geometry) mesh.geometry.dispose();

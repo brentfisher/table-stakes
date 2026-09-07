@@ -852,7 +852,10 @@ export class GameClient {
     this.scene.restaurant.updateCarryTargetAnimations(this.elapsedSeconds);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
-    if (self) this.scene.cameraController.setTarget(self.position.x, self.position.z);
+    if (self) this.scene.cameraController.setTarget(
+      Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
+      Math.max(-1.5, Math.min(1.5, self.position.z * 0.18)),
+    );
 
     // STORY-008. Re-resolved every frame against interpolated position (cheap: a handful of
     // array scans, no allocation on the hot path beyond the winning candidate), but only
@@ -875,7 +878,10 @@ export class GameClient {
     this.sinceInputSend += dt * 1000;
     if (this.sinceInputSend >= 1000 / INPUT_SEND_HZ) {
       this.sinceInputSend = 0;
-      this.network.sendInput(this.input.getMoveIntent(), this.input.getFacing());
+      this.network.sendInput(
+        this.input.getMoveIntent(this.scene.cameraController.getSettings().angle),
+        this.input.getFacing(),
+      );
     }
   }
 

@@ -173,11 +173,12 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       {status?.showTacticalOverview && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <TacticalOverviewPanel status={status} />
       ) : null}
-      <div className="scope-note">
-        <strong>Match lifecycle</strong> — the PRD §5 phase clock runs on the server; both
-        owners ready up to leave the lobby, then build a menu during setup. Customers, orders,
-        events, money and scoring each land in a later story.
-      </div>
+      {status?.matchPhase === 'lobby' ? (
+        <div className="scope-note">
+          <strong>Open for business</strong> — ready up, choose your menu and staffing,
+          then help your crew seat customers, cook and deliver orders.
+        </div>
+      ) : null}
       <div className="help">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}
         <kbd>E</kbd> interact · <kbd>F</kbd> put down · <kbd>Tab</kbd> overview

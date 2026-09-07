@@ -15,9 +15,9 @@ export interface CameraSettings {
 // dishwashing at the back of house — is visible at once. Readability of queues, tables,
 // stations and staff from one view is the §4.4 requirement the camera exists to satisfy.
 export const DEFAULT_CAMERA: CameraSettings = {
-  height: 24,
-  distance: 21,
-  angle: 0,
+  height: 26,
+  distance: 23,
+  angle: Math.PI - 0.28,
   fov: 46,
 };
 
@@ -47,7 +47,7 @@ export class CameraController {
 
   setAspect(aspect: number): void {
     this.camera.aspect = aspect;
-    this.camera.updateProjectionMatrix();
+    this.applySettings();
   }
 
   /** Soft follow — the camera lags the owner so the frame does not jitter with input. */
@@ -58,7 +58,10 @@ export class CameraController {
 
   private applySettings(): void {
     const { height, distance, angle, fov } = this.settings;
-    this.camera.fov = fov;
+    // Preserve the floor's horizontal coverage on narrow windows too.
+    this.camera.fov = this.camera.aspect < 1.25
+      ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) * 1.25 / this.camera.aspect))
+      : fov;
     this.camera.position.set(
       this.smoothed.x + Math.sin(angle) * distance,
       height,
