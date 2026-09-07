@@ -143,6 +143,7 @@ export function HudPanel({
   const queueIsWarning = Boolean(self?.activeBottlenecks?.includes('long_entry_queue'));
 
   const activeEvent = status?.events.find((e) => e.state === 'active') ?? null;
+  const activeSpecial = status?.frontDoor[status.playerId ?? '']?.activeSpecialId ?? null;
   const upcomingEvent =
     status?.events
       .filter((e) => e.state === 'warning' && typeof e.startsInMs === 'number')
@@ -157,6 +158,7 @@ export function HudPanel({
     <>
       <div className="hud">
         <h1>Rival Restaurant</h1>
+        {activeSpecial ? <div className="hud-special">SPECIAL: {activeSpecial.replace(/_/g, ' ').toUpperCase()}</div> : null}
         <dl>
           {!inService ? <>
             <dt>Server</dt>
