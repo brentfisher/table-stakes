@@ -823,6 +823,7 @@ function scoreRestaurant(match, state, view, party, effects) {
   const specialEffects = match.frontDoor?.activeSpecial(view.restaurantId)?.effects ?? {};
   if (party.segmentId === 'office_worker') components.menuFit = clamp(components.menuFit * (specialEffects.officeWorkerConsiderationMultiplier ?? 1), 0, 1);
   if (party.segmentId === 'event_fan') components.menuFit = clamp(components.menuFit * (specialEffects.eventFanConsiderationMultiplier ?? 1), 0, 1);
+  if (party.segmentId === 'affluent_couple') components.menuFit = clamp(components.menuFit * (specialEffects.affluentCoupleConsiderationMultiplier ?? 1), 0, 1);
   if (party.priceWeight >= 0.3) components.price = clamp(components.price * (specialEffects.priceSensitiveConsiderationMultiplier ?? 1), 0, 1);
 
   const waitMs = projectedWaitMs(match, state, view, party.partySize);
