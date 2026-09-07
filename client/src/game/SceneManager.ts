@@ -2,6 +2,7 @@
 // rendering; React owns application UI. Nothing in here touches React state per frame.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../scenes/restaurant-rendering';
 import { RestaurantScene } from '../scenes/RestaurantScene';
 import { ResultsScene } from '../scenes/ResultsScene';
 import { CameraController } from './CameraController';
@@ -30,6 +31,7 @@ export class SceneManager {
     this.active = this.restaurant.scene;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    configureRestaurantRenderer(this.renderer, this.restaurant.scene);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);

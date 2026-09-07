@@ -8,6 +8,7 @@
 // height/angle/zoom, and test blocked path locations.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import { RestaurantScene, CameraController, DEFAULT_CAMERA } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
@@ -37,8 +38,9 @@ function createRestaurantLayoutHarness(): SceneHarness {
       const panel = new DevControls('Layout controls');
       container.append(viewport, panel.element);
 
-      scene = new RestaurantScene({ showDebugGrid: true, showCompetitor: true });
+      scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: true });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);
@@ -80,7 +82,14 @@ function createRestaurantLayoutHarness(): SceneHarness {
       const kitchen = scene.scene.getObjectByName('zone_kitchen');
       const dining = scene.scene.getObjectByName('zone_dining');
 
-      panel.addToggle('Debug grid', true, (v) => scene?.setDebugGrid(v));
+      panel.addToggle('Copper & Thyme artwork', true, (v) => scene?.setSceneryVisible(v));
+      const sceneryReadout = panel.addReadout('Scenery');
+      sceneryReadout('Loading…');
+      const mountedScene = scene;
+      void scene.sceneryReady.then(() => {
+        if (scene === mountedScene) sceneryReadout(String(scene.scene.userData.sceneryStatus));
+      });
+      panel.addToggle('Debug grid', false, (v) => scene?.setDebugGrid(v));
       panel.addToggle('Competitor visible', true, (v) => scene?.setCompetitorVisible(v));
       panel.addToggle('Night lighting', false, (v) => scene?.setNight(v));
       panel.addToggle('Kitchen zone', true, (v) => { if (kitchen) kitchen.visible = v; });

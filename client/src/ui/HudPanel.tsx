@@ -158,8 +158,10 @@ export function HudPanel({
       <div className="hud">
         <h1>Rival Restaurant</h1>
         <dl>
-          <dt>Server</dt>
-          <dd className={`status-${connection}`}>{connection}</dd>
+          {!inService ? <>
+            <dt>Server</dt>
+            <dd className={`status-${connection}`}>{connection}</dd>
+          </> : null}
           <dt>Phase</dt>
           <dd>{phase ? (PHASE_LABELS[phase] ?? phase) : '—'}</dd>
           <dt>Time left</dt>
@@ -204,6 +206,7 @@ export function HudPanel({
               </dd>
             </>
           ) : null}
+          {!inService ? <>
           <dt>Room</dt>
           <dd>{status?.roomId ?? '—'}</dd>
           <dt>You</dt>
@@ -212,6 +215,7 @@ export function HudPanel({
           <dd>{status?.seed ?? '—'}</dd>
           <dt>Owners</dt>
           <dd>{status?.playerCount ?? 0}</dd>
+          </> : null}
         </dl>
 
         {status?.endReason ? (
@@ -219,11 +223,11 @@ export function HudPanel({
             Match over —{' '}
             {status.endReason === 'player_disconnected' ? 'opponent disconnected' : 'completed'}.
           </p>
-        ) : (
+        ) : canReady ? (
           <button type="button" disabled={!canReady} onClick={() => onReady(!status?.ready)}>
             {status?.ready ? 'Ready ✓ (cancel)' : 'Ready up'}
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* PRD §18 "Current score comparison" + the compact rival summary's "Rival score,

@@ -4,22 +4,10 @@
 // styling work independent of a live match — Player Models, Dish Models, Restaurant Models,
 // each in both a focused single-asset inspection mode and a composed in-context scene mode.
 //
-// SCOPE REALITY-CHECK (read before touching this file). The PRD's source document for this
-// story envisions "model loaders", "missing textures", "unsupported animations", "hot-swapping
-// assets" — a full asset-loading pipeline. THIS CODEBASE HAS NONE OF THAT, anywhere, in
-// production or in any of the other five harnesses: every visual in `RestaurantScene.ts` is a
-// procedural THREE.js primitive (boxes, capsules, spheres, planes) with a solid-color material,
-// built directly in code from `restaurant-layout.json` — no `GLTFLoader`, no textures, no
-// skeletal animation, nothing to hot-swap. Building a model/texture/animation-loading system
-// here would contradict conventions.md Decision 1 (Three.js is CDN-only, pinned — no bundled
-// loader dependency) and would have no precedent in any of restaurant-layout/customer-flow/
-// kitchen-bottleneck/event-visualization/upgrade-preview-harness. So this harness does NOT
-// invent one. Instead:
+// Restaurant assets now load through the production CopperAndThyme adapter. The loader and
+// RoomEnvironment use the same pinned CDN addon map as the game's Three.js runtime. Focused
+// visibility/bounds are reapplied when the asynchronous model arrives.
 //
-//   - The three categories map onto what is ACTUALLY reusable: `RestaurantScene`'s real
-//     owner/worker/customer render states (`upsertOwner`/`upsertWorker`/`upsertCustomer`) for
-//     Player Models, and its zone/table/station/pantry/pass/terminal/competitor visuals for
-//     Restaurant Models.
 //   - Dish Models is a MIX, not uniformly generic. STORY-030 gave 'ready' a real per-dish visual
 //     — the plate at the service pass is chosen by `dishId` (`RestaurantScene#upsertReadyDish`,
 //     five named silhouettes plus a neutral fallback for the rest of the catalogue) — but every
@@ -61,6 +49,7 @@
 // and `shared/schemas/game-state`, not ad hoc objects that happen to render.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import {
   RestaurantScene,
@@ -312,6 +301,7 @@ function createAssetShowcaseHarness(): SceneHarness {
 
       scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: false, night: false });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);
@@ -1117,6 +1107,13 @@ function createAssetShowcaseHarness(): SceneHarness {
       observer.observe(viewport);
 
       setCategory('player');
+      const mountedScene = scene;
+      void scene.sceneryReady.then(() => {
+        if (scene !== mountedScene) return;
+        applyVisibility();
+        applyBounds();
+        applyCameraForMode();
+      });
 
       let elapsedTotal = 0;
       let last = performance.now();

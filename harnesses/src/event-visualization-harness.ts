@@ -51,6 +51,7 @@
 // (`RestaurantScene.upsertCustomer`, the same segment-tinted customer body STORY-016 built).
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import { RestaurantScene, CameraController, type CustomerRenderState } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
@@ -95,7 +96,7 @@ const CROWD_Z = -13.5;
 const FOOT_TRAFFIC_X_SPREAD = 7.5;
 const CROWD_X_SPREAD = 8.5;
 
-const EVENT_CAMERA = { height: 27, distance: 25, angle: 0.28, fov: 48 } as const;
+const EVENT_CAMERA = { height: 27, distance: 25, angle: Math.PI - 0.28, fov: 48 } as const;
 
 const RESTAURANT_ID = 'harness_restaurant';
 const MAX_FOOT_TRAFFIC = 12;
@@ -355,6 +356,7 @@ function createEventVisualizationHarness(): SceneHarness {
 
       scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: false });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);

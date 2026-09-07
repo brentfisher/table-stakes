@@ -16,6 +16,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    fs: { allow: [here, resolve(here, '../shared'), resolve(here, '../assets')] },
     proxy: {
       '/api': 'http://localhost:3000',
       '/health': 'http://localhost:3000',

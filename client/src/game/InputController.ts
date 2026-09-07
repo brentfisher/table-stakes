@@ -78,7 +78,7 @@ export class InputController {
     return this.facing;
   }
 
-  getMoveIntent(): MoveIntent {
+  getMoveIntent(cameraAngle = 0): MoveIntent {
     let x = 0;
     let z = 0;
     for (const code of this.pressed) {
@@ -87,9 +87,14 @@ export class InputController {
       x += axis[0];
       z += axis[1];
     }
+    // Screen-relative WASD follows the cutaway camera; intent still goes through the
+    // authoritative server. Normalize diagonals before rotation to stay inside wire bounds.
+    const length = Math.max(1, Math.hypot(x, z));
+    const localX = x / length;
+    const localZ = z / length;
     return {
-      x: Math.max(-1, Math.min(1, x)),
-      z: Math.max(-1, Math.min(1, z)),
+      x: localX * Math.cos(cameraAngle) + localZ * Math.sin(cameraAngle),
+      z: -localX * Math.sin(cameraAngle) + localZ * Math.cos(cameraAngle),
       sprint: this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight'),
     };
   }

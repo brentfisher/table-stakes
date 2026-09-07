@@ -17,6 +17,7 @@
 // never by reaching into `RestaurantScene`'s private state or forking its customer/table code.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import {
   RestaurantScene,
@@ -86,7 +87,7 @@ function segmentName(id: string): string {
 // to the back of the player's own dining room (z ≈ -1) — a wider span than the restaurant
 // footprint alone, so this harness's own default framing pulls back further than
 // `DEFAULT_CAMERA` (which is tuned for `restaurant-layout-harness`'s footprint-only view).
-const CUSTOMER_FLOW_CAMERA = { height: 30, distance: 34, angle: 0, fov: 50 } as const;
+const CUSTOMER_FLOW_CAMERA = { height: 30, distance: 34, angle: Math.PI - 0.28, fov: 50 } as const;
 
 // --- Mock party model ------------------------------------------------------------------------
 
@@ -387,6 +388,7 @@ function createCustomerFlowHarness(): SceneHarness {
 
       scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: true });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);

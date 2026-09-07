@@ -40,6 +40,7 @@
 // queue/shortage badges use, at a third anchor point so it is never confused with either.
 
 import * as THREE from 'three';
+import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
 import {
   RestaurantScene,
@@ -100,7 +101,7 @@ const COOK_IDLE_POS: Vec3 = { x: 0, y: 0, z: 6.4 };
 const SERVER_IDLE_POS: Vec3 = { x: -1.5, y: 0, z: 0.6 };
 const OWNER_IDLE_POS: Vec3 = { x: 4, y: 0, z: 0.5 };
 
-const KITCHEN_CAMERA = { height: 22, distance: 25, angle: 0.35, fov: 48 } as const;
+const KITCHEN_CAMERA = { height: 22, distance: 25, angle: Math.PI - 0.28, fov: 48 } as const;
 
 // --- Dish/ingredient data ----------------------------------------------------------------------
 // Real `dishes.json` records, not invented numbers — see this file's own header on why that
@@ -804,6 +805,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
 
       scene = new RestaurantScene({ showDebugGrid: false, showCompetitor: false });
       renderer = new THREE.WebGLRenderer({ antialias: true });
+      configureRestaurantRenderer(renderer, scene.scene);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(viewport.clientWidth, Math.max(1, viewport.clientHeight));
       viewport.appendChild(renderer.domElement);
