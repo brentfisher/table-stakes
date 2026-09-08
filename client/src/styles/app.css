@@ -45,6 +45,13 @@ body {
 .hud dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
 .hud dt { color: var(--muted); }
 .hud dd { margin: 0; font-variant-numeric: tabular-nums; }
+.manager-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin: 0 0 8px; }
+.manager-chip { display: grid; gap: 1px; min-width: 0; padding: 5px 7px; border: 1px solid #48515a; border-radius: 5px; background: #172029; }
+.manager-chip span { color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.manager-chip strong { overflow: hidden; color: #d9e2e8; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.manager-chip--active { border-color: #3f7890; }
+.manager-chip--watch, .manager-chip--at-risk { border-color: var(--warn); }
+.manager-chip--blocking { border-color: var(--bad); background: #341b1b; }
 
 /* The HUD panel is click-through; the ready control is the one part of it that is not. */
 .hud button {
@@ -426,6 +433,14 @@ body {
 .results-stats { display: flex; gap: 16px; flex-wrap: wrap; }
 .results-stat-column { flex: 1 1 260px; min-width: 220px; }
 .results-stat-column h2 { color: var(--text); font-size: 14px; text-transform: none; letter-spacing: 0; }
+.manager-ledger-dominant { display: flex; justify-content: space-between; gap: 18px; margin: 0 0 9px; }
+.manager-ledger-dominant span { color: var(--muted); }
+.manager-ledger-dominant strong { color: var(--warn); }
+.manager-ledger-costs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.manager-ledger-costs article { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--border); border-radius: 5px; background: #12171c; }
+.manager-ledger-costs span, .manager-ledger-costs small { color: var(--muted); }
+.manager-ledger-costs strong { font-size: 15px; }
+.manager-ledger-insights strong { color: #dce7ed; }
 
 .muted { color: var(--muted); }
 
@@ -533,7 +548,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 4;
-  width: min(720px, 90vw);
+  width: min(960px, 92vw);
   max-height: 80vh;
   overflow-y: auto;
   padding: 16px 20px;
@@ -569,12 +584,29 @@ body {
   color: var(--warn);
   font-size: 11px;
 }
+.manager-overview { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.manager-overview > h3 { margin: 0 0 7px; color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+.manager-overview-posts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-bottom: 12px; }
+.manager-overview-posts article { display: grid; gap: 2px; padding: 8px; border: 1px solid #3f5968; border-radius: 5px; background: #151d23; }
+.manager-overview-posts span, .manager-overview-posts small { color: var(--muted); }
+.manager-overview-posts strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manager-constraints { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.manager-constraint { padding: 7px; border: 1px solid #384149; border-radius: 5px; background: #11171c; }
+.manager-constraint > div { display: grid; gap: 2px; }
+.manager-constraint > div span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.manager-constraint p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.manager-constraint--watch { border-color: var(--warn); }
+.manager-constraint--limiting { border-color: var(--bad); background: #301919; }
 .tactical-events { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .tactical-events h3 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
 .tactical-events ul { margin: 0; padding-left: 16px; }
 .tactical-events li { margin: 2px 0; }
 
 .results-narrative li { line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .manager-overview-posts, .manager-constraints, .manager-ledger-costs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* STORY-022. Highest z-index in the sheet: while this is up, every other panel underneath is
    rendering the last snapshot from BEFORE the drop, which must not be mistaken for live. */

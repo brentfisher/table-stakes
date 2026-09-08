@@ -26,6 +26,8 @@
 import dishesData from '../../../shared/game-data/dishes.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
+import frontDoorData from '../../../shared/game-data/front-door-specials.json';
+import serviceStationData from '../../../shared/game-data/service-station.json';
 import { FRONT_DOOR_UPGRADE_IDS, type GameClientStatus } from '../game/GameClient';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
 import { eventTitle } from './event-titles';
@@ -47,6 +49,8 @@ const FRONT_DOOR_EFFECT_LABELS: Record<string, string> = {
   maitre_d_radio_1: 'HANDOFF -20%',
   window_display_1: 'SPECIAL LIFT ×1.25',
 };
+const SPECIAL_NAMES = new Map(frontDoorData.specials.map((special) => [special.id, special.name]));
+const SERVICE_PRIORITY_NAMES = new Map(serviceStationData.priorities.map((priority) => [priority.id, priority.name]));
 
 const PHASE_LABELS: Record<string, string> = {
   lobby: 'Lobby',
@@ -154,8 +158,8 @@ export function HudPanel({
   const queueIsWarning = Boolean(self?.activeBottlenecks?.includes('long_entry_queue'));
 
   const activeEvent = status?.events.find((e) => e.state === 'active') ?? null;
-  const activeSpecial = status?.frontDoor[status.playerId ?? '']?.activeSpecialId ?? null;
   const kitchenFocus = kitchenCommandData.focuses.find((focus) => focus.id === status?.kitchenCommand?.activeFocusId);
+  const manager = status?.managerLedger;
   const frontDoorUpgradeIds = status?.purchasedUpgradeIds.filter((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)) ?? [];
   const upcomingEvent =
     status?.events
@@ -171,8 +175,32 @@ export function HudPanel({
     <>
       <div className="hud">
         <h1>Rival Restaurant</h1>
-        {activeSpecial ? <div className="hud-special">SPECIAL: {activeSpecial.replace(/_/g, ' ').toUpperCase()}</div> : null}
-        {kitchenFocus ? <div className="hud-special">KITCHEN: {kitchenFocus.name.toUpperCase()}</div> : null}
+        {inService && manager ? (
+          <div className="manager-chips" aria-label="Active management choices">
+            <div className={manager.chips.frontDoor.activeSpecialId ? 'manager-chip manager-chip--active' : 'manager-chip'}>
+              <span>Front door</span>
+              <strong>{manager.chips.frontDoor.activeSpecialId
+                ? `${SPECIAL_NAMES.get(manager.chips.frontDoor.activeSpecialId) ?? manager.chips.frontDoor.activeSpecialId} · $${manager.chips.frontDoor.activeCost}`
+                : 'No special'}</strong>
+            </div>
+            <div className={manager.chips.service.activeContracts > 0 ? 'manager-chip manager-chip--active' : 'manager-chip'}>
+              <span>Dining room</span>
+              <strong>
+                {SERVICE_PRIORITY_NAMES.get(manager.chips.service.priorityId) ?? manager.chips.service.priorityId}
+                {manager.chips.service.activeContracts > 0 ? ` · ${manager.chips.service.activeContracts} temp` : ''}
+                {manager.chips.service.payrollBurn > 0 ? ` · $${manager.chips.service.payrollBurn}/cycle` : ''}
+              </strong>
+            </div>
+            <div className="manager-chip manager-chip--active">
+              <span>Kitchen</span>
+              <strong>{kitchenFocus?.name ?? manager.chips.kitchen.activeFocusId}</strong>
+            </div>
+            <div className={`manager-chip manager-chip--${manager.chips.pantry.risk.toLowerCase().replace(/\s/g, '-')}`}>
+              <span>Pantry</span>
+              <strong>{manager.chips.pantry.risk}{manager.chips.pantry.inboundDeliveries ? ` · ${manager.chips.pantry.inboundDeliveries} inbound` : ''}</strong>
+            </div>
+          </div>
+        ) : null}
         {frontDoorUpgradeIds.length > 0 ? (
           <div className="hud-special">
             FRONT DOOR: {frontDoorUpgradeIds.map((id) => FRONT_DOOR_EFFECT_LABELS[id] ?? upgradeName(id)).join(' · ')}

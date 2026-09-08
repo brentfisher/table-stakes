@@ -18,6 +18,7 @@ import { serviceStationHarness } from './service-station-harness';
 import { pantryBoardHarness } from './pantry-board-harness';
 import { kitchenCommandHarness } from './kitchen-command-harness';
 import { arcadeFoodHarness } from './arcade-food-harness';
+import { managerLedgerHarness } from './manager-ledger-harness';
 import type { SceneHarness } from './harness-shell';
 
 export const harnesses: SceneHarness[] = [
@@ -32,4 +33,5 @@ export const harnesses: SceneHarness[] = [
   pantryBoardHarness,
   kitchenCommandHarness,
   arcadeFoodHarness,
+  managerLedgerHarness,
 ];

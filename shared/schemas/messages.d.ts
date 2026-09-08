@@ -9,6 +9,7 @@ import type {
 } from './game-state';
 import type { PhasePreset } from '../constants/tuning';
 import type { AcceptedSetup } from './setup-rules';
+import type { ManagerConstraintId, ManagerConstraintSnapshot } from '../game-logic/manager-ledger';
 
 // STORY-001 declared `PlayerSnapshot` here. STORY-002 moved the snapshot ENTITY shapes to
 // game-state.d.ts, where the rest of them live, and re-exports them so no existing import
@@ -299,6 +300,42 @@ export interface SnapshotViewer {
     atRiskGuests: number;
     recommendation: { focusId: string; reason: string };
   } | null;
+  /** STORY-037. Compact private management state plus the five authoritative constraints. */
+  managerLedger: ManagerLedgerSnapshot | null;
+}
+
+export interface ManagerLedgerSnapshot {
+  chips: {
+    frontDoor: { activeSpecialId: string | null; activeForMs: number; activeCost: number };
+    service: { priorityId: string; activeContracts: number; arrivingContracts: number; payrollBurn: number; laborExpenses: number };
+    kitchen: { activeFocusId: string };
+    pantry: { risk: 'STOCKED' | 'WATCH' | 'AT RISK' | 'BLOCKING'; inboundDeliveries: number };
+  };
+  dominantConstraint: ManagerConstraintId | null;
+  constraints: ManagerConstraintSnapshot[];
+}
+
+export interface ManagerLedgerResult {
+  dominantConstraint: ManagerConstraintId | null;
+  constraints: Array<{
+    id: ManagerConstraintId; observedMs: number; limitingMs: number; peakScore: number; evidence: string;
+  }>;
+  specials: Array<{
+    specialId: string; activations: number; spend: number; observedDecisions: number;
+    observedConversions: number; observedConversionRate: number | null; deliveredOrders: number;
+    observedRevenue: number; averageCheck: number | null; averageSatisfaction: number | null;
+    peakQueue: number;
+  }>;
+  labor: {
+    contractsHired: number; laborExpenses: number; hireFees: number; wagesPaid: number;
+    taskCompletions: number; taskCompletionsByKind: Record<string, number>;
+  };
+  restocking: { expense: number; marketPremiumPaid: number; ordersPlaced: number; shortageDurationMs: number };
+  kitchen: {
+    finalFocusId: string; focusChanges: number; selectionsByFocus: Record<string, number>;
+    recommendationMismatchMs: number;
+  };
+  insights: Array<{ category: ManagerConstraintId | 'specials' | 'labor'; observation: string; recommendation: string }>;
 }
 
 export interface PantryQuote {
@@ -401,6 +438,8 @@ export interface MatchResult {
   marketPremiumPaid: number;
   stockOrdersPlaced: number;
   shortageDurationMs: number;
+  /** STORY-037. Recorded management decisions, costs, constraint diagnosis and observations. */
+  managerLedger: ManagerLedgerResult;
   score: number;
   revenue: number;
   guestsServed: number;
@@ -413,6 +452,8 @@ export interface MatchResult {
   expenses: number;
   /** STORY-034. Temporary-staff hire fees and recurring wages included in expenses. */
   laborExpenses: number;
+  /** STORY-037. Front-door promotion spend included in expenses. */
+  specialExpenses: number;
   /** §11 "Net profit" (the same number the score formula calls "net revenue" — one field
    * doubling as both names): revenue minus `expenses`. */
   netProfit: number;

@@ -22,6 +22,8 @@ import dishesData from '../../../shared/game-data/dishes.json';
 import segmentsData from '../../../shared/game-data/customer-segments.json';
 import eventsData from '../../../shared/game-data/events.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
+import frontDoorData from '../../../shared/game-data/front-door-specials.json';
+import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
 import type { GameClientStatus } from '../game/GameClient';
 import type { MatchResult } from '../../../shared/schemas/messages';
 import { botProfileLabel } from './bot-profiles';
@@ -38,6 +40,15 @@ const EVENT_TITLES = new Map<string, string>(
 const UPGRADE_INFO = new Map<string, { name: string; description: string }>(
   (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
 );
+const SPECIAL_NAMES = new Map(frontDoorData.specials.map((special) => [special.id, special.name]));
+const KITCHEN_FOCUSES = new Map(kitchenCommandData.focuses.map((focus) => [focus.id, focus]));
+const CONSTRAINT_LABELS = {
+  demand_conversion: 'Demand conversion',
+  seating_service: 'Seating / service capacity',
+  production: 'Production capacity',
+  inventory: 'Inventory availability',
+  prioritization: 'Prioritization',
+};
 
 const dishName = (dishId: string) => DISH_NAMES.get(dishId) ?? dishId;
 const segmentName = (segmentId: string) => SEGMENT_NAMES.get(segmentId) ?? segmentId;
@@ -174,6 +185,64 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
             </ul>
           </div>
 
+          <div className="results-region results-manager-ledger">
+            <h2>Manager's ledger</h2>
+            <p className="manager-ledger-dominant">
+              <span>Dominant constraint</span>
+              <strong>{selfResult.managerLedger.dominantConstraint
+                ? CONSTRAINT_LABELS[selfResult.managerLedger.dominantConstraint]
+                : 'No sustained constraint observed'}</strong>
+            </p>
+
+            <div className="manager-ledger-costs">
+              <article>
+                <span>Temporary labor</span>
+                <strong>{formatMoney(selfResult.managerLedger.labor.laborExpenses)}</strong>
+                <small>{formatMoney(selfResult.managerLedger.labor.hireFees)} hire fees · {formatMoney(selfResult.managerLedger.labor.wagesPaid)} wages · {selfResult.managerLedger.labor.taskCompletions} tasks completed</small>
+              </article>
+              <article>
+                <span>Service restocks</span>
+                <strong>{formatMoney(selfResult.managerLedger.restocking.expense)}</strong>
+                <small>{formatMoney(selfResult.managerLedger.restocking.marketPremiumPaid)} market premium · {selfResult.managerLedger.restocking.ordersPlaced} orders</small>
+              </article>
+              <article>
+                <span>Kitchen direction</span>
+                <strong>{KITCHEN_FOCUSES.get(selfResult.managerLedger.kitchen.finalFocusId)?.name ?? selfResult.managerLedger.kitchen.finalFocusId}</strong>
+                <small>{selfResult.managerLedger.kitchen.focusChanges} changes · {Object.values(selfResult.managerLedger.kitchen.selectionsByFocus).reduce((sum, count) => sum + count, 0)} tracked selections</small>
+              </article>
+            </div>
+
+            {(() => {
+              const focus = KITCHEN_FOCUSES.get(selfResult.managerLedger.kitchen.finalFocusId);
+              return focus ? <p className="manager-ledger-tradeoff"><strong>{focus.benefit}</strong> Trade-off: {focus.downside}</p> : null;
+            })()}
+
+            <h3>Special performance</h3>
+            {selfResult.managerLedger.specials.length > 0 ? (
+              <ul className="manager-ledger-specials">
+                {selfResult.managerLedger.specials.map((special) => (
+                  <li key={special.specialId}>
+                    <strong>{SPECIAL_NAMES.get(special.specialId) ?? special.specialId}</strong> ran {special.activations}× for {formatMoney(special.spend)}. During its active windows, {special.observedConversions} of {special.observedDecisions} observed district decisions chose you; {special.deliveredOrders} delivered orders produced {formatMoney(special.observedRevenue)}
+                    {special.averageCheck === null ? '' : ` at a ${formatMoney(special.averageCheck)} average check`}; {special.averageSatisfaction === null ? 'no satisfaction sample' : `average satisfaction ${special.averageSatisfaction}`}; peak queue {special.peakQueue}.
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted">No front-door special was activated, so no special outcome is claimed.</p>}
+
+            {selfResult.managerLedger.insights.length > 0 ? (
+              <>
+                <h3>What to change next match</h3>
+                <ul className="manager-ledger-insights">
+                  {selfResult.managerLedger.insights.map((insight, index) => (
+                    <li key={`${insight.category}-${index}`}>
+                      <strong>{insight.observation}</strong> {insight.recommendation}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : <p className="muted">No tracked management decision produced enough evidence for an additional recommendation.</p>}
+          </div>
+
           {complete.turningPoints.length > 0 ? (
             <div className="results-region results-turning-points">
               <h2>Key turning points</h2>
@@ -249,6 +318,8 @@ function StatColumn({ title, result }: { title: string; result: MatchResult }): 
           <tr><td>Score</td><td>{formatPoints(result.score)}</td></tr>
           <tr><td>Revenue</td><td>{formatMoney(result.revenue)}</td></tr>
           <tr><td>Expenses</td><td>{formatMoney(result.expenses)}</td></tr>
+          <tr><td>Temporary labor</td><td>{formatMoney(result.laborExpenses)}</td></tr>
+          <tr><td>Front-door specials</td><td>{formatMoney(result.specialExpenses)}</td></tr>
           <tr><td>Service restock spend</td><td>{formatMoney(result.inventoryExpenses)}</td></tr>
           <tr><td>Market premium</td><td>{formatMoney(result.marketPremiumPaid)}</td></tr>
           <tr><td>Stock orders</td><td>{result.stockOrdersPlaced}</td></tr>

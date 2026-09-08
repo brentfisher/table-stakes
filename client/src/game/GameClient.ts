@@ -11,6 +11,7 @@ import type {
   BotSnapshotEntry,
   CustomerSnapshot,
   MatchCompleteMessage,
+  ManagerLedgerSnapshot,
   MatchEndReason,
   MatchPhase,
   OrderSnapshot,
@@ -202,6 +203,8 @@ export interface GameClientStatus {
     atRiskGuests: number;
     recommendation: { focusId: string; reason: string };
   } | null;
+  /** STORY-037. Server-authored command chips and five-constraint diagnosis. */
+  managerLedger: ManagerLedgerSnapshot | null;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -356,6 +359,7 @@ export class GameClient {
     nearKitchenCommandBoard: false,
     showKitchenCommandBoard: false,
     kitchenCommand: null,
+    managerLedger: null,
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -597,6 +601,7 @@ export class GameClient {
             purchasedUpgradeIds?: string[];
             pantry?: PantrySnapshot | null;
             kitchenCommand?: GameClientStatus['kitchenCommand'];
+            managerLedger?: ManagerLedgerSnapshot | null;
           }
         | null;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
@@ -843,6 +848,7 @@ export class GameClient {
         frontDoor: (message.frontDoor ?? {}) as GameClientStatus['frontDoor'],
         serviceStation,
         kitchenCommand: (you?.kitchenCommand ?? null) as GameClientStatus['kitchenCommand'],
+        managerLedger: you?.managerLedger ?? null,
         ...(serviceStationNotice ? { serviceStationNotice } : {}),
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.

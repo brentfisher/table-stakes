@@ -141,11 +141,24 @@ function buildRestaurantResult(
   const upgradeCostAtSetup = setup.upgradeCost ?? 0;
   const cashSpentOnUpgrades = upgrade.cashSpentOnUpgrades ?? 0;
   const laborExpenses = match.serviceStation?.expensesFor(restaurantId).laborExpenses ?? 0;
+  const specialExpenses = match.frontDoor?.spentFor(restaurantId) ?? 0;
   const inventory = new Map((match.inventorySummary ?? []).map((entry) => [entry.restaurantId, entry]))
     .get(restaurantId) ?? {};
   const inventoryExpenses = inventory.inventoryExpenses ?? 0;
+  const managerLedger = (match.managerLedgerSummary ?? []).find(
+    (entry) => entry.restaurantId === restaurantId,
+  ) ?? {
+    dominantConstraint: null, constraints: [], specials: [],
+    labor: { contractsHired: 0, laborExpenses: 0, hireFees: 0, wagesPaid: 0, taskCompletions: 0, taskCompletionsByKind: {} },
+    restocking: { expense: 0, marketPremiumPaid: 0, ordersPlaced: 0, shortageDurationMs: 0 },
+    kitchen: { finalFocusId: 'rush_pass', focusChanges: 0, selectionsByFocus: {}, recommendationMismatchMs: 0 },
+    insights: [],
+  };
   const revenue = order.revenue ?? 0;
-  const expenses = toCents(inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades + laborExpenses + inventoryExpenses);
+  const expenses = toCents(
+    inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades
+      + laborExpenses + inventoryExpenses + specialExpenses,
+  );
   // "Net profit" and "net revenue" are the same number — one field, `netProfit`, doubling as
   // both names §11 uses for it.
   const netProfit = toCents(revenue - expenses);
@@ -238,6 +251,7 @@ function buildRestaurantResult(
     // The §11 additions:
     expenses,
     laborExpenses,
+    specialExpenses,
     inventoryExpenses,
     marketPremiumPaid: inventory.marketPremiumPaid ?? 0,
     stockOrdersPlaced: inventory.stockOrdersPlaced ?? 0,
@@ -250,6 +264,7 @@ function buildRestaurantResult(
     eventPerformance: { eventObjectiveFraction, criticFailures },
     upgradesPurchased: upgrade.purchasedUpgradeIds ?? [],
     customerSegmentBreakdown: district.segmentCounts ?? {},
+    managerLedger,
     // Not part of MatchResult — stripped before this restaurant's entry reaches
     // `match.finalResults.results`; only `determineWinner`'s tie-break comparator reads it.
     tieBreak: {
