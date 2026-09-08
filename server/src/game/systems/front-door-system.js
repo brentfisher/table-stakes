@@ -59,6 +59,10 @@ function ensure(match) {
       const featuredDishId = special.id === 'chefs_feature' ? featuredDishFor(match, id) : null;
       if (special.id === 'chefs_feature' && !featuredDishId) return { ok: false, reason: 'no_available_dish' };
       entry.spent += special.cost; entry.activeSpecialId = special.id; entry.featuredDishId = featuredDishId; entry.endsAtMs = match.elapsedMs + special.durationMs; entry.cooldownEndsAtMs = entry.endsAtMs + special.cooldownMs;
+      match.logEvent?.('front_door_special_activated', {
+        restaurantId: id, specialId: special.id, cost: special.cost,
+        durationMs: special.durationMs, featuredDishId,
+      });
       return { ok: true };
     },
     publicFor(id) {
@@ -81,8 +85,9 @@ export const frontDoorSystem = {
   phases: ['service', 'final_rush'],
   update(match) {
     const state = ensure(match);
-    for (const entry of state.restaurants.values()) {
+    for (const [restaurantId, entry] of state.restaurants) {
       if (entry.activeSpecialId && match.elapsedMs >= entry.endsAtMs) {
+        match.logEvent?.('front_door_special_ended', { restaurantId, specialId: entry.activeSpecialId });
         entry.activeSpecialId = null;
         entry.featuredDishId = null;
       }

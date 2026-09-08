@@ -98,6 +98,9 @@ export const RECONNECT_GRACE_MS = 30_000;
  */
 export const TELEMETRY_SAMPLE_INTERVAL_MS = 5_000;
 
+/** STORY-037. A normalized manager-constraint score at or above this band is called limiting. */
+export const MANAGER_CONSTRAINT_LIMITING_SCORE = 3;
+
 // --- events (STORY-011) -------------------------------------------------------------------
 // PRD §9 "Dynamic events". Every number the seeded event deck uses lives here; `events.json`
 // owns what an event DOES, this file owns when and how often one may happen.

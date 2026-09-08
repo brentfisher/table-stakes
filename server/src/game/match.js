@@ -566,6 +566,10 @@ export class Match {
             pantry: this.pantry?.publicFor(viewer.playerId) ?? null,
             // STORY-036. Private because it includes the viewer's exact live menu availability.
             kitchenCommand: this.kitchenCommand?.privateFor(viewer.playerId) ?? null,
+            // STORY-037. The combined management diagnosis includes private pantry/menu facts,
+            // payroll and this restaurant's conversion history, so it follows those sources
+            // under `you` rather than leaking through the public restaurant array.
+            managerLedger: this.managerLedger?.privateFor(viewer.playerId) ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already

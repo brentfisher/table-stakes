@@ -22,10 +22,21 @@ import { botProfileLabel } from './bot-profiles';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import { FRONT_DOOR_UPGRADE_IDS } from '../game/GameClient';
 import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
+import frontDoorData from '../../../shared/game-data/front-door-specials.json';
+import serviceStationData from '../../../shared/game-data/service-station.json';
 
 const UPGRADE_INFO = new Map(
   (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
 );
+const SPECIAL_NAMES = new Map(frontDoorData.specials.map((special) => [special.id, special.name]));
+const SERVICE_PRIORITY_NAMES = new Map(serviceStationData.priorities.map((priority) => [priority.id, priority.name]));
+const CONSTRAINT_LABELS = {
+  demand_conversion: 'Demand conversion',
+  seating_service: 'Seating / service',
+  production: 'Production capacity',
+  inventory: 'Inventory availability',
+  prioritization: 'Prioritization',
+};
 
 /** Short badge text for a bottleneck kind — distinct from `HudPanel`'s full alert sentences,
  * since this panel shows every active kind for both restaurants at once, not a ranked top few. */
@@ -124,6 +135,47 @@ export function TacticalOverviewPanel({ status }: { status: GameClientStatus }):
         <RestaurantColumn title="You" restaurant={self} isSelf />
         <RestaurantColumn title={rivalTitle} restaurant={rival} isSelf={false} />
       </div>
+      {status.managerLedger ? (
+        <section className="manager-overview" aria-label="Manager command overview">
+          <h3>Manager command posts</h3>
+          <div className="manager-overview-posts">
+            <article>
+              <span>Front door</span>
+              <strong>{status.managerLedger.chips.frontDoor.activeSpecialId
+                ? SPECIAL_NAMES.get(status.managerLedger.chips.frontDoor.activeSpecialId) ?? status.managerLedger.chips.frontDoor.activeSpecialId
+                : 'No special active'}</strong>
+              <small>{status.managerLedger.chips.frontDoor.activeSpecialId ? `$${status.managerLedger.chips.frontDoor.activeCost} activation cost` : 'No active spend'}</small>
+            </article>
+            <article>
+              <span>Dining room</span>
+              <strong>{SERVICE_PRIORITY_NAMES.get(status.managerLedger.chips.service.priorityId) ?? status.managerLedger.chips.service.priorityId}</strong>
+              <small>{status.managerLedger.chips.service.activeContracts} active · {status.managerLedger.chips.service.arrivingContracts} arriving · ${status.managerLedger.chips.service.payrollBurn}/pay cycle</small>
+            </article>
+            <article>
+              <span>Kitchen</span>
+              <strong>{kitchenCommandData.focuses.find((focus) => focus.id === status.managerLedger?.chips.kitchen.activeFocusId)?.name ?? status.managerLedger.chips.kitchen.activeFocusId}</strong>
+              <small>One active production focus</small>
+            </article>
+            <article>
+              <span>Pantry</span>
+              <strong>{status.managerLedger.chips.pantry.risk}</strong>
+              <small>{status.managerLedger.chips.pantry.inboundDeliveries} inbound deliveries</small>
+            </article>
+          </div>
+          <h3>Constraint diagnosis</h3>
+          <div className="manager-constraints">
+            {status.managerLedger.constraints.map((constraint) => (
+              <article key={constraint.id} className={`manager-constraint manager-constraint--${constraint.status}`}>
+                <div>
+                  <strong>{CONSTRAINT_LABELS[constraint.id]}</strong>
+                  <span>{constraint.id === status.managerLedger?.dominantConstraint ? 'Dominant' : constraint.status}</span>
+                </div>
+                <p>{constraint.evidence}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <div className="tactical-events">
         <h3>Kitchen focus</h3>
         {status.kitchenCommand ? (() => {

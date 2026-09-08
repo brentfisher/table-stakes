@@ -36,7 +36,10 @@
 //                            `match.orders` — it needs them as fresh as every other late system
 //                            does, and it produces nothing `scoring` reads, so it must not be
 //                            registered any later than immediately before it.)
-//   scoring    — STORY-013  (last: it reads what everything else produced)
+//   manager-ledger — STORY-037 (after all four management posts and the HUD diagnosis; freezes
+//                            its recorded results before scoring adds them to the final payload)
+//   scoring    — STORY-013  (last gameplay result aggregator: reads every prior summary)
+//   telemetry  — STORY-022  (last observer: emits periodic snapshots without owning gameplay)
 
 import { registerSystem } from '../simulation-loop.js';
 import { movementSystem } from './movement-system.js';
@@ -53,6 +56,7 @@ import { telemetrySystem } from './telemetry-system.js';
 import { frontDoorSystem } from './front-door-system.js';
 import { serviceStationSystem } from './service-station-system.js';
 import { kitchenCommandSystem } from './kitchen-command-system.js';
+import { managerLedgerSystem } from './manager-ledger-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -92,6 +96,9 @@ export function registerAllSystems() {
   registerSystem(serviceStationSystem);
   // `hud-bottlenecks` — see the header comment above. Strictly between `upgrades` and `scoring`.
   registerSystem(hudBottleneckSystem);
+  // STORY-037 reads every management facade after its tick, samples the combined constraint
+  // picture, and freezes its results summary before scoring consumes it.
+  registerSystem(managerLedgerSystem);
   // `scoring` MUST be registered LAST, after every other gameplay system. `match.districtSummary`
   // (customers), `match.orderSummary` (orders) and `match.upgradeSummary` (upgrades) are each set
   // by THEIR OWN `onPhaseChange('results')` handler, immediately before that system tears its own

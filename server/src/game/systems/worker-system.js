@@ -657,6 +657,15 @@ function advanceWorker(match, staff, worker, dtMs) {
   if (task.remainingMs > 0) return;
 
   const completed = completeTask(match, staff, worker, task);
+  if (completed) {
+    match.logEvent?.('worker_task_completed', {
+      restaurantId: staff.restaurantId,
+      workerId: worker.workerId,
+      role: worker.role,
+      taskKind: task.kind,
+      targetId: task.targetId,
+    });
+  }
   if (completed && task.itemId && staff.work.seen.has(task.itemId)) {
     staff.work.completed[task.kind] += 1;
   }

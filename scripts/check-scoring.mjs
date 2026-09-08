@@ -277,6 +277,7 @@ function finishMatch(match) {
     'score', 'revenue', 'guestsServed', 'averageSatisfaction', 'reputation', 'abandonedParties',
     'expenses', 'netProfit', 'customersLostToRival', 'averageWaitTimeMs', 'bestSellingDishes',
     'highestMarginDishes', 'eventPerformance', 'upgradesPurchased', 'customerSegmentBreakdown',
+    'specialExpenses',
     // STORY-014 additions:
     'scoreBreakdown', 'penaltyBreakdown', 'bestDish', 'largestLossCause',
   ];
@@ -351,19 +352,20 @@ function finishMatch(match) {
   const match = twoRestaurantProbe('m_net_revenue');
   match.players.get('p1').setup.inventoryCost = 150;
   match.players.get('p1').setup.upgradeCost = 50;
+  match.frontDoor = { spentFor: (restaurantId) => restaurantId === 'p1' ? 25 : 0 };
   forceOrderLedger(match, 'p1', { revenue: 1000 });
   forceUpgradeOwned(match, 'p1', ['faster_grill_1'], 100);
 
   const { finalResults } = finishMatch(match);
   const p1 = finalResults.results.p1;
   check(
-    'expenses sum inventory cost + setup upgrade cost + upgrades bought during service',
-    p1.expenses === 150 + 50 + 100,
+    'expenses sum inventory, setup upgrade, service upgrade, and front-door special costs',
+    p1.expenses === 150 + 50 + 100 + 25 && p1.specialExpenses === 25,
     `expenses=${p1.expenses}`,
   );
   check(
     'netProfit is revenue minus expenses, not gross revenue',
-    p1.netProfit === 1000 - (150 + 50 + 100) && p1.netProfit < p1.revenue,
+    p1.netProfit === 1000 - (150 + 50 + 100 + 25) && p1.netProfit < p1.revenue,
     `netProfit=${p1.netProfit}, revenue=${p1.revenue}`,
   );
 }

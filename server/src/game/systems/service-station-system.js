@@ -106,6 +106,10 @@ export const serviceStationSystem = {
           }
           entry.spent = cents(entry.spent + contract.wage);
           entry.wagesPaid = cents(entry.wagesPaid + contract.wage);
+          match.logEvent?.('service_wage_paid', {
+            restaurantId, contractId: hire.contractId, workerId: hire.workerId,
+            wage: contract.wage, wagesPaid: entry.wagesPaid,
+          });
           hire.nextWageAtMs += contract.wageIntervalMs;
         }
       }
