@@ -33,6 +33,7 @@ import { LobbyScreen } from '../ui/LobbyScreen';
 import { FrontDoorBoard } from '../ui/FrontDoorBoard';
 import { ServiceStationBoard } from '../ui/ServiceStationBoard';
 import { PantryBoard } from '../ui/PantryBoard';
+import { KitchenCommandBoard } from '../ui/KitchenCommandBoard';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -187,6 +188,9 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           onMoveToKitchen={() => clientRef.current?.restockKitchen()}
         />
       ) : null}
+      {status?.nearKitchenCommandBoard && status.showKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <KitchenCommandBoard status={status} onFocus={(focusId) => clientRef.current?.kitchenFocusCommand(focusId)} />
+      ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
           false`) on leaving `service`/`final_rush`, so the phase check here is a display guard,
@@ -208,6 +212,8 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           this is it, verbatim — nothing here decides whether pressing E will succeed. */}
       {status?.nearPantry && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Manage Pantry</div>
+      ) : status?.nearKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <div className="interact-prompt"><kbd>E</kbd>Direct Kitchen</div>
       ) : status?.nearServiceStation && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Manage Dining Room</div>
       ) : status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (

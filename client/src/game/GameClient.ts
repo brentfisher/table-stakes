@@ -27,6 +27,7 @@ import type {
 import type { CustomerRenderState, ReadyDishRenderState, WorkerRenderState } from '../scenes/RestaurantScene';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 import upgradesData from '../../../shared/game-data/upgrades.json';
+import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
 // STORY-015. `shared/game-logic/hud-alerts.js` (plain JS + sibling `.d.ts`, Decision 4's shape)
 // is the ONE place PRD §18's alert priority order and alarm-fatigue cap are implemented — the
 // same module `scripts/check-hud.mjs` imports directly, so the ranking this HUD shows and the
@@ -186,6 +187,21 @@ export interface GameClientStatus {
   nearPantry: boolean;
   showPantryBoard: boolean;
   pantry: PantrySnapshot | null;
+  nearKitchenCommandBoard: boolean;
+  showKitchenCommandBoard: boolean;
+  kitchenCommand: {
+    activeFocusId: string;
+    cooldownForMs: number;
+    selectionsByFocus: Record<string, number>;
+    stationQueues: Array<{ station: string; queued: number }>;
+    oldestReadyFoodMs: number;
+    shortages: Array<{ station: string; ingredientId: string; blockedTickets: number; restocking: boolean; exhausted: boolean }>;
+    menuAvailability: Array<{ dishId: string; available: boolean }>;
+    activeEventIds: string[];
+    activeSpecialId: string | null;
+    atRiskGuests: number;
+    recommendation: { focusId: string; reason: string };
+  } | null;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -337,6 +353,9 @@ export class GameClient {
     nearPantry: false,
     showPantryBoard: false,
     pantry: null,
+    nearKitchenCommandBoard: false,
+    showKitchenCommandBoard: false,
+    kitchenCommand: null,
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -450,6 +469,10 @@ export class GameClient {
     this.input.onInteract = () => {
       if (this.status.nearPantry) {
         this.patchStatus({ showPantryBoard: !this.status.showPantryBoard });
+        return;
+      }
+      if (this.status.nearKitchenCommandBoard) {
+        this.patchStatus({ showKitchenCommandBoard: !this.status.showKitchenCommandBoard });
         return;
       }
       if (this.status.nearServiceStation) {
@@ -573,6 +596,7 @@ export class GameClient {
             revenue?: number | null;
             purchasedUpgradeIds?: string[];
             pantry?: PantrySnapshot | null;
+            kitchenCommand?: GameClientStatus['kitchenCommand'];
           }
         | null;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
@@ -818,6 +842,7 @@ export class GameClient {
         eventForecast,
         frontDoor: (message.frontDoor ?? {}) as GameClientStatus['frontDoor'],
         serviceStation,
+        kitchenCommand: (you?.kitchenCommand ?? null) as GameClientStatus['kitchenCommand'],
         ...(serviceStationNotice ? { serviceStationNotice } : {}),
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.
@@ -843,6 +868,9 @@ export class GameClient {
       });
       this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[this.status.playerId ?? '']?.activeSpecialId ?? null);
       this.scene.restaurant.setPantryCommandState(you?.pantry?.overallRisk ?? 'STOCKED', you?.pantry?.deliveries.length ?? 0);
+      const focusId = (you?.kitchenCommand as GameClientStatus['kitchenCommand'] | undefined)?.activeFocusId ?? kitchenCommandData.defaultFocusId;
+      const focus = kitchenCommandData.focuses.find((item) => item.id === focusId);
+      this.scene.restaurant.setKitchenFocus(focus?.name ?? focusId.replace(/_/g, ' '));
       return;
     }
     if (message.type === 'match_complete') {
@@ -932,6 +960,8 @@ export class GameClient {
 
   restockKitchen(): void { this.network.sendInteract('pantry', 'restock'); }
 
+  kitchenFocusCommand(focusId: string): void { this.network.sendInteract(`kitchen_focus_${focusId}`, 'kitchen_command'); }
+
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
@@ -981,6 +1011,13 @@ export class GameClient {
       const nearPantry = this.interaction.inRangeOf(self.position, 'pantry');
       if (nearPantry !== this.status.nearPantry) {
         this.patchStatus({ nearPantry, showPantryBoard: nearPantry ? this.status.showPantryBoard : false });
+      }
+      const nearKitchenCommandBoard = this.interaction.inRangeOf(self.position, 'kitchen_command_board');
+      if (nearKitchenCommandBoard !== this.status.nearKitchenCommandBoard) {
+        this.patchStatus({
+          nearKitchenCommandBoard,
+          showKitchenCommandBoard: nearKitchenCommandBoard ? this.status.showKitchenCommandBoard : false,
+        });
       }
     }
 

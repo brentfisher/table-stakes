@@ -1,0 +1,60 @@
+{
+  "defaultFocusId": "rush_pass",
+  "switchCooldownMs": 8000,
+  "focuses": [
+    {
+      "id": "rush_pass",
+      "name": "Rush the Pass",
+      "metric": "completionProgress",
+      "direction": "high",
+      "bestUse": "Ready food is aging or several tickets are close to completion.",
+      "benefit": "Moves near-ready tickets toward handoff first.",
+      "downside": "New tickets can wait longer."
+    },
+    {
+      "id": "protect_special",
+      "name": "Protect the Special",
+      "metric": "specialPressure",
+      "direction": "high",
+      "bestUse": "An event or active promotion creates a short demand window.",
+      "benefit": "Favors tickets that match the current event or featured dish.",
+      "downside": "Other dishes can fall behind."
+    },
+    {
+      "id": "clear_queue",
+      "name": "Clear the Queue",
+      "metric": "remainingProductionMs",
+      "direction": "low",
+      "bestUse": "Station queues are growing faster than they clear.",
+      "benefit": "Favors shorter tickets to reduce visible backlog.",
+      "downside": "Premium or longer tickets may wait."
+    },
+    {
+      "id": "save_ingredients",
+      "name": "Save Ingredients",
+      "metric": "scarcityRisk",
+      "direction": "low",
+      "bestUse": "A menu ingredient is running short or unavailable.",
+      "benefit": "Avoids consuming the scarcest ingredients first.",
+      "downside": "Conversion and menu choice can shrink."
+    },
+    {
+      "id": "premium_first",
+      "name": "Premium First",
+      "metric": "margin",
+      "direction": "high",
+      "bestUse": "High-value tables or premium tickets need protection.",
+      "benefit": "Favors the highest-margin tickets on the rail.",
+      "downside": "Broad throughput can suffer."
+    },
+    {
+      "id": "recovery_mode",
+      "name": "Recovery Mode",
+      "metric": "patienceRisk",
+      "direction": "high",
+      "bestUse": "Seated guests are close to abandoning their orders.",
+      "benefit": "Favors tickets for the tables at greatest patience risk.",
+      "downside": "Immediate production efficiency may fall."
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { eventTitle } from './event-titles';
 import { botProfileLabel } from './bot-profiles';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import { FRONT_DOOR_UPGRADE_IDS } from '../game/GameClient';
+import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
 
 const UPGRADE_INFO = new Map(
   (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
@@ -124,6 +125,11 @@ export function TacticalOverviewPanel({ status }: { status: GameClientStatus }):
         <RestaurantColumn title={rivalTitle} restaurant={rival} isSelf={false} />
       </div>
       <div className="tactical-events">
+        <h3>Kitchen focus</h3>
+        {status.kitchenCommand ? (() => {
+          const focus = kitchenCommandData.focuses.find((item) => item.id === status.kitchenCommand?.activeFocusId);
+          return <p><strong>{focus?.name ?? status.kitchenCommand.activeFocusId}:</strong> {focus?.benefit} Trade-off: {focus?.downside}</p>;
+        })() : <p>Not active</p>}
         <h3>Front-door investments</h3>
         {status.purchasedUpgradeIds.some((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)) ? (
           <ul>
