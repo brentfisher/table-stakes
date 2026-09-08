@@ -1,0 +1,321 @@
+{
+  "name": "Table Stakes Arcade Food",
+  "version": 1,
+  "units": "meters",
+  "axes": "glTF Y-up",
+  "pivot": "bottom-center",
+  "assets": [
+    {
+      "id": "smash_burger",
+      "modelId": "smash-burger",
+      "name": "Smash Burger",
+      "category": "dish",
+      "file": "smash-burger.glb",
+      "dimensions": {
+        "x": 0.375,
+        "y": 0.1991,
+        "z": 0.375
+      }
+    },
+    {
+      "id": "caesar_salad",
+      "modelId": "caesar-salad",
+      "name": "Caesar Salad",
+      "category": "dish",
+      "file": "caesar-salad.glb",
+      "dimensions": {
+        "x": 0.3208,
+        "y": 0.1283,
+        "z": 0.318
+      }
+    },
+    {
+      "id": "pasta_primavera",
+      "modelId": "pasta-primavera",
+      "name": "Pasta Primavera",
+      "category": "dish",
+      "file": "pasta-primavera.glb",
+      "dimensions": {
+        "x": 0.318,
+        "y": 0.1655,
+        "z": 0.318
+      }
+    },
+    {
+      "id": "chicken_sandwich",
+      "modelId": "chicken-sandwich",
+      "name": "Chicken Sandwich",
+      "category": "dish",
+      "file": "chicken-sandwich.glb",
+      "dimensions": {
+        "x": 0.375,
+        "y": 0.2088,
+        "z": 0.375
+      }
+    },
+    {
+      "id": "steak_frites",
+      "modelId": "steak-frites",
+      "name": "Steak Frites",
+      "category": "dish",
+      "file": "steak-frites.glb",
+      "dimensions": {
+        "x": 0.3757,
+        "y": 0.0916,
+        "z": 0.375
+      }
+    },
+    {
+      "id": "nachos",
+      "modelId": "nachos",
+      "name": "Nachos",
+      "category": "dish",
+      "file": "nachos.glb",
+      "dimensions": {
+        "x": 0.375,
+        "y": 0.1142,
+        "z": 0.375
+      }
+    },
+    {
+      "id": "espresso",
+      "modelId": "espresso",
+      "name": "Espresso",
+      "category": "dish",
+      "file": "espresso.glb",
+      "dimensions": {
+        "x": 0.27,
+        "y": 0.1243,
+        "z": 0.27
+      }
+    },
+    {
+      "id": "cheesecake",
+      "modelId": "cheesecake",
+      "name": "Cheesecake",
+      "category": "dish",
+      "file": "cheesecake.glb",
+      "dimensions": {
+        "x": 0.375,
+        "y": 0.2168,
+        "z": 0.375
+      }
+    },
+    {
+      "id": "bun",
+      "modelId": "brioche-bun",
+      "name": "Brioche Bun",
+      "category": "ingredient",
+      "file": "brioche-bun.glb",
+      "dimensions": {
+        "x": 0.23,
+        "y": 0.1833,
+        "z": 0.23
+      }
+    },
+    {
+      "id": "beef",
+      "modelId": "ground-beef",
+      "name": "Ground Beef",
+      "category": "ingredient",
+      "file": "ground-beef.glb",
+      "dimensions": {
+        "x": 0.295,
+        "y": 0.0708,
+        "z": 0.2275
+      }
+    },
+    {
+      "id": "cheese",
+      "modelId": "cheese",
+      "name": "Cheese",
+      "category": "ingredient",
+      "file": "cheese.glb",
+      "dimensions": {
+        "x": 0.2907,
+        "y": 0.1041,
+        "z": 0.3025
+      }
+    },
+    {
+      "id": "lettuce",
+      "modelId": "lettuce",
+      "name": "Lettuce",
+      "category": "ingredient",
+      "file": "lettuce.glb",
+      "dimensions": {
+        "x": 0.2875,
+        "y": 0.155,
+        "z": 0.2873
+      }
+    },
+    {
+      "id": "croutons",
+      "modelId": "croutons",
+      "name": "Croutons",
+      "category": "ingredient",
+      "file": "croutons.glb",
+      "dimensions": {
+        "x": 0.2084,
+        "y": 0.0831,
+        "z": 0.2
+      }
+    },
+    {
+      "id": "dressing",
+      "modelId": "dressing",
+      "name": "Dressing",
+      "category": "ingredient",
+      "file": "dressing.glb",
+      "dimensions": {
+        "x": 0.14,
+        "y": 0.2106,
+        "z": 0.1475
+      }
+    },
+    {
+      "id": "pasta",
+      "modelId": "dry-pasta",
+      "name": "Dry Pasta",
+      "category": "ingredient",
+      "file": "dry-pasta.glb",
+      "dimensions": {
+        "x": 0.2164,
+        "y": 0.0942,
+        "z": 0.2204
+      }
+    },
+    {
+      "id": "vegetables",
+      "modelId": "seasonal-vegetables",
+      "name": "Seasonal Vegetables",
+      "category": "ingredient",
+      "file": "seasonal-vegetables.glb",
+      "dimensions": {
+        "x": 0.2972,
+        "y": 0.1338,
+        "z": 0.2238
+      }
+    },
+    {
+      "id": "olive_oil",
+      "modelId": "olive-oil",
+      "name": "Olive Oil",
+      "category": "ingredient",
+      "file": "olive-oil.glb",
+      "dimensions": {
+        "x": 0.14,
+        "y": 0.2231,
+        "z": 0.1429
+      }
+    },
+    {
+      "id": "chicken",
+      "modelId": "chicken-breast",
+      "name": "Chicken Breast",
+      "category": "ingredient",
+      "file": "chicken-breast.glb",
+      "dimensions": {
+        "x": 0.2387,
+        "y": 0.0725,
+        "z": 0.1554
+      }
+    },
+    {
+      "id": "steak",
+      "modelId": "sirloin-steak",
+      "name": "Sirloin Steak",
+      "category": "ingredient",
+      "file": "sirloin-steak.glb",
+      "dimensions": {
+        "x": 0.2699,
+        "y": 0.0632,
+        "z": 0.1825
+      }
+    },
+    {
+      "id": "potatoes",
+      "modelId": "potatoes",
+      "name": "Potatoes",
+      "category": "ingredient",
+      "file": "potatoes.glb",
+      "dimensions": {
+        "x": 0.244,
+        "y": 0.1054,
+        "z": 0.2143
+      }
+    },
+    {
+      "id": "butter",
+      "modelId": "butter",
+      "name": "Butter",
+      "category": "ingredient",
+      "file": "butter.glb",
+      "dimensions": {
+        "x": 0.2675,
+        "y": 0.0822,
+        "z": 0.17
+      }
+    },
+    {
+      "id": "tortilla_chips",
+      "modelId": "tortilla-chips",
+      "name": "Tortilla Chips",
+      "category": "ingredient",
+      "file": "tortilla-chips.glb",
+      "dimensions": {
+        "x": 0.2672,
+        "y": 0.0668,
+        "z": 0.2382
+      }
+    },
+    {
+      "id": "salsa",
+      "modelId": "salsa",
+      "name": "Salsa",
+      "category": "ingredient",
+      "file": "salsa.glb",
+      "dimensions": {
+        "x": 0.238,
+        "y": 0.113,
+        "z": 0.238
+      }
+    },
+    {
+      "id": "coffee_beans",
+      "modelId": "coffee-beans",
+      "name": "Coffee Beans",
+      "category": "ingredient",
+      "file": "coffee-beans.glb",
+      "dimensions": {
+        "x": 0.1804,
+        "y": 0.0798,
+        "z": 0.1848
+      }
+    },
+    {
+      "id": "cheesecake_base",
+      "modelId": "cheesecake-base",
+      "name": "Cheesecake Base",
+      "category": "ingredient",
+      "file": "cheesecake-base.glb",
+      "dimensions": {
+        "x": 0.295,
+        "y": 0.0412,
+        "z": 0.295
+      }
+    },
+    {
+      "id": "berries",
+      "modelId": "berries",
+      "name": "Berries",
+      "category": "ingredient",
+      "file": "berries.glb",
+      "dimensions": {
+        "x": 0.1983,
+        "y": 0.0692,
+        "z": 0.1947
+      }
+    }
+  ]
+}
