@@ -175,7 +175,10 @@ function createUpgradeFacade(match, state) {
       const player = match.players.get(restaurantId);
       const startingCash = player?.setup?.cashRemaining ?? 0;
       const revenue = match.kitchen?.revenueFor(restaurantId) ?? 0;
-      const spent = (restaurant?.cashSpent ?? 0) + (match.frontDoor?.spentFor(restaurantId) ?? 0) + (match.serviceStation?.spentFor(restaurantId) ?? 0);
+      const spent = (restaurant?.cashSpent ?? 0) +
+        (match.frontDoor?.spentFor(restaurantId) ?? 0) +
+        (match.serviceStation?.spentFor(restaurantId) ?? 0) +
+        (match.pantry?.spentFor(restaurantId) ?? 0);
       return toCents(startingCash + revenue - spent);
     },
 

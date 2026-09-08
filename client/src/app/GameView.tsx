@@ -32,6 +32,7 @@ import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 import { LobbyScreen } from '../ui/LobbyScreen';
 import { FrontDoorBoard } from '../ui/FrontDoorBoard';
 import { ServiceStationBoard } from '../ui/ServiceStationBoard';
+import { PantryBoard } from '../ui/PantryBoard';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -179,6 +180,13 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       {status?.nearServiceStation && status.showServiceStationBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <ServiceStationBoard status={status} onCommand={(command) => clientRef.current?.serviceStationCommand(command)} />
       ) : null}
+      {status?.nearPantry && status.showPantryBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <PantryBoard
+          status={status}
+          onOrder={(productId, ingredientId) => clientRef.current?.placePantryOrder(productId, ingredientId)}
+          onMoveToKitchen={() => clientRef.current?.restockKitchen()}
+        />
+      ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:
           false`) on leaving `service`/`final_rush`, so the phase check here is a display guard,
@@ -198,7 +206,9 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       </div>
       {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
           this is it, verbatim — nothing here decides whether pressing E will succeed. */}
-      {status?.nearServiceStation && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+      {status?.nearPantry && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <div className="interact-prompt"><kbd>E</kbd>Manage Pantry</div>
+      ) : status?.nearServiceStation && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Manage Dining Room</div>
       ) : status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt">

@@ -615,6 +615,44 @@ export class RestaurantScene {
     stand.add(label);
   }
 
+  /** STORY-033. The physical pantry carries the same risk and inbound-delivery state as its board. */
+  setPantryCommandState(risk: string, deliveryCount: number): void {
+    const pantry = this.scene.getObjectByName('pantry');
+    const old = pantry?.getObjectByName('label_pantry');
+    if (!pantry || !old) return;
+    const signature = `${risk}:${deliveryCount}`;
+    if (old.userData.pantrySignature === signature) return;
+    old.parent?.remove(old);
+    const colors: Record<string, number> = {
+      STOCKED: 0x65c88a,
+      WATCH: 0xe6c45a,
+      'AT RISK': 0xe89145,
+      BLOCKING: 0xe05b4f,
+    };
+    const label = createLabelSprite(
+      `PANTRY · ${risk}${deliveryCount > 0 ? ` · ${deliveryCount} INBOUND` : ''}`,
+      colors[risk] ?? 0xd4e7dd,
+      0.48,
+    );
+    label.name = 'label_pantry';
+    label.userData.pantrySignature = signature;
+    label.position.copy(old.position);
+    pantry.add(label);
+
+    let crates = pantry.getObjectByName('supplier_delivery_crates') as THREE.Group | undefined;
+    if (!crates) {
+      crates = new THREE.Group();
+      crates.name = 'supplier_delivery_crates';
+      for (let i = 0; i < 2; i += 1) {
+        const crate = this.box(0.55, 0.45, 0.55, 0xc88742);
+        crate.position.set(-0.42 + i * 0.72, 1.2 + i * 0.25, -0.85);
+        crates.add(crate);
+      }
+      pantry.add(crates);
+    }
+    crates.visible = deliveryCount > 0;
+  }
+
   /** STORY-035. Persistent, in-world props for each front-door investment. The server-published
    * owned-id set controls visibility; these meshes carry no game rules. */
   setFrontDoorUpgrades(ownedIds: string[]): void {

@@ -101,3 +101,14 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .service-preview-board { width: min(520px, calc(100% - 56px)); padding: 24px; border: 3px solid #3ab0d9; background: rgba(18,28,34,.96); color: #e7f8ff; box-shadow: 0 12px 34px #0008; }
 .service-preview-board > strong, .service-preview-board h3 { color: #7ed9f5; letter-spacing: .07em; }
 .service-preview-board small { color: #b8ced5; }
+.pantry-preview { min-height: 100%; display: grid; place-items: center; padding: 30px; background: #17130f; color: #fff3dc; }
+.pantry-preview-board { width: min(700px, 90%); padding: 18px; border: 2px solid #c88742; background: #2d2117; box-shadow: 0 12px 40px #0009; }
+.pantry-preview-board header small { color: #e8b56f; letter-spacing: .15em; }
+.pantry-preview-board h2 { margin: 4px 0 14px; }
+.pantry-preview-stock { display: flex; gap: 18px; padding: 12px; background: #49321f; }
+.pantry-preview-stock em { margin-left: auto; color: #ffc46f; }
+.pantry-preview-inbound { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 10px; background: #173d32; }
+.pantry-preview-inbound progress { width: 100%; accent-color: #65c88a; }
+.pantry-preview-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+.pantry-preview-options button { display: grid; gap: 4px; padding: 10px; border: 1px solid #9a6b3c; background: #3d2b1c; color: #fff3dc; text-align: left; }
+.pantry-preview-options small { color: #cdbb9f; }

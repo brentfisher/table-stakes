@@ -82,7 +82,7 @@ const money = (dollars: number | null): string => (dollars === null ? '—' : `$
 /** One line of alert text per `CriticalAlert` — the ONLY place this component turns a category
  * + detail into words. Every field read here is on the alert already; nothing is looked up
  * against `status` a second time. */
-function alertText(alert: CriticalAlert): string {
+function alertText(alert: CriticalAlert, status: GameClientStatus | null): string {
   switch (alert.category) {
     case 'customer_abandonment_imminent': {
       const d = alert.detail as { patienceRemaining: number };
@@ -94,7 +94,9 @@ function alertText(alert: CriticalAlert): string {
     }
     case 'ingredient_shortage': {
       const d = alert.detail as { ingredientId: string; blockedTickets: number };
-      return `Out of ${d.ingredientId.replace(/_/g, ' ')} — blocking ${d.blockedTickets} order${d.blockedTickets === 1 ? '' : 's'}`;
+      const ingredient = status?.pantry?.ingredients.find((item) => item.ingredientId === d.ingredientId);
+      const dishes = ingredient?.affectedDishIds.map(dishName).join(', ');
+      return `Out of ${ingredient?.name ?? d.ingredientId.replace(/_/g, ' ')} — blocking ${d.blockedTickets} order${d.blockedTickets === 1 ? '' : 's'}${dishes ? `; impacts ${dishes}` : ''}`;
     }
     case 'event_countdown': {
       const d = alert.detail as { eventId: string; startsInMs: number };
@@ -193,6 +195,11 @@ export function HudPanel({
               <dd>{money(status?.cash ?? null)}</dd>
               <dt>Revenue</dt>
               <dd>{money(status?.revenue ?? null)}</dd>
+              <dt>Pantry</dt>
+              <dd className={status?.pantry?.overallRisk === 'BLOCKING' ? 'status-closed' : undefined}>
+                {status?.pantry?.overallRisk ?? '—'}
+                {status?.pantry?.deliveries.length ? ` · ${status.pantry.deliveries.length} inbound (${formatSeconds(Math.min(...status.pantry.deliveries.map((delivery) => delivery.arrivesInMs)))})` : ''}
+              </dd>
               {/* PRD §18 "Customer count / queue warning". */}
               <dt>Customers now</dt>
               <dd className={queueIsWarning ? 'status-closed' : undefined}>
@@ -314,7 +321,7 @@ export function HudPanel({
         <div className="hud-alerts">
           {status.criticalAlerts.map((alert) => (
             <div key={alert.key} className={`hud-alert ${alertClass(alert)}`}>
-              {alertText(alert)}
+              {alertText(alert, status)}
             </div>
           ))}
         </div>

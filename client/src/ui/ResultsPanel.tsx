@@ -249,6 +249,10 @@ function StatColumn({ title, result }: { title: string; result: MatchResult }): 
           <tr><td>Score</td><td>{formatPoints(result.score)}</td></tr>
           <tr><td>Revenue</td><td>{formatMoney(result.revenue)}</td></tr>
           <tr><td>Expenses</td><td>{formatMoney(result.expenses)}</td></tr>
+          <tr><td>Service restock spend</td><td>{formatMoney(result.inventoryExpenses)}</td></tr>
+          <tr><td>Market premium</td><td>{formatMoney(result.marketPremiumPaid)}</td></tr>
+          <tr><td>Stock orders</td><td>{result.stockOrdersPlaced}</td></tr>
+          <tr><td>Shortage time</td><td>{formatMs(result.shortageDurationMs)}</td></tr>
           <tr><td>Net profit</td><td>{formatMoney(result.netProfit)}</td></tr>
           <tr><td>Customers served</td><td>{result.guestsServed}</td></tr>
           <tr><td>Lost to rival</td><td>{result.customersLostToRival}</td></tr>

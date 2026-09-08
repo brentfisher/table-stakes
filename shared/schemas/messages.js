@@ -172,6 +172,7 @@ export const EVENT_STATES = Object.freeze(['warning', 'active', 'ended']);
 export const INTERACT_ACTIONS = Object.freeze([
   'activate_special',
   'service_command',
+  'pantry_order',
   'cook',
   'plate',
   'deliver',

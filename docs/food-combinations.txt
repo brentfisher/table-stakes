@@ -1,0 +1,117 @@
+TABLE STAKES FOOD COMBINATIONS
+================================
+
+Source: shared/game-data/dishes.json
+Generated: 2026-09-07
+
+COOKABLE DISHES
+----------------
+Smash Burger [ENTREE]
+  Ingredients: 1 x Brioche Bun, 1 x Ground Beef, 1 x Cheese, 1 x Lettuce
+  Station route: PREP -> GRILL -> PLATING
+
+Caesar Salad [ENTREE]
+  Ingredients: 2 x Lettuce, 1 x Cheese, 1 x Croutons, 1 x Dressing
+  Station route: PREP -> PLATING
+
+Pasta Primavera [ENTREE]
+  Ingredients: 1 x Dry Pasta, 2 x Seasonal Vegetables, 1 x Cheese, 1 x Olive Oil
+  Station route: PREP -> OVEN -> PLATING
+
+Chicken Sandwich [ENTREE]
+  Ingredients: 1 x Brioche Bun, 1 x Chicken Breast, 1 x Lettuce, 1 x Dressing
+  Station route: PREP -> GRILL -> PLATING
+
+Steak Frites [ENTREE]
+  Ingredients: 1 x Sirloin Steak, 2 x Potatoes, 1 x Butter, 1 x Olive Oil
+  Station route: PREP -> GRILL -> PLATING
+
+Nachos [SNACK]
+  Ingredients: 2 x Tortilla Chips, 2 x Cheese, 1 x Salsa, 1 x Seasonal Vegetables
+  Station route: PREP -> OVEN -> PLATING
+
+Espresso [DRINK]
+  Ingredients: 1 x Coffee Beans
+  Station route: PREP
+
+Cheesecake [DESSERT]
+  Ingredients: 1 x Cheesecake Base, 1 x Berries
+  Station route: PLATING
+
+LEGAL MENU COMBINATIONS
+-----------------------
+Each menu has exactly 3 entrees and 0-2 add-ons.
+
+01. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: None
+02. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Nachos
+03. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Espresso
+04. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Cheesecake
+05. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Nachos + Espresso
+06. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Nachos + Cheesecake
+07. Mains: Smash Burger + Caesar Salad + Pasta Primavera | Add-ons: Espresso + Cheesecake
+08. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: None
+09. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Nachos
+10. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Espresso
+11. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Cheesecake
+12. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Nachos + Espresso
+13. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Nachos + Cheesecake
+14. Mains: Smash Burger + Caesar Salad + Chicken Sandwich | Add-ons: Espresso + Cheesecake
+15. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: None
+16. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Nachos
+17. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Espresso
+18. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Cheesecake
+19. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Nachos + Espresso
+20. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Nachos + Cheesecake
+21. Mains: Smash Burger + Caesar Salad + Steak Frites | Add-ons: Espresso + Cheesecake
+22. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: None
+23. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos
+24. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Espresso
+25. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Cheesecake
+26. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos + Espresso
+27. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos + Cheesecake
+28. Mains: Smash Burger + Pasta Primavera + Chicken Sandwich | Add-ons: Espresso + Cheesecake
+29. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: None
+30. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Nachos
+31. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Espresso
+32. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Cheesecake
+33. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Nachos + Espresso
+34. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Nachos + Cheesecake
+35. Mains: Smash Burger + Pasta Primavera + Steak Frites | Add-ons: Espresso + Cheesecake
+36. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: None
+37. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Nachos
+38. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Espresso
+39. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Cheesecake
+40. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Espresso
+41. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Cheesecake
+42. Mains: Smash Burger + Chicken Sandwich + Steak Frites | Add-ons: Espresso + Cheesecake
+43. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: None
+44. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos
+45. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Espresso
+46. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Cheesecake
+47. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos + Espresso
+48. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Nachos + Cheesecake
+49. Mains: Caesar Salad + Pasta Primavera + Chicken Sandwich | Add-ons: Espresso + Cheesecake
+50. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: None
+51. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Nachos
+52. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Espresso
+53. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Cheesecake
+54. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Nachos + Espresso
+55. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Nachos + Cheesecake
+56. Mains: Caesar Salad + Pasta Primavera + Steak Frites | Add-ons: Espresso + Cheesecake
+57. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: None
+58. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Nachos
+59. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Espresso
+60. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Cheesecake
+61. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Espresso
+62. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Cheesecake
+63. Mains: Caesar Salad + Chicken Sandwich + Steak Frites | Add-ons: Espresso + Cheesecake
+64. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: None
+65. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Nachos
+66. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Espresso
+67. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Cheesecake
+68. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Espresso
+69. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Nachos + Cheesecake
+70. Mains: Pasta Primavera + Chicken Sandwich + Steak Frites | Add-ons: Espresso + Cheesecake
+
+Total cookable dishes: 8
+Total legal menu combinations: 70

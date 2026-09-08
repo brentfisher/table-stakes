@@ -59,6 +59,7 @@
 
 import { catalogue } from '../catalogue.js';
 import layout from '../../../../shared/game-data/restaurant-layout.json' with { type: 'json' };
+import supplierData from '../../../../shared/game-data/pantry-restock.json' with { type: 'json' };
 import { STATIONS } from '../../../../shared/schemas/messages.js';
 import { neutralEventEffects } from './event-system.js';
 import {
@@ -143,6 +144,9 @@ function buildRestaurantInventory(player) {
     /** In-flight pantry -> bin moves. */
     jobs: [],
     nextJobId: 1,
+    supplierOrders: [],
+    nextSupplierOrderId: 1,
+    shortageKeys: new Set(),
     shortages: [],
     ledger: {
       unitsAllocated: 0,
@@ -153,6 +157,10 @@ function buildRestaurantInventory(player) {
       blockedClaims: 0,
       shortageMs: 0,
       dishesGoneUnavailable: new Set(),
+      supplierSpend: 0,
+      marketPremiumPaid: 0,
+      supplierOrdersPlaced: 0,
+      supplierUnitsDelivered: 0,
     },
   };
 
@@ -205,6 +213,111 @@ function inFlightUnits(inventory, ingredientId) {
   let units = 0;
   for (const job of inventory.jobs) if (job.ingredientId === ingredientId) units += job.units;
   return units;
+}
+
+function unitsAcrossBins(inventory, ingredientId) {
+  let units = 0;
+  for (const bin of inventory.bins.values()) units += bin[ingredientId] ?? 0;
+  return units;
+}
+
+function supplierIncomingUnits(inventory, ingredientId) {
+  return inventory.supplierOrders
+    .filter((order) => order.ingredientId === ingredientId)
+    .reduce((sum, order) => sum + order.units, 0);
+}
+
+const cents = (value) => Math.round(value * 100) / 100;
+
+function supplierQuote(match, state, inventory, product, ingredientId) {
+  const ingredient = catalogue.ingredients[ingredientId];
+  if (!ingredient) return null;
+  const affected = state.affectedIngredientIds.includes(ingredientId);
+  const eventMultiplier = affected ? (getEventEffects(match).ingredientCostMultiplier ?? 1) : 1;
+  const durationMultiplier = affected
+    ? (getEventEffects(match).ingredientRestockDurationMultiplier ?? 1)
+    : 1;
+  const unitCost = cents(ingredient.unitCost * product.unitCostMultiplier * eventMultiplier);
+  const cost = cents(unitCost * product.units);
+  const currentUnits =
+    unitsAcrossBins(inventory, ingredientId) +
+    (inventory.pantry[ingredientId] ?? 0) +
+    inFlightUnits(inventory, ingredientId) +
+    supplierIncomingUnits(inventory, ingredientId);
+  let unavailableReason = null;
+  if (inventory.supplierOrders.length >= supplierData.maxConcurrentOrders) unavailableReason = 'supplier_queue_full';
+  else if (currentUnits + product.units > supplierData.maxUnitsPerIngredient) unavailableReason = 'storage_limit';
+  else if ((match.upgrades?.cashAvailable(inventory.restaurantId) ?? 0) < cost) unavailableReason = 'insufficient_cash';
+  const totalMultiplier = product.unitCostMultiplier * eventMultiplier;
+  const priceDirection = totalMultiplier > 1.05 ? 'EXPENSIVE' : totalMultiplier < 0.95 ? 'DEAL' : 'MARKET';
+  const percent = Math.round((eventMultiplier - 1) * 100);
+  const explanation = affected
+    ? `Supplier shortage: ${ingredient.name.toLowerCase()} +${percent}%.`
+    : product.id === 'emergency'
+      ? 'Rush handling adds a 60% premium.'
+      : product.id === 'bulk'
+        ? 'Bulk rate saves 20% per unit.'
+        : product.id === 'priority'
+          ? 'Preferred queue adds a 15% premium.'
+          : 'Local suppliers are trading at the normal rate.';
+  return {
+    productId: product.id,
+    name: product.name,
+    description: product.description,
+    units: product.units,
+    unitCost,
+    cost,
+    deliveryMs: Math.round(product.deliveryMs * durationMultiplier),
+    priceDirection,
+    explanation,
+    available: unavailableReason === null,
+    unavailableReason,
+    marketPremium: cents(ingredient.unitCost * product.unitCostMultiplier * product.units * Math.max(0, eventMultiplier - 1)),
+  };
+}
+
+function placeSupplierOrder(match, state, inventory, productId, ingredientId) {
+  if (!match.isServicePhase) return { ok: false, reason: 'wrong_phase' };
+  const product = supplierData.products.find((item) => item.id === productId);
+  if (!product) return { ok: false, reason: 'unknown_restock_option' };
+  const menuIngredientIds = new Set(inventory.requirements.flatMap((requirement) =>
+    requirement.ingredients.map((ingredient) => ingredient.ingredientId)));
+  if (!menuIngredientIds.has(ingredientId)) return { ok: false, reason: 'ingredient_not_on_menu' };
+  const quote = supplierQuote(match, state, inventory, product, ingredientId);
+  if (!quote) return { ok: false, reason: 'unknown_ingredient' };
+  if (!quote.available) return { ok: false, reason: quote.unavailableReason };
+  const order = {
+    orderId: `supplier_${inventory.restaurantId}_${inventory.nextSupplierOrderId++}`,
+    ingredientId,
+    productId,
+    units: quote.units,
+    cost: quote.cost,
+    marketPremium: quote.marketPremium,
+    placedAtMs: match.elapsedMs,
+    arrivesAtMs: match.elapsedMs + quote.deliveryMs,
+    totalMs: quote.deliveryMs,
+  };
+  inventory.supplierOrders.push(order);
+  inventory.ledger.supplierSpend = cents(inventory.ledger.supplierSpend + quote.cost);
+  inventory.ledger.marketPremiumPaid = cents(inventory.ledger.marketPremiumPaid + quote.marketPremium);
+  inventory.ledger.supplierOrdersPlaced += 1;
+  match.logEvent('inventory_order_placed', { restaurantId: inventory.restaurantId, ...order });
+  return { ok: true, orderId: order.orderId, cost: quote.cost, deliveryMs: quote.deliveryMs };
+}
+
+function advanceSupplierOrders(match, inventory) {
+  const arrived = inventory.supplierOrders.filter((order) => order.arrivesAtMs <= match.elapsedMs);
+  for (const order of arrived) {
+    inventory.supplierOrders.splice(inventory.supplierOrders.indexOf(order), 1);
+    inventory.pantry[order.ingredientId] = (inventory.pantry[order.ingredientId] ?? 0) + order.units;
+    inventory.ledger.supplierUnitsDelivered += order.units;
+    match.logEvent('inventory_order_delivered', {
+      restaurantId: inventory.restaurantId,
+      orderId: order.orderId,
+      ingredientId: order.ingredientId,
+      units: order.units,
+    });
+  }
 }
 
 /** Everything this restaurant still has of an ingredient, wherever it currently is. */
@@ -417,6 +530,9 @@ function advanceRestocks(inventory, dtMs) {
  * `check-inventory.mjs` go on measuring the stock model on its own.
  */
 function autoRestock(match, state, inventory) {
+  // This fallback only moves already-owned stock from pantry shelves to a station bin. Supplier
+  // purchases are never automatic: only placeSupplierOrder, reached through the physical pantry
+  // interaction, can add inventory or spend cash.
   if (!INVENTORY_AUTO_RESTOCK) return;
   if (match.brigade?.ownsRestocking(inventory.restaurantId)) return;
   if (inventory.jobs.length >= INVENTORY_MAX_CONCURRENT_RESTOCKS) return;
@@ -510,6 +626,98 @@ function createPantryFacade(match, state) {
   const find = (restaurantId) => state.restaurants.get(restaurantId) ?? null;
 
   return {
+    /** STORY-033. A service-time supplier purchase, validated and priced on the server. */
+    placeSupplierOrder(restaurantId, productId, ingredientId) {
+      const inventory = find(restaurantId);
+      if (!inventory) return { ok: false, reason: 'unknown_restaurant' };
+      return placeSupplierOrder(match, state, inventory, productId, ingredientId);
+    },
+
+    /** Supplier spending participates in the same derived available-cash calculation as upgrades. */
+    spentFor(restaurantId) {
+      return find(restaurantId)?.ledger.supplierSpend ?? 0;
+    },
+
+    expensesFor(restaurantId) {
+      const ledger = find(restaurantId)?.ledger;
+      return ledger
+        ? {
+            inventoryExpenses: ledger.supplierSpend,
+            marketPremiumPaid: ledger.marketPremiumPaid,
+            stockOrdersPlaced: ledger.supplierOrdersPlaced,
+            shortageDurationMs: ledger.shortageMs,
+          }
+        : { inventoryExpenses: 0, marketPremiumPaid: 0, stockOrdersPlaced: 0, shortageDurationMs: 0 };
+    },
+
+    /** Private projection: exact counts, menu impact and quotes never leak to the rival. */
+    publicFor(restaurantId) {
+      const inventory = find(restaurantId);
+      if (!inventory) return null;
+      const ingredients = [];
+      const ids = [...new Set(inventory.requirements.flatMap((requirement) =>
+        requirement.ingredients.map((ingredient) => ingredient.ingredientId)))].sort();
+      for (const ingredientId of ids) {
+        const requirements = inventory.requirements.flatMap((requirement) =>
+          requirement.ingredients.filter((ingredient) => ingredient.ingredientId === ingredientId));
+        const perServing = Math.max(...requirements.map((requirement) => requirement.perServing), 1);
+        const count = unitsAcrossBins(inventory, ingredientId) +
+          (inventory.pantry[ingredientId] ?? 0) + inFlightUnits(inventory, ingredientId);
+        const incomingUnits = supplierIncomingUnits(inventory, ingredientId);
+        const blockedTickets = inventory.shortages
+          .filter((shortage) => shortage.ingredientId === ingredientId)
+          .reduce((sum, shortage) => sum + shortage.blockedTickets, 0);
+        const risk = blockedTickets > 0 || (count < perServing && incomingUnits === 0)
+          ? 'BLOCKING'
+          : count < perServing * 2
+            ? 'AT RISK'
+            : count < perServing * 5
+              ? 'WATCH'
+              : 'STOCKED';
+        const affectedDishIds = inventory.dishes
+          .filter((dish) => Object.hasOwn(dish.ingredients ?? {}, ingredientId))
+          .map((dish) => dish.id);
+        const quotes = supplierData.products
+          .map((product) => supplierQuote(match, state, inventory, product, ingredientId))
+          .filter(Boolean);
+        const marketQuote = quotes.find((quote) => quote.productId === 'standard');
+        ingredients.push({
+          ingredientId,
+          name: catalogue.ingredients[ingredientId]?.name ?? ingredientId,
+          count,
+          incomingUnits,
+          risk,
+          affectedDishIds,
+          blockedTickets,
+          ordersRemaining: Math.floor(count / perServing),
+          priceDirection: marketQuote?.priceDirection ?? 'MARKET',
+          explanation: marketQuote?.explanation ?? 'No supplier quote is available.',
+          quotes,
+        });
+      }
+      const ranks = { STOCKED: 0, WATCH: 1, 'AT RISK': 2, BLOCKING: 3 };
+      const overallRisk = ingredients.reduce(
+        (worst, ingredient) => ranks[ingredient.risk] > ranks[worst] ? ingredient.risk : worst,
+        'STOCKED',
+      );
+      return {
+        overallRisk,
+        ingredients,
+        deliveries: inventory.supplierOrders.map((order) => {
+          const product = supplierData.products.find((item) => item.id === order.productId);
+          return {
+            orderId: order.orderId,
+            ingredientId: order.ingredientId,
+            ingredientName: catalogue.ingredients[order.ingredientId]?.name ?? order.ingredientId,
+            productId: order.productId,
+            productName: product?.name ?? order.productId,
+            units: order.units,
+            totalMs: order.totalMs,
+            arrivesInMs: Math.max(0, order.arrivesAtMs - match.elapsedMs),
+          };
+        }),
+      };
+    },
     /**
      * Take one serving of `dish` out of `station`'s bin. Called by `order-system.js` at the
      * instant a ticket's FIRST station step is dispatched, and by nothing else.
@@ -644,10 +852,34 @@ export const inventorySystem = {
     updateAffectedIngredients(match, state);
 
     for (const inventory of state.restaurants.values()) {
+      advanceSupplierOrders(match, inventory);
       advanceRestocks(inventory, dtMs);
       autoRestock(match, state, inventory);
       inventory.shortages = computeShortages(match, inventory);
       if (inventory.shortages.length > 0) inventory.ledger.shortageMs += dtMs;
+      const nextKeys = new Set(inventory.shortages.map((shortage) =>
+        `${shortage.station}:${shortage.ingredientId}`));
+      for (const key of nextKeys) {
+        if (!inventory.shortageKeys.has(key)) {
+          const [, ingredientId] = key.split(':');
+          match.logEvent('inventory_shortage_started', {
+            restaurantId: inventory.restaurantId,
+            ingredientId,
+            affectedDishIds: inventory.dishes
+              .filter((dish) => Object.hasOwn(dish.ingredients ?? {}, ingredientId))
+              .map((dish) => dish.id),
+          });
+        }
+      }
+      for (const key of inventory.shortageKeys) {
+        if (!nextKeys.has(key)) {
+          match.logEvent('inventory_shortage_resolved', {
+            restaurantId: inventory.restaurantId,
+            ingredientId: key.split(':')[1],
+          });
+        }
+      }
+      inventory.shortageKeys = nextKeys;
     }
 
     publishAvailability(match, state);
@@ -673,8 +905,16 @@ export const inventorySystem = {
     if (transition.to !== 'results') return;
     if (!match._inventorySimState) return;
 
+    match.inventorySummary = [];
     for (const inventory of match._inventorySimState.restaurants.values()) {
       const l = inventory.ledger;
+      match.inventorySummary.push({
+        restaurantId: inventory.restaurantId,
+        inventoryExpenses: l.supplierSpend,
+        marketPremiumPaid: l.marketPremiumPaid,
+        stockOrdersPlaced: l.supplierOrdersPlaced,
+        shortageDurationMs: l.shortageMs,
+      });
       const leftInPantry = Object.values(inventory.pantry).reduce((s, n) => s + n, 0);
       console.log(
         `[inventory] ${match.id} ${inventory.restaurantId} allocated=${l.unitsAllocated}u ` +

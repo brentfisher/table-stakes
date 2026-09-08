@@ -1099,6 +1099,30 @@ body {
 .service-contracts small { color: #b8ced5; }
 .service-station-board button { padding: 6px; border: 1px solid #4b879b; background: #244d5c; color: #e7f8ff; }
 .service-station-board button:disabled { opacity: .42; }
+
+.pantry-board { position: fixed; right: 22px; bottom: 88px; z-index: 13; width: min(760px, calc(100vw - 44px)); max-height: 76vh; overflow: auto; padding: 14px; border: 2px solid #c88742; background: rgba(29,22,15,.96); color: #fff3dc; box-shadow: 0 5px 24px #000a; }
+.pantry-board header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #755133; padding-bottom: 9px; }
+.pantry-board h2, .pantry-board h3, .pantry-board p { margin: 3px 0; }
+.board-kicker { color: #e8b56f; font-size: 10px; font-weight: 800; letter-spacing: .15em; }
+.pantry-move { padding: 7px 10px; border: 1px solid #c88742; background: #5d3b20; color: #fff3dc; font-weight: 700; }
+.pantry-deliveries { display: grid; gap: 5px; margin: 10px 0; padding: 8px; background: #173d32; color: #d9ffeb; }
+.pantry-deliveries div { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; }
+.pantry-deliveries progress { grid-column: 1 / -1; width: 100%; accent-color: #65c88a; }
+.pantry-grid { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(290px, 1.5fr); gap: 12px; margin-top: 10px; }
+.pantry-ingredients { display: grid; gap: 5px; align-content: start; }
+.pantry-ingredients button { display: grid; gap: 2px; padding: 7px; border: 1px solid #61452f; background: #2c241c; color: #eee0cd; text-align: left; }
+.pantry-ingredients button.selected { border-color: #e8b56f; background: #49321f; }
+.pantry-ingredients button > span:first-child { display: flex; justify-content: space-between; gap: 8px; }
+.pantry-ingredients small, .pantry-quotes small { color: #cdbb9f; }
+.pantry-ingredients b { font-size: 9px; letter-spacing: .06em; }
+.risk-stocked { color: #65c88a; } .risk-watch { color: #e6c45a; } .risk-at-risk { color: #e89145; } .risk-blocking { color: #e05b4f; }
+.pantry-detail { min-width: 0; }
+.pantry-cause { color: #ffc46f; font-weight: 700; }
+.pantry-quotes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+.pantry-quotes button { display: grid; gap: 3px; min-height: 86px; padding: 8px; border: 1px solid #9a6b3c; background: #3d2b1c; color: #fff3dc; text-align: left; }
+.pantry-quotes button:hover:not(:disabled) { border-color: #ffd18a; background: #5a3a20; }
+.pantry-quotes button:disabled { opacity: .42; }
+@media (max-width: 680px) { .pantry-grid { grid-template-columns: 1fr; } .pantry-ingredients { max-height: 180px; overflow: auto; } }
 .service-priorities { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .service-priorities .is-active { border-color: #ffd27a; color: #ffd27a; }
 .service-station-confirmation { position: fixed; z-index: 22; left: 50%; top: 128px; transform: translateX(-50%); padding: 10px 18px; border: 2px solid #7ed9f5; background: #163640; color: #e7f8ff; font-weight: 900; letter-spacing: .08em; box-shadow: 0 4px 18px #0009; }
