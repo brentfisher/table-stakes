@@ -19,6 +19,8 @@
 //   inventory  — STORY-006  (after customers: it decorates the restaurants[] array that system
 //                            REASSIGNS wholesale during its own update, so anything written
 //                            before it runs is discarded)
+//   kitchen-command — STORY-036 (after inventory, before workers: it supplies the active focus
+//                            that ranks the cook's already-startable ticket choices)
 //   workers    — STORY-007  (after inventory: same decoration trap, plus it reads the freshest
 //                            shortage state when the cook decides whether to walk to the pantry)
 //   upgrades   — STORY-012  (last of the gameplay systems: republishes `match.upgradeEffects`
@@ -50,6 +52,7 @@ import { scoringSystem } from './scoring-system.js';
 import { telemetrySystem } from './telemetry-system.js';
 import { frontDoorSystem } from './front-door-system.js';
 import { serviceStationSystem } from './service-station-system.js';
+import { kitchenCommandSystem } from './kitchen-command-system.js';
 
 export function registerAllSystems() {
   registerSystem(movementSystem);
@@ -70,7 +73,7 @@ export function registerAllSystems() {
   // `onPhaseChange` runs for every system before any `update`, so the pantry facade and the
   // first availability map exist before `order-system.js` dispatches its first ticket.
   registerSystem(inventorySystem);
-  // `workers` runs LAST for two reasons. It decorates `restaurants[]` with `workers[]`, and both
+  // `workers` runs after the systems whose state it consumes. It decorates `restaurants[]` with `workers[]`, and both
   // `customer-system.js` (which reassigns that array wholesale) and `inventory-system.js` must
   // already have run or the decoration is discarded. And the cook's §17 rule 4 decision — is any
   // bin worth a trip to the pantry — is read from `match.pantry` AFTER this tick's restock
@@ -78,6 +81,10 @@ export function registerAllSystems() {
   // earlier in the same tick. The cost is one tick (50ms) of dispatch latency: a ticket the cook
   // loads is started here and burns its first `dtMs` next tick. That is the same staleness class
   // `inventory` already documents and accepts, and it is invisible at a 10 Hz broadcast.
+  // Kitchen-command owns no production mutation. Registering it here guarantees its facade is
+  // present even in direct-service fixtures that skip phase-transition callbacks; worker-system
+  // then asks it to rank only tickets the kitchen has already declared startable.
+  registerSystem(kitchenCommandSystem);
   registerSystem(workerSystem);
   // `upgrades` runs last of the gameplay systems — see the header comment above.
   registerSystem(upgradeSystem);

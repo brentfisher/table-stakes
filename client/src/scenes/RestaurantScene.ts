@@ -653,6 +653,19 @@ export class RestaurantScene {
     crates.visible = deliveryCount > 0;
   }
 
+  /** STORY-036. The pass board mirrors the authoritative focus selected on the server. */
+  setKitchenFocus(focusName: string): void {
+    const board = this.scene.getObjectByName('kitchen_command_board');
+    const old = board?.getObjectByName('label_kitchen_command_board');
+    if (!board || !old || old.userData.focusName === focusName) return;
+    old.parent?.remove(old);
+    const label = createLabelSprite(focusName.toUpperCase(), 0xffd27a, 0.38);
+    label.name = 'label_kitchen_command_board';
+    label.userData.focusName = focusName;
+    label.position.copy(old.position);
+    board.add(label);
+  }
+
   /** STORY-035. Persistent, in-world props for each front-door investment. The server-published
    * owned-id set controls visibility; these meshes carry no game rules. */
   setFrontDoorUpgrades(ownedIds: string[]): void {
@@ -692,7 +705,8 @@ export class RestaurantScene {
       const label = entity.type === 'table' ? formatTableChip(entity.id)
         : entity.type === 'station' ? entity.station!.toUpperCase()
         : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
-            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE' } as Record<string, string>)[entity.id];
+            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
+            kitchen_command_board: 'RUSH THE PASS' } as Record<string, string>)[entity.id];
       if (!label) continue;
       const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.42);
       sprite.name = `label_${entity.id}`;
@@ -834,6 +848,8 @@ export class RestaurantScene {
         return this.box(1.0, 1.2, 0.8, 0x5fbf9e);
       case 'service_station':
         return this.box(1.2, 1.0, 0.8, 0x3ab0d9);
+      case 'kitchen_command_board':
+        return this.box(2.2, 1.5, 0.22, 0x392f27);
       case 'queue':
         return this.box(3.4, 0.06, 1.2, 0x2f3843);
       default:

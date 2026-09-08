@@ -341,7 +341,8 @@ function selectCookTask(match, state, staff, worker) {
       .queuedTicketsAt(restaurantId, worker.station)
       .filter((ticket) => !isBlockedNow(shortages, ticket));
     if (startable.length > 0) {
-      const best = startable.sort(compareTickets)[0];
+      const best = (match.kitchenCommand?.rankTickets(restaurantId, startable, compareTickets) ?? startable.sort(compareTickets))[0];
+      match.kitchenCommand?.recordSelection(restaurantId, worker.workerId, best);
       return makeTask({
         kind: 'tend_station',
         itemId: workItemId('tend_station', `${best.ticketId}:${worker.station}`),

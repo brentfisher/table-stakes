@@ -564,6 +564,8 @@ export class Match {
             // `order-system.js`'s own `onPhaseChange('service')`, and is torn down at `results`).
             revenue: this.kitchen?.revenueFor(viewer.playerId) ?? null,
             pantry: this.pantry?.publicFor(viewer.playerId) ?? null,
+            // STORY-036. Private because it includes the viewer's exact live menu availability.
+            kitchenCommand: this.kitchenCommand?.privateFor(viewer.playerId) ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already

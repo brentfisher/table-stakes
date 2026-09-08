@@ -112,3 +112,13 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .pantry-preview-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
 .pantry-preview-options button { display: grid; gap: 4px; padding: 10px; border: 1px solid #9a6b3c; background: #3d2b1c; color: #fff3dc; text-align: left; }
 .pantry-preview-options small { color: #cdbb9f; }
+.kitchen-command-preview { min-width: 0; min-height: 0; overflow: auto; padding: 24px; background: linear-gradient(145deg, #3b2a20, #17120f); color: #fff2d8; }
+.kitchen-command-preview > div:first-child { margin-bottom: 18px; }
+.kitchen-command-preview > div:first-child strong { color: #ffd27a; letter-spacing: .08em; }
+.kitchen-command-comparison { display: grid; grid-template-columns: repeat(3, minmax(210px, 1fr)); gap: 12px; }
+.kitchen-command-comparison article { padding: 14px; border: 1px solid #765635; background: #2d211a; }
+.kitchen-command-comparison h2 { margin: 0 0 8px; color: #ffd27a; font-size: 18px; }
+.kitchen-command-comparison p { min-height: 34px; font-size: 12px; }
+.kitchen-command-comparison .tradeoff { color: #ccbda8; }
+.kitchen-command-comparison li { padding: 3px; }
+.kitchen-command-comparison li.first { color: #81d7a1; font-weight: 900; }

@@ -85,6 +85,7 @@ export type InteractAction =
   | 'activate_special'
   | 'service_command'
   | 'pantry_order'
+  | 'kitchen_command'
   | 'cook'
   | 'plate'
   | 'deliver'
@@ -284,6 +285,20 @@ export interface SnapshotViewer {
   purchasedUpgradeIds: string[];
   /** STORY-033. The viewer's private stockroom board and supplier quotes. */
   pantry: PantrySnapshot | null;
+  /** STORY-036. Private kitchen-command state, including exact menu availability. */
+  kitchenCommand: {
+    activeFocusId: string;
+    cooldownForMs: number;
+    selectionsByFocus: Record<string, number>;
+    stationQueues: Array<{ station: Station; queued: number }>;
+    oldestReadyFoodMs: number;
+    shortages: Array<{ station: Station; ingredientId: string; blockedTickets: number; restocking: boolean; exhausted: boolean }>;
+    menuAvailability: Array<{ dishId: string; available: boolean }>;
+    activeEventIds: string[];
+    activeSpecialId: string | null;
+    atRiskGuests: number;
+    recommendation: { focusId: string; reason: string };
+  } | null;
 }
 
 export interface PantryQuote {

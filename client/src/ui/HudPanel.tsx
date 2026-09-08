@@ -25,6 +25,7 @@
 
 import dishesData from '../../../shared/game-data/dishes.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
+import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
 import { FRONT_DOOR_UPGRADE_IDS, type GameClientStatus } from '../game/GameClient';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
 import { eventTitle } from './event-titles';
@@ -154,6 +155,7 @@ export function HudPanel({
 
   const activeEvent = status?.events.find((e) => e.state === 'active') ?? null;
   const activeSpecial = status?.frontDoor[status.playerId ?? '']?.activeSpecialId ?? null;
+  const kitchenFocus = kitchenCommandData.focuses.find((focus) => focus.id === status?.kitchenCommand?.activeFocusId);
   const frontDoorUpgradeIds = status?.purchasedUpgradeIds.filter((id) => FRONT_DOOR_UPGRADE_IDS.includes(id)) ?? [];
   const upcomingEvent =
     status?.events
@@ -170,6 +172,7 @@ export function HudPanel({
       <div className="hud">
         <h1>Rival Restaurant</h1>
         {activeSpecial ? <div className="hud-special">SPECIAL: {activeSpecial.replace(/_/g, ' ').toUpperCase()}</div> : null}
+        {kitchenFocus ? <div className="hud-special">KITCHEN: {kitchenFocus.name.toUpperCase()}</div> : null}
         {frontDoorUpgradeIds.length > 0 ? (
           <div className="hud-special">
             FRONT DOOR: {frontDoorUpgradeIds.map((id) => FRONT_DOOR_EFFECT_LABELS[id] ?? upgradeName(id)).join(' · ')}

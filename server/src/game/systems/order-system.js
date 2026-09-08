@@ -945,7 +945,14 @@ function createKitchenFacade(match, state) {
         return {
           ticketId: ticket.ticketId,
           orderId: ticket.orderId,
+          dishId: ticket.dishId,
+          price: ticket.price,
           station,
+          currentStepIndex: ticket.stepIndex,
+          totalSteps: ticket.dish.stationSteps.length,
+          remainingProductionMs: ticket.dish.stationSteps
+            .slice(ticket.stepIndex + 1)
+            .reduce((sum, step) => sum + step.durationMs, 0),
           queueAgeMs: Math.max(0, match.elapsedMs - ticket.queuedAtMs),
           patienceRisk: patienceMs > 0 ? clamp(waited / patienceMs, 0, 1) : 0,
           blockedByIngredientId: ticket.blockedByIngredientId ?? null,

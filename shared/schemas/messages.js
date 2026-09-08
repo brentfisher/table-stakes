@@ -173,6 +173,7 @@ export const INTERACT_ACTIONS = Object.freeze([
   'activate_special',
   'service_command',
   'pantry_order',
+  'kitchen_command',
   'cook',
   'plate',
   'deliver',

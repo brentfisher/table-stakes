@@ -1126,3 +1126,16 @@ body {
 .service-priorities { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .service-priorities .is-active { border-color: #ffd27a; color: #ffd27a; }
 .service-station-confirmation { position: fixed; z-index: 22; left: 50%; top: 128px; transform: translateX(-50%); padding: 10px 18px; border: 2px solid #7ed9f5; background: #163640; color: #e7f8ff; font-weight: 900; letter-spacing: .08em; box-shadow: 0 4px 18px #0009; }
+.kitchen-command-board { position: fixed; left: 50%; bottom: 78px; z-index: 14; transform: translateX(-50%); display: grid; gap: 8px; width: min(760px, calc(100vw - 44px)); max-height: 76vh; overflow: auto; padding: 14px; border: 2px solid #d99a45; background: rgba(35,25,19,.97); color: #fff2d8; font-size: 12px; box-shadow: 0 5px 24px #000a; }
+.kitchen-command-board > strong, .kitchen-recommendation strong { color: #ffd27a; letter-spacing: .06em; }
+.kitchen-pressure-grid, .kitchen-shortage-state, .kitchen-menu-state, .kitchen-worker-intent { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.kitchen-shortage-state span, .kitchen-menu-state span, .kitchen-worker-intent span { padding: 4px 6px; background: #2d241e; }
+.kitchen-shortage-state span { color: #efb076; }
+.kitchen-menu-state .is-available { color: #81d7a1; }
+.kitchen-menu-state .is-unavailable { color: #ef8476; }
+.kitchen-recommendation { margin: 0; padding: 7px; border-left: 3px solid #d99a45; background: #2d241e; }
+.kitchen-focus-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.kitchen-focus-options button { display: grid; gap: 3px; padding: 8px; border: 1px solid #765635; background: #3b2a20; color: #fff2d8; text-align: left; }
+.kitchen-focus-options button small { color: #ccbda8; }
+.kitchen-focus-options button.is-active { border-color: #ffd27a; color: #ffd27a; }
+.kitchen-focus-options button:disabled { opacity: .55; }
