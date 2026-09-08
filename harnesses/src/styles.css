@@ -122,3 +122,27 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .kitchen-command-comparison .tradeoff { color: #ccbda8; }
 .kitchen-command-comparison li { padding: 3px; }
 .kitchen-command-comparison li.first { color: #81d7a1; font-weight: 900; }
+
+.food-library-preview { grid-column: 1 / -1; display: grid; grid-template-columns: 290px minmax(0, 1fr); min-width: 0; min-height: 0; background: #1e130e; color: #fff6e8; }
+.food-library-catalogue { display: flex; flex-direction: column; min-height: 0; padding: 20px 16px 0; border-right: 1px solid #63452e; background: #271911; }
+.food-library-catalogue h2 { margin: 3px 0; color: #ffbd63; font: 800 27px/1.1 Georgia, serif; }
+.food-library-catalogue > p { margin: 0 0 14px; color: #bfa98f; }
+.food-library-kicker { color: #e9863f; font-size: 10px; font-weight: 900; letter-spacing: .18em; }
+.food-library-filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 12px; }
+.food-library-filters button { padding: 7px 4px; border: 1px solid #694a33; background: #342319; color: #d8c8b7; cursor: pointer; }
+.food-library-filters button.is-active { border-color: #ffad55; color: #ffbd63; }
+.food-library-list { min-height: 0; overflow-y: auto; padding-bottom: 18px; }
+.food-library-item { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; width: 100%; padding: 9px 8px; border: 0; border-bottom: 1px solid #493324; background: transparent; color: #e7d8c8; text-align: left; cursor: pointer; }
+.food-library-item span { color: #8d725d; font-size: 11px; }
+.food-library-item b { color: #795c47; }
+.food-library-item:hover, .food-library-item.is-active { background: #3d291d; color: #ffbd63; }
+.food-library-viewer { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: radial-gradient(circle at 52% 47%, #573622 0, #251710 47%, #170e0a 100%); }
+.food-library-canvas { position: absolute; inset: 0; }
+.food-library-canvas canvas { width: 100%; height: 100%; display: block; }
+.food-library-copy { position: absolute; left: 28px; top: 26px; width: min(470px, calc(100% - 56px)); pointer-events: none; }
+.food-library-copy h2 { margin: 5px 0 8px; color: #ffd18a; font: 800 34px/1 Georgia, serif; }
+.food-library-copy p { margin: 6px 0; color: #d9c7b5; }
+.food-library-stats { font-variant-numeric: tabular-nums; font-weight: 800; }
+.food-library-status { display: inline-block; margin-top: 8px; padding: 5px 8px; border: 1px solid #875431; color: #e9a05c; background: #25150d; }
+.food-library-status.is-ready { border-color: #43845a; color: #7bd69a; }
+.food-library-download { display: block; width: max-content; margin-top: 12px; padding: 7px 10px; border: 1px solid #a96737; background: #6d351d; color: #fff3df; text-decoration: none; pointer-events: auto; }

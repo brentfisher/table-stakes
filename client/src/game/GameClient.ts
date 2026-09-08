@@ -868,6 +868,7 @@ export class GameClient {
       });
       this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[this.status.playerId ?? '']?.activeSpecialId ?? null);
       this.scene.restaurant.setPantryCommandState(you?.pantry?.overallRisk ?? 'STOCKED', you?.pantry?.deliveries.length ?? 0);
+      this.scene.restaurant.setPantryIngredients(you?.pantry?.ingredients ?? []);
       const focusId = (you?.kitchenCommand as GameClientStatus['kitchenCommand'] | undefined)?.activeFocusId ?? kitchenCommandData.defaultFocusId;
       const focus = kitchenCommandData.focuses.find((item) => item.id === focusId);
       this.scene.restaurant.setKitchenFocus(focus?.name ?? focusId.replace(/_/g, ' '));

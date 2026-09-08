@@ -8,15 +8,11 @@
 // RoomEnvironment use the same pinned CDN addon map as the game's Three.js runtime. Focused
 // visibility/bounds are reapplied when the asynchronous model arrives.
 //
-//   - Dish Models is a MIX, not uniformly generic. STORY-030 gave 'ready' a real per-dish visual
-//     — the plate at the service pass is chosen by `dishId` (`RestaurantScene#upsertReadyDish`,
-//     five named silhouettes plus a neutral fallback for the rest of the catalogue) — but every
-//     OTHER dish placement is still exactly one generic mesh regardless of `dishId`: the carry
-//     plate (`MAX_VISIBLE_CARRY_PLATES` in `RestaurantScene.ts`, STORY-031's concern to make
-//     dish-specific) and the table badge glyph (`TABLE_BADGE_GLYPHS`, a meal-state indicator, not
-//     a dish one). This category is built around that reality: 'ready' gets the real dish-select
-//     control the pass now has; carry and table placements get the same honest "no per-dish
-//     visual here" treatment as before; plus an accounting of which `OrderState` values
+//   - Dish Models uses the authored arcade-food GLBs for all eight catalogue dishes at both the
+//     service pass and the real carry socket. This older showcase keeps its abstract carried-count
+//     control for testing socket capacity; the Arcade Food Library harness is the item-by-item
+//     model inspector. Table badges remain meal-state indicators rather than dish geometry. This
+//     category also accounts for which `OrderState` values
 //     ('queued', 'ready') have ANY visual at all and which ('placed', 'in_progress', 'delivered',
 //     'cancelled') have none.
 //   - Wherever a requested preview has no production view to map onto — `OwnerRenderState.
@@ -200,7 +196,7 @@ const PLAYER_VARIANT_DEFS: { id: string; label: string; kind: 'owner' | 'worker'
   ...SEGMENTS.map((s) => ({ id: `customer_${s.id}`, label: `Customer: ${s.name}`, kind: 'customer' as const })),
 ];
 
-// --- Dish Models: static variant list (see this file's header on why there is no per-dish mesh)
+// --- Dish Models: production placement/state variants; the food library owns per-item inspection
 
 const DISH_VARIANT_DEFS: { id: string; label: string }[] = [
   { id: 'carried_1', label: 'Carried by owner — 1 plate' },
@@ -575,8 +571,9 @@ function createAssetShowcaseHarness(): SceneHarness {
         const noVisualNote = (state: string) =>
           `OrderState '${state}' has no distinct visual anywhere in this codebase. ` +
           "RestaurantScene only ever visually distinguishes 'queued' (a station's queue-box " +
-          "stack) and 'ready' (a dish-specific plated proxy at the pass, STORY-030) — 'placed', " +
-          "'in_progress', 'delivered' and 'cancelled' render as nothing beyond the station/" +
+          "stack), 'ready' (a dish-specific plated proxy at the pass), and 'delivered' (the " +
+          "authored plate on its table) — 'placed', 'in_progress' and 'cancelled' render as " +
+          'nothing beyond the station/' +
           'table\'s own static geometry. Nothing is spawned for this selection; that is the ' +
           'honest result, not a bug.';
 
@@ -585,10 +582,9 @@ function createAssetShowcaseHarness(): SceneHarness {
           scene.setCarrying(SHOWCASE_OWNER_ID, count);
           target = scene.scene.getObjectByName(`owner_${SHOWCASE_OWNER_ID}`) ?? null;
           diagnostics = [
-            'No standalone dish/plate model exists in this codebase — the plate mesh above is a ' +
-              "fixed child of the owner avatar (RestaurantScene#upsertOwner's carry-plate loop), " +
-              'built once per owner and only ever toggled visible/hidden. The dish selected below ' +
-              'has no effect on it — every carried dish renders identically.',
+            'This legacy capacity control toggles the owner socket markers. Live carried orders ' +
+              'use RestaurantScene#setCarriedDishes and the authored model for each dish; inspect ' +
+              'those item models in the Arcade Food Library harness.',
           ];
         } else if (id.startsWith('table_')) {
           const tableId = layoutTableIds()[0];
@@ -598,11 +594,15 @@ function createAssetShowcaseHarness(): SceneHarness {
             table_meal_delivered: 'EATING',
             table_paying: 'PAYING',
           };
+          const showsMeal = id === 'table_meal_delivered' || id === 'table_paying';
           applyFloorState({
             selfOverrides: {
               tables: defaultTables().map((t) => (t.id === tableId ? { ...t, occupiedBy: dirty ? null : 'showcase_customer', dirty } : t)),
             },
             customers: dirty ? [] : [mockDiningCustomer('showcase_customer', { tableId, state: stateByBadge[id] })],
+            orders: showsMeal
+              ? [mockOrder('showcase_table_order', DISHES[0].id, { state: 'delivered', tableId })]
+              : [],
           });
           target = scene.scene.getObjectByName(tableId) ?? null;
           diagnostics = [
@@ -610,8 +610,10 @@ function createAssetShowcaseHarness(): SceneHarness {
               ? "'Dirty' is a cleanup state, not an order state — it is included here because it " +
                 "is the table's 4th real badge and the natural end of a dish's lifecycle at the " +
                 'table.'
-              : 'The table badge glyph (O/F/$) is the only production visual for this order-state ' +
-                'transition — no plated-dish mesh is ever placed on the table itself.',
+              : showsMeal
+                ? 'The delivered dish uses the same authored model shown at the pass and in the ' +
+                  'carry socket, with the table badge still showing meal/payment state.'
+                : 'The table badge shows that an order was taken; its dish appears here after delivery.',
           ];
         } else if (id === 'pass_ready_fresh' || id === 'pass_ready_stale') {
           const stale = id === 'pass_ready_stale';
@@ -900,7 +902,7 @@ function createAssetShowcaseHarness(): SceneHarness {
       panel.addSeparator(dishSection);
       const setDishInfo = panel.addReadout('Dish details', dishSection);
       panel.addSelect(
-        'Dish (informational only — no visual effect; see Diagnostics)',
+        'Dish catalogue (inspect models in Arcade Food Library)',
         DISHES.map((d) => ({ value: d.id, label: `${d.name} (${d.category})` })),
         (v) => {
           const dish = DISHES.find((d) => d.id === v);
@@ -915,8 +917,8 @@ function createAssetShowcaseHarness(): SceneHarness {
       addonNote.textContent =
         `This list includes ${addonDishNames.length ? addonDishNames.join(', ') : 'the'} — the ` +
         `${ADDON_CATEGORIES.join('/')} add-on categories per setup-rules.js's own ADDON_CATEGORIES ` +
-        '— alongside every main course. Every add-on is selectable here for coverage and renders ' +
-        'exactly as identically as every entree does: no add-on-specific mesh exists either.';
+        '— alongside every main course. Every add-on and entree has its own authored GLB in the ' +
+        'Arcade Food Library harness.';
       dishSection.appendChild(addonNote);
 
       // --- panel: Restaurant Models section --------------------------------------------------------

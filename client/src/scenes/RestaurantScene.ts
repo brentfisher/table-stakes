@@ -34,6 +34,7 @@ import {
   CUSTOMER_SEGMENT_COLOR_FALLBACK,
 } from '../game/state-colors';
 import { createGlyphSprite, createLabelSprite, setGlyphSpriteColor } from './icon-sprites';
+import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 
 export interface OwnerRenderState {
   playerId: string;
@@ -492,7 +493,7 @@ const DISH_PROXY_BUILDERS: Record<string, () => THREE.Group> = {
  * STORY-030) for exactly that reuse — no second builder, no re-derived silhouette. */
 export function buildDishProxy(dishId: string): THREE.Group {
   const builder = DISH_PROXY_BUILDERS[dishId] ?? buildGenericDishProxy;
-  return builder();
+  return buildArcadeFoodProxy(dishId, { scale: 2.4, fallback: builder() });
 }
 
 export interface RestaurantSceneOptions {
@@ -529,6 +530,10 @@ export class RestaurantScene {
     Station,
     { queueBoxes: THREE.Mesh[]; shortageIcon: THREE.Sprite }
   >();
+  /** Authored ingredient props for the active menu, placed on the physical pantry surface. */
+  private readonly pantryIngredientProps = new Map<string, THREE.Group>();
+  /** One authored plate per delivered ticket, attached to its table while the party eats/pays. */
+  private readonly tableDishes = new Map<string, THREE.Group>();
   /** STORY-030. Spawn/despawn ready-dish proxies at the service pass, one per ready ticket —
    * same seam as `customers`/`workers` above (`GameClient.ts` reconciles a 'readyDishes' kind
    * through `EntityViewRegistry`), unlike the fixed-count `tableBadges`/`stationIndicators`
@@ -651,6 +656,59 @@ export class RestaurantScene {
       pantry.add(crates);
     }
     crates.visible = deliveryCount > 0;
+  }
+
+  /** The private pantry snapshot chooses which ingredient models belong on this restaurant's
+   * shelf. Colored pads show stock risk while the pantry board remains the exact count readout. */
+  setPantryIngredients(ingredients: Array<{
+    ingredientId: string;
+    count: number;
+    incomingUnits: number;
+    risk: 'STOCKED' | 'WATCH' | 'AT RISK' | 'BLOCKING';
+  }>): void {
+    const pantry = this.scene.getObjectByName('pantry');
+    if (!pantry) return;
+    const seen = new Set<string>();
+    const riskColors: Record<string, number> = {
+      STOCKED: 0x65c88a,
+      WATCH: 0xe6c45a,
+      'AT RISK': 0xe89145,
+      BLOCKING: 0xe05b4f,
+    };
+    ingredients.forEach((ingredient, index) => {
+      seen.add(ingredient.ingredientId);
+      let holder = this.pantryIngredientProps.get(ingredient.ingredientId);
+      if (!holder) {
+        holder = new THREE.Group();
+        holder.name = `pantry_ingredient_${ingredient.ingredientId}`;
+        const pad = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.2, 0.2, 0.025, 18),
+          new THREE.MeshStandardMaterial({ color: riskColors[ingredient.risk], roughness: 0.65 }),
+        );
+        pad.name = 'stock_risk_pad';
+        pad.position.y = -0.015;
+        holder.add(pad, buildArcadeFoodProxy(ingredient.ingredientId, { scale: 1.3 }));
+        pantry.add(holder);
+        this.pantryIngredientProps.set(ingredient.ingredientId, holder);
+      }
+      const column = index % 6;
+      const row = Math.floor(index / 6);
+      holder.position.set((column - 2.5) * 0.42, 0.78, (row - 1) * 0.4);
+      holder.scale.setScalar(ingredient.count > 0 ? 1 : 0.82);
+      holder.userData.stockCount = ingredient.count;
+      holder.userData.incomingUnits = ingredient.incomingUnits;
+      const pad = holder.getObjectByName('stock_risk_pad');
+      if (pad instanceof THREE.Mesh && pad.material instanceof THREE.MeshStandardMaterial) {
+        pad.material.color.setHex(riskColors[ingredient.risk]);
+        pad.material.emissive.setHex(ingredient.risk === 'BLOCKING' ? 0x4a0804 : 0x000000);
+      }
+    });
+    for (const [ingredientId, holder] of this.pantryIngredientProps) {
+      if (seen.has(ingredientId)) continue;
+      holder.removeFromParent();
+      disposeFoodObject(holder);
+      this.pantryIngredientProps.delete(ingredientId);
+    }
   }
 
   /** STORY-036. The pass board mirrors the authoritative focus selected on the server. */
@@ -1010,6 +1068,7 @@ export class RestaurantScene {
     for (const [ticketId, proxy] of byTicket) {
       if (seen.has(ticketId)) continue;
       group.remove(proxy);
+      disposeFoodObject(proxy);
       byTicket.delete(ticketId);
     }
   }
@@ -1194,6 +1253,7 @@ export class RestaurantScene {
     const group = this.readyDishes.get(ticketId);
     if (!group) return;
     group.parent?.remove(group);
+    disposeFoodObject(group);
     this.readyDishes.delete(ticketId);
     this.releaseReadyDishSlot(ticketId);
   }
@@ -1564,6 +1624,44 @@ export class RestaurantScene {
     }
   }
 
+  /** Keep the same dish identity visible through the whole service path: pass, hands, table.
+   * Delivered orders remain public until payment settles, so this projection naturally keeps
+   * plates present while diners eat and removes them when the table visit finishes. */
+  private updateTableDishes(orders: OrderSnapshot[]): void {
+    const delivered = orders.filter((order) => order.state === 'delivered' && order.tableId);
+    const seen = new Set(delivered.map((order) => order.ticketId));
+    const tableSlots = new Map<string, number>();
+
+    for (const order of delivered) {
+      const tableId = order.tableId!;
+      const slot = tableSlots.get(tableId) ?? 0;
+      tableSlots.set(tableId, slot + 1);
+
+      let proxy = this.tableDishes.get(order.ticketId);
+      if (!proxy) {
+        proxy = buildDishProxy(order.dishId);
+        proxy.name = `table_dish_${order.ticketId}`;
+        proxy.scale.setScalar(0.52);
+        this.scene.getObjectByName(tableId)?.add(proxy);
+        this.tableDishes.set(order.ticketId, proxy);
+      }
+
+      // Four compact settings fit on the 1.8 m round table. Larger parties reuse the ring with
+      // a smaller radius, which is still clearer than stacking plates at the centre.
+      const angle = (slot % 4) * (Math.PI / 2) + Math.PI / 4;
+      const radius = slot < 4 ? 0.42 : 0.18;
+      proxy.position.set(Math.cos(angle) * radius, 0.84, Math.sin(angle) * radius);
+      proxy.rotation.y = -angle;
+    }
+
+    for (const [ticketId, proxy] of this.tableDishes) {
+      if (seen.has(ticketId)) continue;
+      proxy.removeFromParent();
+      disposeFoodObject(proxy);
+      this.tableDishes.delete(ticketId);
+    }
+  }
+
   /**
    * PRD §8 "distinct signals for each" bottleneck. `orders`/`shortages` must already be
    * filtered/scoped to THIS restaurant (see `updateFloorState`). Queue depth is DERIVED from
@@ -1639,8 +1737,8 @@ export class RestaurantScene {
   }
 
   /**
-   * The single per-snapshot entry point for everything in this section: tables, stations, rival
-   * activity and the event effect. Customers, workers, and (STORY-030) ready-dish proxies are
+   * The single per-snapshot entry point for everything in this section: tables, table dishes,
+   * stations, rival activity and the event effect. Customers, workers, and ready-dish proxies are
    * NOT handled here — they are spawn/despawn entities reconciled through `EntityViewRegistry`
    * in `GameClient.ts` ('customers'/'workers'/'readyDishes'), the same seam `players` already
    * uses for owners.
@@ -1662,6 +1760,7 @@ export class RestaurantScene {
     const selfCustomers = params.customers.filter((c) => c.restaurantId === params.selfRestaurantId);
 
     this.updateTableBadges(self?.tables ?? [], selfCustomers);
+    this.updateTableDishes(selfOrders);
     this.updateStationIndicators(selfOrders, self?.shortages ?? []);
     this.updateRivalActivity(rival);
     this.updateEventEffect(params.events);
@@ -1713,6 +1812,8 @@ export class RestaurantScene {
     this.workers.clear();
     this.tableBadges.clear();
     this.stationIndicators.clear();
+    this.pantryIngredientProps.clear();
+    this.tableDishes.clear();
     this.readyDishes.clear();
     this.readyDishSlots.clear();
     this.readyDishSlotUsed.fill(false);
