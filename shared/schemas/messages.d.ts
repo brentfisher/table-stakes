@@ -84,6 +84,7 @@ export type MatchEndReason = 'completed' | 'player_disconnected';
 export type InteractAction =
   | 'activate_special'
   | 'service_command'
+  | 'pantry_order'
   | 'cook'
   | 'plate'
   | 'deliver'
@@ -281,6 +282,29 @@ export interface SnapshotViewer {
    * upgrades a player owns is competitive information the same way their menu is.
    */
   purchasedUpgradeIds: string[];
+  /** STORY-033. The viewer's private stockroom board and supplier quotes. */
+  pantry: PantrySnapshot | null;
+}
+
+export interface PantryQuote {
+  productId: string; name: string; description: string; units: number; cost: number;
+  unitCost: number; deliveryMs: number; priceDirection: 'DEAL' | 'MARKET' | 'EXPENSIVE';
+  explanation: string; available: boolean; unavailableReason: string | null;
+}
+export interface PantryIngredientSnapshot {
+  ingredientId: string; name: string; count: number; incomingUnits: number;
+  risk: 'STOCKED' | 'WATCH' | 'AT RISK' | 'BLOCKING'; affectedDishIds: string[];
+  blockedTickets: number; ordersRemaining: number; priceDirection: 'DEAL' | 'MARKET' | 'EXPENSIVE';
+  explanation: string; quotes: PantryQuote[];
+}
+export interface PantryDeliverySnapshot {
+  orderId: string; ingredientId: string; ingredientName: string; productId: string;
+  productName: string; units: number; arrivesInMs: number;
+  totalMs: number;
+}
+export interface PantrySnapshot {
+  overallRisk: 'STOCKED' | 'WATCH' | 'AT RISK' | 'BLOCKING';
+  ingredients: PantryIngredientSnapshot[]; deliveries: PantryDeliverySnapshot[];
 }
 
 /** One entry of the snapshot's `events[]`. PRD §12 server-to-client example 1. */
@@ -357,6 +381,11 @@ export interface EventAnnounceMessage {
  * scoring-system.js's header) and, if ever built, STORY-014's job.
  */
 export interface MatchResult {
+  /** STORY-033 supplier purchases and service-time stock operations. */
+  inventoryExpenses: number;
+  marketPremiumPaid: number;
+  stockOrdersPlaced: number;
+  shortageDurationMs: number;
   score: number;
   revenue: number;
   guestsServed: number;

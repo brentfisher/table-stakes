@@ -129,6 +129,16 @@ function resolveAction(match, restaurantId, player, targetId, action) {
       const result = match.frontDoor?.activate(restaurantId, targetId.slice('special_'.length)) ?? { ok: false, reason: 'not_ready' };
       return result.ok ? result : fail('interact_rejected', result.reason, targetId);
     }
+    case 'pantry_order': {
+      const [prefix, productId, ingredientId, extra] = targetId.split(':');
+      if (prefix !== 'pantry' || !productId || !ingredientId || extra) {
+        return fail('interact_rejected', 'no_such_target', targetId);
+      }
+      const outOfRange = requireRange(player, staticTargetPosition('pantry'), 'pantry');
+      if (outOfRange) return outOfRange;
+      const result = match.pantry.placeSupplierOrder(restaurantId, productId, ingredientId);
+      return result.ok ? result : fail('interact_rejected', result.reason, targetId);
+    }
     case 'cook':
     case 'plate':
       return resolveCookOrPlate(match, restaurantId, player, targetId, action);

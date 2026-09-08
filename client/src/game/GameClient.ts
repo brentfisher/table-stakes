@@ -14,6 +14,7 @@ import type {
   MatchEndReason,
   MatchPhase,
   OrderSnapshot,
+  PantrySnapshot,
   PublicMarket,
   RestaurantSnapshot,
   SnapshotEventEntry,
@@ -182,6 +183,9 @@ export interface GameClientStatus {
   showServiceStationBoard: boolean;
   serviceStationNotice: string | null;
   serviceStation: Record<string, { priorityId: string; priorityCooldownForMs: number; payrollBurn: number; laborExpenses: number; contracts: Array<{ contractId: string; workerId: string; status: 'arriving' | 'active'; arrivalForMs: number; activeForMs: number; committedForMs: number }> }>;
+  nearPantry: boolean;
+  showPantryBoard: boolean;
+  pantry: PantrySnapshot | null;
   /**
    * STORY-012 AC: "shows an upgrade-availability indicator ... without forcing a trip to
    * check." True when at least one of `WIRED_UPGRADE_IDS` is unowned, has its `requires` (if
@@ -330,6 +334,9 @@ export class GameClient {
     showServiceStationBoard: false,
     serviceStationNotice: null,
     serviceStation: {},
+    nearPantry: false,
+    showPantryBoard: false,
+    pantry: null,
     canAffordUpgrade: false,
     affordableUpgradeId: null,
     revenue: null,
@@ -441,6 +448,10 @@ export class GameClient {
     // no-op otherwise — there is nothing else PRD §8 names for it that this MVP can act on
     // (see `INTERACT_ACTIONS`'s comment in messages.js for why `drop_carry` exists at all).
     this.input.onInteract = () => {
+      if (this.status.nearPantry) {
+        this.patchStatus({ showPantryBoard: !this.status.showPantryBoard });
+        return;
+      }
       if (this.status.nearServiceStation) {
         this.patchStatus({ showServiceStationBoard: !this.status.showServiceStationBoard });
         return;
@@ -561,6 +572,7 @@ export class GameClient {
             cash?: number | null;
             revenue?: number | null;
             purchasedUpgradeIds?: string[];
+            pantry?: PantrySnapshot | null;
           }
         | null;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
@@ -796,6 +808,7 @@ export class GameClient {
         cash,
         revenue,
         purchasedUpgradeIds,
+        pantry: you?.pantry ?? null,
         canAffordUpgrade: affordableUpgradeId !== null,
         affordableUpgradeId,
         restaurants,
@@ -829,6 +842,7 @@ export class GameClient {
         bots: (message.bots ?? []) as BotSnapshotEntry[],
       });
       this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[this.status.playerId ?? '']?.activeSpecialId ?? null);
+      this.scene.restaurant.setPantryCommandState(you?.pantry?.overallRisk ?? 'STOCKED', you?.pantry?.deliveries.length ?? 0);
       return;
     }
     if (message.type === 'match_complete') {
@@ -912,6 +926,12 @@ export class GameClient {
 
   serviceStationCommand(command: string): void { this.network.sendInteract(`service_${command}`, 'service_command'); }
 
+  placePantryOrder(productId: string, ingredientId: string): void {
+    this.network.sendInteract(`pantry:${productId}:${ingredientId}`, 'pantry_order');
+  }
+
+  restockKitchen(): void { this.network.sendInteract('pantry', 'restock'); }
+
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
@@ -957,6 +977,10 @@ export class GameClient {
       const nearServiceStation = this.interaction.inRangeOf(self.position, 'service_station');
       if (nearServiceStation !== this.status.nearServiceStation) {
         this.patchStatus({ nearServiceStation, showServiceStationBoard: nearServiceStation ? this.status.showServiceStationBoard : false });
+      }
+      const nearPantry = this.interaction.inRangeOf(self.position, 'pantry');
+      if (nearPantry !== this.status.nearPantry) {
+        this.patchStatus({ nearPantry, showPantryBoard: nearPantry ? this.status.showPantryBoard : false });
       }
     }
 

@@ -141,8 +141,11 @@ function buildRestaurantResult(
   const upgradeCostAtSetup = setup.upgradeCost ?? 0;
   const cashSpentOnUpgrades = upgrade.cashSpentOnUpgrades ?? 0;
   const laborExpenses = match.serviceStation?.expensesFor(restaurantId).laborExpenses ?? 0;
+  const inventory = new Map((match.inventorySummary ?? []).map((entry) => [entry.restaurantId, entry]))
+    .get(restaurantId) ?? {};
+  const inventoryExpenses = inventory.inventoryExpenses ?? 0;
   const revenue = order.revenue ?? 0;
-  const expenses = toCents(inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades + laborExpenses);
+  const expenses = toCents(inventoryCost + upgradeCostAtSetup + cashSpentOnUpgrades + laborExpenses + inventoryExpenses);
   // "Net profit" and "net revenue" are the same number — one field, `netProfit`, doubling as
   // both names §11 uses for it.
   const netProfit = toCents(revenue - expenses);
@@ -235,6 +238,10 @@ function buildRestaurantResult(
     // The §11 additions:
     expenses,
     laborExpenses,
+    inventoryExpenses,
+    marketPremiumPaid: inventory.marketPremiumPaid ?? 0,
+    stockOrdersPlaced: inventory.stockOrdersPlaced ?? 0,
+    shortageDurationMs: inventory.shortageDurationMs ?? 0,
     netProfit,
     customersLostToRival: district.counts?.[CUSTOMER_STATES.CHOOSE_RIVAL] ?? 0,
     averageWaitTimeMs: district.averageWaitTimeMs ?? 0,

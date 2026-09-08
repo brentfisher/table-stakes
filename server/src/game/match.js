@@ -563,6 +563,7 @@ export class Match {
             // same null-before-`service` guard as `cash` (`match.kitchen` does not exist before
             // `order-system.js`'s own `onPhaseChange('service')`, and is torn down at `results`).
             revenue: this.kitchen?.revenueFor(viewer.playerId) ?? null,
+            pantry: this.pantry?.publicFor(viewer.playerId) ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already

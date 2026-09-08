@@ -1,0 +1,10 @@
+{
+  "products": [
+    { "id": "standard", "name": "Standard", "description": "A normal supplier run at the current market price.", "units": 12, "unitCostMultiplier": 1, "deliveryMs": 12000 },
+    { "id": "emergency", "name": "Emergency", "description": "A small rush delivery with a steep handling premium.", "units": 6, "unitCostMultiplier": 1.6, "deliveryMs": 3500 },
+    { "id": "bulk", "name": "Bulk", "description": "A large, slower order with the lowest unit price.", "units": 30, "unitCostMultiplier": 0.8, "deliveryMs": 24000 },
+    { "id": "priority", "name": "Priority", "description": "A preferred supplier slot for promoted or high-value dishes.", "units": 12, "unitCostMultiplier": 1.15, "deliveryMs": 8000 }
+  ],
+  "maxConcurrentOrders": 2,
+  "maxUnitsPerIngredient": 80
+}
