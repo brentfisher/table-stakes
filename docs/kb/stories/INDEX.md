@@ -40,3 +40,4 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-035 | [The Maitre d' Advantage](STORY-035-maitre-d-advantage.md) | complete |
 | STORY-036 | [The Kitchen Command Board](STORY-036-kitchen-command-board.md) | complete |
 | STORY-037 | [The Manager's Ledger](STORY-037-managers-ledger.md) | complete |
+| STORY-038 | [Three-Stage Ready-Up Menu](STORY-038-three-stage-ready-up-menu.md) | complete |

@@ -162,155 +162,123 @@ body {
   pointer-events: none;
 }
 
-/* ------------------------------------------------------------------------------------------
-   PRD §18 "Setup UI" — the four regions plus the top bar, as plain CSS grid. PRD §13 and
-   conventions.md "Code Style": no large UI system, no CSS-in-JS, no component library.
-
-   The screen is a full-bleed overlay above the Three.js canvas rather than a sibling of it:
-   during setup the restaurant is a backdrop, not something the player is driving. It sets
-   `pointer-events: auto` because `.hud` above it is click-through.
-   ------------------------------------------------------------------------------------------ */
-
-.setup {
+/* STORY-038. Three-stage ready up inspired by the supplied showroom prototype. */
+.ready-up {
+  --ready-ink: #263848;
+  --ready-muted: #71828c;
+  --ready-line: #b8c6cc;
+  --ready-orange: #ec9a36;
   position: absolute;
   inset: 0;
   z-index: 2;
   display: grid;
-  gap: 10px;
-  padding: 10px;
-  grid-template-columns: minmax(240px, 1fr) minmax(360px, 2fr) minmax(260px, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "top    top    top"
-    "left   center right"
-    "bottom bottom bottom";
-  background: rgba(12, 15, 19, 0.94);
+  overflow: hidden;
+  background: radial-gradient(circle at 40% 10%, #f4f7f8 0, #e2e9ec 62%, #d9e2e6 100%);
+  color: var(--ready-ink);
   pointer-events: auto;
 }
+.ready-up button, .ready-up input { font: inherit; }
+.ready-up-topbar { display: grid; grid-template-columns: 170px 1fr auto; align-items: center; min-height: 68px; padding: 0 34px; border-bottom: 1px solid var(--ready-line); background: rgba(242, 246, 247, .82); }
+.ready-up-brand { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 900; letter-spacing: .12em; line-height: 1.05; }
+.ready-up-brand b { color: var(--ready-ink); font-size: 27px; font-style: italic; letter-spacing: -.12em; }
+.ready-up-brand b::first-letter { color: var(--ready-orange); }
+.ready-up-progress { display: flex; justify-content: center; align-self: stretch; }
+.ready-up-progress button { display: flex; align-items: center; gap: 9px; min-width: 145px; padding: 0 20px; border: 0; border-bottom: 4px solid transparent; background: transparent; color: #9aa7ad; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.ready-up-progress button span { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid currentColor; transform: skew(-8deg); }
+.ready-up-progress button.is-current { border-bottom-color: var(--ready-orange); color: var(--ready-ink); }
+.ready-up-progress button.is-current span { border-color: var(--ready-orange); background: var(--ready-orange); color: #172630; }
+.ready-up-progress button.is-complete { color: var(--ready-ink); }
+.ready-up-progress button:disabled { cursor: default; }
+.ready-up-status { display: flex; align-items: center; gap: 10px; color: var(--ready-muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.ready-up-status > span:last-child { padding: 5px 8px; border: 1px solid var(--ready-line); }
+.ready-up-status > span.is-ready { border-color: #3e806a; color: #27705a; }
+.ready-up-clock { color: var(--ready-ink); font-size: 24px; font-variant-numeric: tabular-nums; }
+.ready-up-main { min-height: 0; overflow: auto; padding: 28px 4vw 32px; }
+.ready-up-heading { display: flex; align-items: end; justify-content: space-between; gap: 28px; margin: 0 auto 22px; max-width: 1420px; }
+.ready-up-heading > div > span, .ready-up-heading aside span, .ready-price-showcase > span, .ready-inventory-head span { color: var(--ready-muted); font-size: 10px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
+.ready-up-heading h1 { margin: 5px 0 4px; font: 900 clamp(32px, 4.5vw, 62px)/.93 Arial Black, Impact, sans-serif; letter-spacing: -.055em; text-transform: uppercase; }
+.ready-up-heading p { margin: 0; color: var(--ready-muted); font-size: 15px; }
+.ready-up-heading aside { display: grid; min-width: 280px; gap: 4px; padding: 11px 14px; border-left: 3px solid var(--ready-orange); background: rgba(255, 255, 255, .45); }
+.ready-up-heading aside strong { text-transform: uppercase; }
+.ready-up-heading aside small { color: var(--ready-muted); }
+.ready-dish-grid { display: grid; grid-template-columns: repeat(6, minmax(145px, 1fr)); max-width: 1420px; margin: 0 auto; border-top: 1px solid var(--ready-line); border-left: 1px solid var(--ready-line); }
+.ready-dish-grid--extra { grid-template-columns: repeat(2, minmax(230px, 310px)); justify-content: center; border: 0; gap: 14px; }
+.ready-dish-card { position: relative; display: grid; grid-template-rows: 190px auto auto auto; gap: 5px; min-width: 0; padding: 10px 12px 14px; border: 0; border-right: 1px solid var(--ready-line); border-bottom: 1px solid var(--ready-line); background: rgba(245, 248, 249, .48); color: var(--ready-ink); text-align: left; cursor: pointer; }
+.ready-dish-grid--extra .ready-dish-card { border: 1px solid var(--ready-line); }
+.ready-dish-card:hover:not(:disabled) { background: rgba(255, 255, 255, .85); }
+.ready-dish-card.is-selected { z-index: 1; outline: 2px solid var(--ready-orange); outline-offset: -2px; background: #f8f5ed; }
+.ready-dish-card:disabled { opacity: .42; cursor: default; }
+.ready-dish-card > strong { font-size: 15px; text-transform: uppercase; }
+.ready-dish-card > small { overflow: hidden; color: var(--ready-muted); font-size: 10px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.ready-dish-number, .ready-dish-check { position: absolute; top: 10px; z-index: 1; color: var(--ready-muted); font-size: 10px; }
+.ready-dish-number { left: 12px; }
+.ready-dish-check { right: 12px; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--ready-line); font-size: 14px; }
+.ready-dish-card.is-selected .ready-dish-check { border-color: var(--ready-orange); background: var(--ready-orange); color: var(--ready-ink); }
+.ready-dish-cost { color: var(--ready-ink); font-size: 11px; font-variant-numeric: tabular-nums; }
+.food-model-preview { display: block; width: 100%; height: 100%; min-height: 70px; pointer-events: none; }
+.food-model-preview[data-failed='true'] { opacity: .25; background: repeating-linear-gradient(135deg, transparent 0 8px, #aebbc0 8px 9px); }
+.ready-price-stage { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(390px, 1.25fr) minmax(300px, 1fr); gap: 18px; max-width: 1420px; margin: 0 auto; }
+.ready-price-showcase, .ready-price-list, .ready-inventory { min-width: 0; border: 1px solid var(--ready-line); background: rgba(246, 249, 250, .58); }
+.ready-price-showcase { display: grid; grid-template-rows: auto minmax(260px, 1fr) auto auto; gap: 5px; padding: 16px; text-align: center; }
+.ready-price-showcase > strong { font-size: 22px; text-transform: uppercase; }
+.ready-price-showcase > small { color: var(--ready-muted); text-transform: uppercase; }
+.ready-price-list { display: grid; align-content: start; }
+.ready-price-list article { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 11px 13px; border-bottom: 1px solid var(--ready-line); }
+.ready-price-list article:last-child { border-bottom: 0; }
+.ready-price-list article.is-focused { box-shadow: inset 3px 0 var(--ready-orange); background: rgba(255, 255, 255, .72); }
+.ready-price-list article > button { display: grid; gap: 2px; padding: 0; border: 0; background: transparent; color: var(--ready-ink); text-align: left; cursor: pointer; }
+.ready-price-list article > button strong { text-transform: uppercase; }
+.ready-price-list article > button small { color: var(--ready-muted); }
+.ready-price-list article > label { display: flex; align-items: center; padding: 5px 8px; border: 1px solid var(--ready-line); background: #f7f9fa; font-weight: 800; }
+.ready-price-list input[type='number'] { width: 64px; border: 0; outline: 0; background: transparent; color: var(--ready-ink); font-weight: 800; font-variant-numeric: tabular-nums; }
+.ready-price-list input[type='range'] { grid-column: 1 / -1; width: 100%; accent-color: var(--ready-orange); }
+.ready-price-guidance { display: flex; grid-column: 1 / -1; gap: 6px; }
+.ready-price-guidance span { padding: 2px 7px; border: 1px solid var(--ready-line); color: var(--ready-muted); font-size: 10px; text-transform: uppercase; }
+.ready-price-guidance .value-good { border-color: #3e806a; color: #27705a; }
+.ready-price-guidance .value-high { border-color: #b57427; color: #9b5b10; }
+.ready-price-guidance .value-bad { border-color: #a74b46; color: #8d3632; }
+.ready-inventory { padding: 14px; }
+.ready-inventory-head { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--ready-line); }
+.ready-inventory-head div { display: grid; gap: 3px; }
+.ready-inventory-head strong { font-size: 12px; }
+.ready-inventory-models { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; border-top: 1px solid var(--ready-line); border-left: 1px solid var(--ready-line); }
+.ready-inventory-models > div { display: grid; grid-template-columns: 1fr auto; grid-template-rows: 86px auto; min-width: 0; padding: 5px; border-right: 1px solid var(--ready-line); border-bottom: 1px solid var(--ready-line); }
+.ready-inventory-models canvas { grid-column: 1 / -1; }
+.ready-inventory-models span { overflow: hidden; color: var(--ready-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.ready-inventory-models b { color: var(--ready-ink); font-size: 10px; }
+.ready-inventory > small { display: block; margin-top: 8px; color: var(--ready-muted); }
+.ready-up-footer { display: grid; grid-template-columns: 150px 1fr minmax(210px, 280px); align-items: stretch; min-height: 82px; border-top: 1px solid var(--ready-line); background: rgba(242, 246, 247, .94); }
+.ready-up-footer button { border: 0; background: transparent; color: var(--ready-ink); font-size: 12px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
+.ready-up-footer button:disabled { color: #a8b3b8; cursor: default; }
+.ready-up-footer > div { display: grid; align-content: center; gap: 3px; padding: 10px 20px; }
+.ready-up-footer > div strong { font-size: 11px; text-transform: uppercase; }
+.ready-up-footer > div span { color: var(--ready-muted); font-size: 12px; }
+.ready-up-footer .ready-next { background: var(--ready-orange); color: var(--ready-ink); transform: skew(-4deg); }
+.ready-up-footer .ready-next:disabled { background: #d7c0a3; color: #a0886d; }
 
-.setup-region {
-  min-height: 0;
-  overflow: auto;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+@media (max-width: 1100px) {
+  .ready-up-progress button { min-width: 110px; padding: 0 10px; }
+  .ready-dish-grid { grid-template-columns: repeat(3, minmax(155px, 1fr)); }
+  .ready-price-stage { grid-template-columns: minmax(220px, .75fr) minmax(370px, 1.25fr); }
+  .ready-inventory { grid-column: 1 / -1; }
 }
-
-.setup-top { grid-area: top; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.setup-left { grid-area: left; }
-.setup-center { grid-area: center; }
-.setup-right { grid-area: right; }
-.setup-bottom { grid-area: bottom; display: flex; gap: 20px; flex-wrap: wrap; max-height: 30vh; }
-
-.setup h2 {
-  margin: 0 0 8px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+@media (max-width: 720px) {
+  .ready-up-topbar { grid-template-columns: auto 1fr; padding: 0 14px; }
+  .ready-up-progress { grid-column: 1 / -1; grid-row: 2; order: 3; min-height: 48px; }
+  .ready-up-progress button { flex: 1; min-width: 0; justify-content: center; }
+  .ready-up-status { justify-content: end; }
+  .ready-up-main { padding: 20px 14px; }
+  .ready-up-heading { align-items: stretch; flex-direction: column; }
+  .ready-up-heading aside { min-width: 0; }
+  .ready-dish-grid, .ready-dish-grid--extra { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+  .ready-dish-card { grid-template-rows: 135px auto auto auto; }
+  .ready-price-stage { grid-template-columns: 1fr; }
+  .ready-price-showcase { grid-template-rows: auto 220px auto auto; }
+  .ready-inventory { grid-column: auto; }
+  .ready-up-footer { grid-template-columns: 80px 1fr; }
+  .ready-up-footer .ready-next { grid-column: 1 / -1; min-height: 54px; }
 }
-.setup h3 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
-.setup h3:first-child { margin-top: 0; }
-.setup p { margin: 0 0 8px; }
-.setup ul { margin: 0 0 8px; padding-left: 16px; }
-.setup .muted { color: var(--muted); }
-.setup .num { font-variant-numeric: tabular-nums; }
-
-.setup-clock { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.setup-title { font-size: 15px; font-weight: 600; }
-.setup-top .spacer { flex: 1; }
-
-.setup-badge {
-  padding: 3px 9px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-}
-.setup-badge.is-ready { color: var(--ok); border-color: var(--ok); }
-
-.setup-forecast { display: grid; gap: 6px; }
-.setup-forecast li { list-style: none; }
-.setup-forecast .row { display: flex; justify-content: space-between; gap: 8px; }
-
-.setup-dish {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 8px;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 7px 9px;
-  text-align: left;
-  background: #1b2128;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-.setup-dish:hover:not(:disabled) { border-color: #48545f; }
-.setup-dish.is-selected { border-color: var(--ok); background: #1d261d; }
-.setup-dish:disabled { opacity: 0.45; cursor: not-allowed; }
-.setup-dish .name { font-weight: 600; }
-.setup-dish .tags { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
-
-.setup-slot { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.setup-slot:last-child { border-bottom: none; }
-.setup-slot .head { display: flex; justify-content: space-between; gap: 8px; }
-.setup-slot input[type='range'] { width: 100%; margin: 4px 0 2px; accent-color: var(--ok); }
-
-/* PRD §7: qualitative guidance, never the underlying utility math. These chips render the
-   six §7 label strings and nothing else — there is no number to render. */
-.setup-guidance { display: flex; gap: 6px; flex-wrap: wrap; }
-.setup-chip { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
-.setup-chip.value-good { color: var(--ok); border-color: #3f6b31; }
-.setup-chip.value-fair { color: var(--text); }
-.setup-chip.value-high { color: var(--warn); border-color: #6b5a2f; }
-.setup-chip.value-bad { color: var(--bad); border-color: #6b3535; }
-
-.setup-field { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin-bottom: 5px; }
-.setup select,
-.setup input[type='number'] {
-  padding: 4px 6px;
-  background: #1b2128;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--text);
-  font: inherit;
-}
-.setup input[type='number'] { width: 68px; text-align: right; font-variant-numeric: tabular-nums; }
-
-.setup-option {
-  display: block;
-  margin-bottom: 4px;
-  padding: 5px 8px;
-  background: #1b2128;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.setup-option.is-selected { border-color: var(--ok); }
-.setup-option input { margin-right: 6px; accent-color: var(--ok); }
-.setup-option.is-disabled { opacity: 0.45; cursor: not-allowed; }
-.setup-option .why { display: block; color: var(--muted); font-size: 12px; }
-
-.setup-submit {
-  width: 100%;
-  margin-top: 10px;
-  padding: 9px 12px;
-  background: #2c4a26;
-  border: 1px solid #3f6b31;
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.setup-submit:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
-.setup-error { margin: 8px 0 0; color: var(--bad); }
-.setup-ok { margin: 8px 0 0; color: var(--ok); }
-
-.setup-column { flex: 1 1 220px; min-width: 200px; }
 
 /* STORY-012 §10 "Upgrades": a compact panel, not a full-bleed screen like `.setup-*` — this
    opens on proximity to the physical terminal, mid-service, and the owner keeps moving around

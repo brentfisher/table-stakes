@@ -5,5 +5,6 @@ and eighteen ingredient props. They are Y-up, measured in meters, use bottom-cen
 contain self-contained PBR materials with no external textures.
 
 Runtime IDs and dimensions are recorded in `shared/game-data/arcade-food.json`. The game uses the
-finished dishes at the service pass and carry socket, and shows active-menu ingredients at the
-pantry. The `Arcade Food Library` harness previews every model through the same production loader.
+finished dishes at the service pass, carry socket, and three-stage ready-up menu. Active-menu
+ingredients appear at the pantry and in the ready-up inventory preview. The `Arcade Food Library`
+harness previews every model through the same production loader.
