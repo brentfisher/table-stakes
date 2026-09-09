@@ -5,6 +5,7 @@ import {
   disposeFoodObject,
   loadArcadeFoodObject,
 } from '../scenes/FoodModels';
+import { foodPreviewRenderer } from '../scenes/food-preview-renderer';
 
 export function FoodModelPreview({
   assetId,
@@ -21,18 +22,9 @@ export function FoodModelPreview({
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
 
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    } catch {
-      canvas.dataset.failed = 'true';
-      return undefined;
-    }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
-
+    // The ready-up screen can mount many of these at once (up to 6 mains + 8 pantry icons
+    // simultaneously) — see food-preview-renderer.ts's own header for why this reads from a
+    // plain 2D canvas rather than owning its own WebGL context.
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 30);
     camera.position.set(2.7, 2.4, 3.6);
@@ -56,7 +48,6 @@ export function FoodModelPreview({
 
     let model: THREE.Object3D | null = null;
     let disposed = false;
-    let frame = 0;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     void loadArcadeFoodObject(assetId).then((loaded) => {
@@ -75,31 +66,15 @@ export function FoodModelPreview({
       canvas.dataset.ready = 'true';
     }).catch(() => { canvas.dataset.failed = 'true'; });
 
-    const resize = () => {
-      const width = Math.max(1, canvas.clientWidth);
-      const height = Math.max(1, canvas.clientHeight);
-      if (canvas.width !== Math.round(width * renderer.getPixelRatio())
-        || canvas.height !== Math.round(height * renderer.getPixelRatio())) {
-        renderer.setSize(width, height, false);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-      }
-    };
-    const render = (time: number) => {
-      resize();
-      if (!reducedMotion) turntable.rotation.y = time * 0.00022;
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
-    };
-    frame = requestAnimationFrame(render);
+    const registrationId = foodPreviewRenderer.register({ scene, camera, turntable, canvas, reducedMotion });
+    if (registrationId === null) canvas.dataset.failed = 'true';
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(frame);
+      foodPreviewRenderer.unregister(registrationId);
       if (model) disposeFoodObject(model);
       stand.geometry.dispose();
       (stand.material as THREE.Material).dispose();
-      renderer.dispose();
     };
   }, [assetId, compact]);
 
