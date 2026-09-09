@@ -1001,13 +1001,16 @@ export class RestaurantScene {
       this.owners.set(state.playerId, group);
       this.scene.add(group);
     }
-    const target = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
-    if (!group.userData.positionTarget) {
-      group.position.copy(target);
-      group.userData.positionTarget = target;
-    } else {
-      group.userData.positionTarget.copy(target);
-    }
+    // NOT the customer/`positionTarget` lerp pattern below — `upsertOwner` is called every
+    // render frame (via `GameClient#handleFrame` -> `EntityViewRegistry.reconcile`) with a
+    // position `StateInterpolator` has already time-interpolated between snapshots, unlike
+    // customers/workers whose upsert only fires at ~10 Hz snapshot cadence and so need a
+    // second, client-side smoothing layer. Setting position directly here IS the correct,
+    // already-smooth behavior; a deferred `positionTarget` with no per-frame consumer left
+    // every owner avatar frozen at its spawn point while the camera (which reads the same
+    // interpolated position straight from `players[]`, not from this mesh) kept following
+    // correctly — the exact bug this replaces.
+    group.position.set(state.position.x, state.position.y, state.position.z);
     group.rotation.y = state.facing;
   }
 
