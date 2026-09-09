@@ -1142,6 +1142,7 @@ function createAssetShowcaseHarness(): SceneHarness {
           // showcased ready-dish proxy is marked `isOldest` (see the two `upsertReadyDish` call
           // sites below).
           scene.updateReadyDishAnimations(elapsedTotal);
+          scene.updateWorkerAnimations();
           if (boundsOn && boundsHelper && currentTarget) boundsHelper.box.setFromObject(currentTarget);
           camera.update(dt);
           renderer?.render(scene.scene, camera.camera);

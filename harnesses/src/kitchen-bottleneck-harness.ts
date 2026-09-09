@@ -1199,6 +1199,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
         scene?.updateReadyDishAnimations(harnessElapsedSeconds);
         // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same real-wall-clock split.
         scene?.updateCarryTargetAnimations(harnessElapsedSeconds);
+        scene?.updateWorkerAnimations();
 
         if (scene && camera) {
           camera.update(realDt);
