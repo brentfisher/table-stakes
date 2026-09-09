@@ -81,6 +81,11 @@ function ownedClone(source: THREE.Object3D): THREE.Object3D {
   return clone;
 }
 
+/** Load an independently disposable clone for UI and harness previews. */
+export async function loadArcadeFoodObject(assetId: string): Promise<THREE.Object3D> {
+  return ownedClone(await sourceFor(assetId));
+}
+
 export function disposeFoodObject(root: THREE.Object3D): void {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();

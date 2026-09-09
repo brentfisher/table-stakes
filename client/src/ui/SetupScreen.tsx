@@ -1,38 +1,11 @@
-// PRD §18 "Setup UI" — the strategic half of the game, on one screen.
-//
-// Layout is §18's, literally: market briefing and customer forecast at LEFT, menu slots and
-// dish options in the CENTRE, prices/margins/starting resources at RIGHT, staff assignments
-// and upgrade/perk selection at the BOTTOM, countdown and opponent-ready status on TOP.
-//
-// ============================================================================================
-// PRD §7 "Pricing", the rule this screen exists to keep: "The UI should display qualitative
-// guidance, not exact customer utility math." Nothing here renders a utility score, a
-// segment weight, a conversion probability or a projected wait. Price feedback is the six §7
-// label strings and nothing else, and they arrive already computed from
-// `shared/schemas/setup-rules.js` — this component cannot leak a number it never receives.
-//
-// What it DOES show in figures is the player's own money: the price they set, the dish's
-// catalogue cost, their cash, their allocation. PRD §7 hands the player "starting cash" and a
-// "dish catalog" including cost and suggested price; those are the inputs to the decision, not
-// the simulation's opinion of it.
-// ============================================================================================
-//
-// PRD §13 "React responsibilities": React owns application UI. This component re-renders on
-// the snapshot callback (~10 Hz) and on local edits; it touches no Three.js object and
-// reconciles no scene entity — GameClient owns the scene, exactly as before.
-//
-// Milestone 0 Decision 2: everything disabled here is disabled for UX only.
-// `server/src/game/validators/setup-validator.js` re-derives every one of these rules and
-// rejects an illegal submission whatever this screen allowed.
+// STORY-038. The ready-up path is deliberately three decisions: mains, extras, then prices.
+// Server validation remains authoritative. Crew posts and a playable opening pantry are derived
+// by the shared ready-up builder, so simplifying the screen never produces an incomplete setup.
 
 import { useMemo, useState } from 'react';
 
 import dishesData from '../../../shared/game-data/dishes.json';
-import upgradesData from '../../../shared/game-data/upgrades.json';
-import policiesData from '../../../shared/game-data/policies.json';
-import segmentsData from '../../../shared/game-data/customer-segments.json';
 import layoutData from '../../../shared/game-data/restaurant-layout.json';
-
 import {
   MENU_ADDON_SLOTS,
   MENU_MAIN_SLOTS,
@@ -40,52 +13,45 @@ import {
   isPriceInRange,
   priceBoundsFor,
   priceGuidance,
-  rosterOf,
-  segmentForecast,
   selectableAddons,
   selectableMains,
   toCents,
   type Dish,
   type PriceGuidance,
 } from '../../../shared/schemas/setup-rules';
+import {
+  READY_UP_STAGES,
+  buildReadyUpPayload,
+  type ReadyUpStage,
+} from '../../../shared/game-logic/ready-up-menu';
 import { STARTING_CASH } from '../../../shared/constants/tuning';
 import type { GameClientStatus, SetupSubmitPayload } from '../game/GameClient';
+import { FoodModelPreview } from './FoodModelPreview';
 
-interface Upgrade {
-  id: string;
-  name: string;
-  cost: number;
-  description: string;
-}
-interface Policy {
-  id: string;
-  name: string;
-  description: string;
-  intendedStrategy: string;
-  requiresMenuDish: boolean;
-}
-interface Segment {
-  id: string;
-  name: string;
-  primaryPriority: string;
-  budget: number;
-  patienceSeconds: number;
-  preferredTags: string[];
-}
-
-// The JSON files are typed structurally by `resolveJsonModule`, which widens every string
-// literal; these casts name the shapes the catalogue actually carries. Decision 10: browser
-// code imports the JSON directly and never touches the Node-only loader.
-const LAYOUT = layoutData as unknown;
 const DISHES = dishesData.dishes as unknown as Dish[];
 const INGREDIENTS = dishesData.ingredients as Record<string, { name: string; unitCost: number }>;
-const UPGRADES = upgradesData.upgrades as unknown as Upgrade[];
-const POLICIES = policiesData.policies as unknown as Policy[];
-const SEGMENTS = segmentsData.segments as unknown as Segment[];
-const ROSTER = rosterOf(LAYOUT);
-
+const LAYOUT = layoutData as unknown;
 const MAIN_OPTIONS = selectableMains(DISHES, LAYOUT);
-const ADDON_OPTIONS = selectableAddons(DISHES, LAYOUT);
+const EXTRA_OPTIONS = selectableAddons(DISHES, LAYOUT);
+const DISH_BY_ID = new Map(DISHES.map((dish) => [dish.id, dish]));
+
+const STAGE_COPY: Record<ReadyUpStage, { kicker: string; title: string; detail: string }> = {
+  mains: {
+    kicker: '01 / The lineup',
+    title: 'Choose your mains',
+    detail: `Pick exactly ${MENU_MAIN_SLOTS} dishes that define your restaurant.`,
+  },
+  extras: {
+    kicker: '02 / Round it out',
+    title: 'Choose your extras',
+    detail: `Add up to ${MENU_ADDON_SLOTS} drinks or desserts, or continue without them.`,
+  },
+  prices: {
+    kicker: '03 / Open the doors',
+    title: 'Set your prices',
+    detail: 'Balance value and margin, then ready up.',
+  },
+};
 
 const money = (value: number): string => `$${value.toFixed(2)}`;
 
@@ -95,27 +61,18 @@ function formatCountdown(ms: number | null): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-/** Colour is a hint, never information: the label string is the whole message. */
-function chipClass(label: string): string {
-  if (label === 'Excellent value') return 'setup-chip value-good';
-  if (label === 'Premium' || label === 'Strong margin, demand risk') return 'setup-chip value-high';
-  if (label === 'Likely too expensive for this market' || label === 'Low margin') {
-    return 'setup-chip value-bad';
-  }
-  return 'setup-chip value-fair';
+function guidanceClass(label: string): string {
+  if (label === 'Excellent value') return 'value-good';
+  if (label === 'Premium' || label === 'Strong margin, demand risk') return 'value-high';
+  if (label === 'Likely too expensive for this market' || label === 'Low margin') return 'value-bad';
+  return 'value-fair';
 }
 
 function GuidanceChips({ guidance }: { guidance: PriceGuidance }): JSX.Element {
-  return (
-    <div className="setup-guidance">
-      {guidance.valueLabel ? (
-        <span className={chipClass(guidance.valueLabel)}>{guidance.valueLabel}</span>
-      ) : null}
-      {guidance.marginLabel ? (
-        <span className={chipClass(guidance.marginLabel)}>{guidance.marginLabel}</span>
-      ) : null}
-    </div>
-  );
+  return <div className="ready-price-guidance">
+    {guidance.valueLabel ? <span className={guidanceClass(guidance.valueLabel)}>{guidance.valueLabel}</span> : null}
+    {guidance.marginLabel ? <span className={guidanceClass(guidance.marginLabel)}>{guidance.marginLabel}</span> : null}
+  </div>;
 }
 
 export function SetupScreen({
@@ -125,419 +82,206 @@ export function SetupScreen({
   status: GameClientStatus;
   onSubmit: (payload: SetupSubmitPayload) => void;
 }): JSX.Element {
-  // dishId -> chosen price. Two maps rather than one, because the two slot kinds have
-  // different capacities and PRD §7 counts them separately.
-  const [mains, setMains] = useState<Record<string, number>>({});
-  const [addons, setAddons] = useState<Record<string, number>>({});
-  const [allocation, setAllocation] = useState<Record<string, number>>({});
-  const [upgradeId, setUpgradeId] = useState<string | null>(null);
-  const [policyId, setPolicyId] = useState<string | null>(null);
-  const [policyDishId, setPolicyDishId] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(ROSTER.map((worker) => [worker.id, worker.posts[0]])),
-  );
-
+  const [stageIndex, setStageIndex] = useState(0);
+  const [furthestStageIndex, setFurthestStageIndex] = useState(0);
+  const [mainIds, setMainIds] = useState<string[]>([]);
+  const [extraIds, setExtraIds] = useState<string[]>([]);
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [priceFocusId, setPriceFocusId] = useState<string | null>(null);
+  const stage = READY_UP_STAGES[stageIndex];
   const market = status.market;
-  const forecast = useMemo(() => segmentForecast(market, SEGMENTS), [market]);
-  const chosenIds = [...Object.keys(mains), ...Object.keys(addons)];
+
+  const chosenIds = [...mainIds, ...extraIds];
   const chosenDishes = chosenIds
-    .map((id) => DISHES.find((d) => d.id === id))
-    .filter((d): d is Dish => Boolean(d));
+    .map((id) => DISH_BY_ID.get(id))
+    .filter((dish): dish is Dish => Boolean(dish));
+  const payload = useMemo(() => buildReadyUpPayload({
+    mainIds,
+    extraIds,
+    prices,
+    dishes: DISHES,
+    ingredients: INGREDIENTS,
+    layout: LAYOUT,
+  }), [mainIds, extraIds, prices]);
+  const stockCost = inventoryCost(payload.startingInventory, INGREDIENTS) ?? 0;
+  const inventoryEntries = Object.entries(payload.startingInventory)
+    .map(([id, units]) => ({ id, units, ...INGREDIENTS[id] }))
+    .filter((entry) => entry.units > 0);
 
-  // Only the ingredients the chosen menu actually needs are worth stocking, so the allocation
-  // panel is scoped to them. The server accepts any known ingredient; this is UX.
-  const relevantIngredients = useMemo(() => {
-    const ids = new Set<string>();
-    for (const d of chosenDishes) for (const key of Object.keys(d.ingredients)) ids.add(key);
-    return [...ids].sort();
-  }, [chosenIds.join(',')]);
+  const setDishPrice = (dish: Dish, value: number): void => {
+    setPrices((current) => ({ ...current, [dish.id]: toCents(value) }));
+    setPriceFocusId(dish.id);
+  };
 
-  const upgradeCost = upgradeId ? (UPGRADES.find((u) => u.id === upgradeId)?.cost ?? 0) : 0;
-  const stockCost = inventoryCost(allocation, INGREDIENTS) ?? 0;
-  const cashRemaining = toCents(STARTING_CASH - upgradeCost - stockCost);
-
-  const selectedPolicy = POLICIES.find((p) => p.id === policyId) ?? null;
-  const needsPolicyDish = Boolean(selectedPolicy?.requiresMenuDish);
-
-  const toggle = (
-    map: Record<string, number>,
-    setMap: (next: Record<string, number>) => void,
-    limit: number,
-    d: Dish,
-  ): void => {
-    const next = { ...map };
-    if (d.id in next) {
-      delete next[d.id];
-      if (policyDishId === d.id) setPolicyDishId(null);
-    } else {
-      if (Object.keys(next).length >= limit) return;
-      next[d.id] = d.suggestedPrice;
+  const toggleDish = (dish: Dish, kind: 'main' | 'extra'): void => {
+    const ids = kind === 'main' ? mainIds : extraIds;
+    const limit = kind === 'main' ? MENU_MAIN_SLOTS : MENU_ADDON_SLOTS;
+    const setter = kind === 'main' ? setMainIds : setExtraIds;
+    setFurthestStageIndex((current) => kind === 'main' ? 0 : Math.min(current, 1));
+    if (ids.includes(dish.id)) {
+      setter(ids.filter((id) => id !== dish.id));
+      return;
     }
-    setMap(next);
+    if (ids.length >= limit) return;
+    setter([...ids, dish.id]);
+    setPrices((current) => ({ ...current, [dish.id]: current[dish.id] ?? dish.suggestedPrice }));
   };
 
-  const setPrice = (
-    map: Record<string, number>,
-    setMap: (next: Record<string, number>) => void,
-    dishId: string,
-    price: number,
-  ): void => setMap({ ...map, [dishId]: toCents(price) });
+  const priceBlocker = chosenDishes.find((dish) => !isPriceInRange(
+    dish,
+    prices[dish.id] ?? dish.suggestedPrice,
+  ));
+  const stageBlocked = stage === 'mains'
+    ? mainIds.length !== MENU_MAIN_SLOTS
+    : stage === 'prices' && (mainIds.length !== MENU_MAIN_SLOTS || Boolean(priceBlocker));
 
-  // Client-side legality, for the submit button only. The server decides.
-  const blockers: string[] = [];
-  if (Object.keys(mains).length !== MENU_MAIN_SLOTS) {
-    blockers.push(`Choose exactly ${MENU_MAIN_SLOTS} main dishes.`);
-  }
-  if (Object.keys(addons).length > MENU_ADDON_SLOTS) {
-    blockers.push(`At most ${MENU_ADDON_SLOTS} add-ons.`);
-  }
-  for (const d of chosenDishes) {
-    const price = mains[d.id] ?? addons[d.id];
-    if (!isPriceInRange(d, price)) blockers.push(`${d.name} is priced outside its range.`);
-  }
-  if (cashRemaining < 0) blockers.push('The upgrade and allocation cost more than your cash.');
-  if (needsPolicyDish && !policyDishId) blockers.push('Pick the dish your House Special applies to.');
-  for (const worker of ROSTER) {
-    if (!posts[worker.id]) blockers.push(`${worker.name} needs a post.`);
-  }
-
-  const submitted = status.setup;
-  const submit = (): void =>
-    onSubmit({
-      menu: Object.entries(mains).map(([dishId, price]) => ({ dishId, price })),
-      addons: Object.entries(addons).map(([dishId, price]) => ({ dishId, price })),
-      startingUpgradeId: upgradeId,
-      staffAssignments: { ...posts },
-      startingInventory: Object.fromEntries(
-        Object.entries(allocation).filter(([, units]) => units > 0),
-      ),
-      policyId,
-      policyDishId: needsPolicyDish ? policyDishId : null,
-    });
-
-  const priceSlot = (
-    d: Dish,
-    map: Record<string, number>,
-    setMap: (next: Record<string, number>) => void,
-  ): JSX.Element => {
-    const bounds = priceBoundsFor(d);
-    const price = map[d.id];
-    const guidance = priceGuidance(d, price, market);
-    return (
-      <div className="setup-slot" key={d.id}>
-        <div className="head">
-          <span>{d.name}</span>
-          <span className="num">{money(price)}</span>
-        </div>
-        <input
-          type="range"
-          min={bounds?.minPrice ?? 0}
-          max={bounds?.maxPrice ?? 0}
-          step={0.25}
-          value={price}
-          onChange={(e) => setPrice(map, setMap, d.id, Number(e.target.value))}
-          aria-label={`${d.name} price`}
-        />
-        <div className="row muted num" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>{money(bounds?.minPrice ?? 0)}</span>
-          <span>plate cost {money(d.baseCost)}</span>
-          <span>{money(bounds?.maxPrice ?? 0)}</span>
-        </div>
-        <GuidanceChips guidance={guidance} />
-      </div>
-    );
+  const continueFlow = (): void => {
+    if (stageBlocked) return;
+    if (stageIndex < READY_UP_STAGES.length - 1) {
+      const nextStage = stageIndex + 1;
+      setStageIndex(nextStage);
+      setFurthestStageIndex((current) => Math.max(current, nextStage));
+      if (stage === 'extras') setPriceFocusId(chosenIds[0] ?? null);
+      return;
+    }
+    onSubmit(payload as SetupSubmitPayload);
   };
 
-  const dishButton = (
-    d: Dish,
-    map: Record<string, number>,
-    setMap: (next: Record<string, number>) => void,
-    limit: number,
-  ): JSX.Element => {
-    const isSelected = d.id in map;
-    return (
-      <button
-        key={d.id}
-        type="button"
-        className={`setup-dish${isSelected ? ' is-selected' : ''}`}
-        disabled={!isSelected && Object.keys(map).length >= limit}
-        onClick={() => toggle(map, setMap, limit, d)}
-      >
-        <span className="name">{d.name}</span>
-        <span className="num muted">
-          {money(d.baseCost)} → {money(d.suggestedPrice)}
-        </span>
-        <span className="tags">{d.tags.join(' · ')}</span>
-      </button>
-    );
+  const renderDishCards = (options: Dish[], kind: 'main' | 'extra') => {
+    const selected = kind === 'main' ? mainIds : extraIds;
+    const limit = kind === 'main' ? MENU_MAIN_SLOTS : MENU_ADDON_SLOTS;
+    return <div className={`ready-dish-grid ready-dish-grid--${kind}`}>
+      {options.map((dish, index) => {
+        const isSelected = selected.includes(dish.id);
+        const disabled = !isSelected && selected.length >= limit;
+        return <button
+          key={dish.id}
+          type="button"
+          className={`ready-dish-card${isSelected ? ' is-selected' : ''}`}
+          disabled={disabled}
+          aria-pressed={isSelected}
+          onClick={() => toggleDish(dish, kind)}
+        >
+          <span className="ready-dish-number">{String(index + 1).padStart(2, '0')}</span>
+          <span className="ready-dish-check">{isSelected ? '✓' : '+'}</span>
+          <FoodModelPreview assetId={dish.id} label={dish.name} />
+          <strong>{dish.name}</strong>
+          <small>{dish.tags.slice(0, 3).join(' · ')}</small>
+          <span className="ready-dish-cost">Cost {money(dish.baseCost)} · Suggested {money(dish.suggestedPrice)}</span>
+        </button>;
+      })}
+    </div>;
   };
 
-  return (
-    <div className="setup">
-      {/* TOP — countdown clock and opponent-ready status (§18). */}
-      <div className="setup-region setup-top">
-        <span className="setup-clock">{formatCountdown(status.timeRemainingMs)}</span>
-        <span className="setup-title">Setup — {market?.name ?? 'market pending'}</span>
-        <span className="spacer" />
-        <span className={`setup-badge${status.ready ? ' is-ready' : ''}`}>
-          You: {status.ready ? 'submitted' : 'still deciding'}
-        </span>
-        <span className={`setup-badge${status.opponentReady ? ' is-ready' : ''}`}>
-          Rival: {status.opponentReady ? 'ready' : 'still deciding'}
-        </span>
+  const focusedDish = DISH_BY_ID.get(priceFocusId ?? chosenIds[0] ?? '') ?? chosenDishes[0];
+
+  return <div className="ready-up">
+    <header className="ready-up-topbar">
+      <div className="ready-up-brand"><b>T/S</b><span>TABLE<br />STAKES</span></div>
+      <nav className="ready-up-progress" aria-label="Ready-up stages">
+        {READY_UP_STAGES.map((item, index) => <button
+          key={item}
+          type="button"
+          className={`${index === stageIndex ? 'is-current' : ''}${index !== stageIndex && index < furthestStageIndex ? ' is-complete' : ''}`}
+          disabled={index > furthestStageIndex}
+          onClick={() => setStageIndex(index)}
+        >
+          <span>{index < stageIndex ? '✓' : String(index + 1).padStart(2, '0')}</span>
+          {item}
+        </button>)}
+      </nav>
+      <div className="ready-up-status">
+        <span className="ready-up-clock">{formatCountdown(status.timeRemainingMs)}</span>
+        <span className={status.opponentReady ? 'is-ready' : ''}>Rival {status.opponentReady ? 'ready' : 'choosing'}</span>
       </div>
+    </header>
 
-      {/* LEFT — market briefing and customer forecast (§18, contents from §7). */}
-      <div className="setup-region setup-left">
-        <h2>Market briefing</h2>
-        <h3>{market?.name ?? '—'}</h3>
-        <p className="muted">{market?.description}</p>
-        <div className="setup-field">
-          <span className="muted">Daypart</span>
-          <span>{market?.daypart ?? '—'}</span>
+    <main className="ready-up-main">
+      <section className="ready-up-heading">
+        <div>
+          <span>{STAGE_COPY[stage].kicker} · {market?.name ?? 'Market pending'}</span>
+          <h1>{STAGE_COPY[stage].title}</h1>
+          <p>{STAGE_COPY[stage].detail}</p>
         </div>
-        <div className="setup-field">
-          <span className="muted">Starting cash</span>
-          <span className="num">{money(STARTING_CASH)}</span>
+        <aside>
+          <span>District taste</span>
+          <strong>{market?.preferredTags?.slice(0, 3).join(' · ') || 'Awaiting forecast'}</strong>
+          <small>{market?.anchors?.slice(0, 2).join(' · ')}</small>
+        </aside>
+      </section>
+
+      {stage === 'mains' ? renderDishCards(MAIN_OPTIONS, 'main') : null}
+      {stage === 'extras' ? renderDishCards(EXTRA_OPTIONS, 'extra') : null}
+      {stage === 'prices' ? <section className="ready-price-stage">
+        <div className="ready-price-showcase">
+          <span>Live 3D menu preview</span>
+          {focusedDish ? <FoodModelPreview assetId={focusedDish.id} label={focusedDish.name} /> : null}
+          <strong>{focusedDish?.name}</strong>
+          <small>{focusedDish?.tags.join(' · ')}</small>
         </div>
-        <div className="setup-field">
-          <span className="muted">Layout</span>
-          <span>{(layoutData as { name: string }).name}</span>
-        </div>
-
-        <h3>Nearby anchors</h3>
-        <ul>
-          {(market?.anchors ?? []).map((anchor) => (
-            <li key={anchor}>{anchor}</li>
-          ))}
-        </ul>
-
-        <h3>Customer forecast</h3>
-        <ul className="setup-forecast">
-          {forecast.map((segment) => (
-            <li key={segment.id}>
-              <div className="row">
-                <strong>{segment.name}</strong>
-                <span className="num muted">{Math.round(segment.share * 100)}%</span>
-              </div>
-              <div className="muted">{segment.primaryPriority}</div>
-              {/* PRD §7: BROAD spending and patience indicators — labels, not budgets. */}
-              <div className="muted">
-                Spends: {segment.spending} · Waits: {segment.patience}
-              </div>
-              <div className="muted">Looks for: {segment.preferredTags.join(', ')}</div>
-            </li>
-          ))}
-        </ul>
-
-        <h3>District taste</h3>
-        <p className="muted">{(market?.preferredTags ?? []).join(', ') || '—'}</p>
-
-        <h3>Event forecast</h3>
-        <p className="muted">
-          No events forecast. The seeded event deck lands with STORY-011; until then the
-          district runs quiet.
-        </p>
-
-        <h3>Your crew</h3>
-        <ul>
-          {ROSTER.map((worker) => (
-            <li key={worker.id} className="muted">
-              {worker.name} — {worker.description}
-            </li>
-          ))}
-          <li className="muted">You — the owner, on the floor once service starts.</li>
-        </ul>
-      </div>
-
-      {/* CENTRE — menu slots and dish options (§18). */}
-      <div className="setup-region setup-center">
-        <h2>
-          Menu — {Object.keys(mains).length}/{MENU_MAIN_SLOTS} mains,{' '}
-          {Object.keys(addons).length}/{MENU_ADDON_SLOTS} add-ons
-        </h2>
-        <h3>Main dishes</h3>
-        {MAIN_OPTIONS.map((d) => dishButton(d, mains, setMains, MENU_MAIN_SLOTS))}
-        <h3>Add-ons — drinks, desserts, sides</h3>
-        {ADDON_OPTIONS.map((d) => dishButton(d, addons, setAddons, MENU_ADDON_SLOTS))}
-        <p className="muted">
-          Only dishes this kitchen can physically produce are listed (PRD §7). The menu cannot
-          be changed once service begins.
-        </p>
-      </div>
-
-      {/* RIGHT — prices, margins, starting resources, readiness (§18). */}
-      <div className="setup-region setup-right">
-        <h2>Prices &amp; resources</h2>
-        {chosenIds.length === 0 ? <p className="muted">Choose dishes to price them.</p> : null}
-        {MAIN_OPTIONS.filter((d) => d.id in mains).map((d) => priceSlot(d, mains, setMains))}
-        {ADDON_OPTIONS.filter((d) => d.id in addons).map((d) => priceSlot(d, addons, setAddons))}
-
-        <h3>Starting inventory</h3>
-        {relevantIngredients.length === 0 ? (
-          <p className="muted">Pick a menu and its ingredients appear here.</p>
-        ) : null}
-        {relevantIngredients.map((id) => (
-          <div className="setup-field" key={id}>
-            <span>
-              {INGREDIENTS[id]?.name}{' '}
-              <span className="muted num">{money(INGREDIENTS[id]?.unitCost ?? 0)}/unit</span>
-            </span>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={allocation[id] ?? 0}
-              onChange={(e) =>
-                setAllocation({ ...allocation, [id]: Math.max(0, Math.floor(Number(e.target.value))) })
-              }
-              aria-label={`${INGREDIENTS[id]?.name} units`}
-            />
-          </div>
-        ))}
-
-        <h3>Cash</h3>
-        <div className="setup-field">
-          <span className="muted">Upgrade</span>
-          <span className="num">{money(upgradeCost)}</span>
-        </div>
-        <div className="setup-field">
-          <span className="muted">Ingredients</span>
-          <span className="num">{money(stockCost)}</span>
-        </div>
-        <div className="setup-field">
-          <span className="muted">Remaining</span>
-          <span className="num" style={{ color: cashRemaining < 0 ? 'var(--bad)' : undefined }}>
-            {money(cashRemaining)}
-          </span>
-        </div>
-
-        <button className="setup-submit" type="button" disabled={blockers.length > 0} onClick={submit}>
-          {submitted ? 'Resubmit setup' : 'Submit setup & ready up'}
-        </button>
-        {blockers.length > 0 ? <p className="setup-error">{blockers[0]}</p> : null}
-        {status.setupRejection ? (
-          <p className="setup-error">
-            Server rejected it ({status.setupRejection.reason}): {status.setupRejection.detail}
-          </p>
-        ) : null}
-        {submitted && blockers.length === 0 && !status.setupRejection ? (
-          <p className="setup-ok">
-            Submitted. Service begins when both owners are ready or the clock runs out.
-          </p>
-        ) : null}
-      </div>
-
-      {/* BOTTOM — staff assignments and upgrade/perk selection (§18). */}
-      <div className="setup-region setup-bottom">
-        <div className="setup-column">
-          <h2>Staff assignments</h2>
-          {ROSTER.map((worker) => (
-            <div className="setup-field" key={worker.id}>
-              <span>{worker.name}</span>
-              <select
-                value={posts[worker.id] ?? ''}
-                onChange={(e) => setPosts({ ...posts, [worker.id]: e.target.value })}
-                aria-label={`${worker.name} post`}
-              >
-                {worker.posts.map((postId) => (
-                  <option key={postId} value={postId}>
-                    {postId.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-
-        <div className="setup-column">
-          <h2>Opening upgrade</h2>
-          <label className={`setup-option${upgradeId === null ? ' is-selected' : ''}`}>
-            <input
-              type="radio"
-              name="upgrade"
-              checked={upgradeId === null}
-              onChange={() => setUpgradeId(null)}
-            />
-            None — keep the cash
-          </label>
-          {UPGRADES.map((upgrade) => {
-            const affordable = upgrade.cost + stockCost <= STARTING_CASH;
-            return (
-              <label
-                key={upgrade.id}
-                className={
-                  `setup-option${upgradeId === upgrade.id ? ' is-selected' : ''}` +
-                  `${affordable ? '' : ' is-disabled'}`
-                }
-              >
+        <div className="ready-price-list">
+          {chosenDishes.map((dish) => {
+            const bounds = priceBoundsFor(dish);
+            const price = prices[dish.id] ?? dish.suggestedPrice;
+            const guidance = priceGuidance(dish, price, market);
+            return <article key={dish.id} className={dish.id === focusedDish?.id ? 'is-focused' : ''}>
+              <button type="button" onClick={() => setPriceFocusId(dish.id)}>
+                <strong>{dish.name}</strong>
+                <small>{money(bounds?.minPrice ?? 0)}–{money(bounds?.maxPrice ?? 0)} · plate cost {money(dish.baseCost)}</small>
+              </button>
+              <label>
+                <span>$</span>
                 <input
-                  type="radio"
-                  name="upgrade"
-                  checked={upgradeId === upgrade.id}
-                  disabled={!affordable}
-                  onChange={() => setUpgradeId(upgrade.id)}
+                  type="number"
+                  min={bounds?.minPrice ?? 0}
+                  max={bounds?.maxPrice ?? 0}
+                  step={0.25}
+                  value={price}
+                  onFocus={() => setPriceFocusId(dish.id)}
+                  onChange={(event) => setDishPrice(dish, Number(event.target.value))}
+                  aria-label={`${dish.name} price`}
                 />
-                {upgrade.name} <span className="num muted">{money(upgrade.cost)}</span>
-                <span className="why">{upgrade.description}</span>
               </label>
-            );
+              <input
+                type="range"
+                min={bounds?.minPrice ?? 0}
+                max={bounds?.maxPrice ?? 0}
+                step={0.25}
+                value={price}
+                onFocus={() => setPriceFocusId(dish.id)}
+                onChange={(event) => setDishPrice(dish, Number(event.target.value))}
+                aria-label={`${dish.name} price slider`}
+              />
+              <GuidanceChips guidance={guidance} />
+            </article>;
           })}
         </div>
+        <aside className="ready-inventory">
+          <div className="ready-inventory-head">
+            <div><span>Opening pantry</span><strong>Stocked automatically for this menu</strong></div>
+            <div><span>Inventory</span><strong>{money(stockCost)}</strong></div>
+            <div><span>Cash reserve</span><strong>{money(STARTING_CASH - stockCost)}</strong></div>
+          </div>
+          <div className="ready-inventory-models">
+            {inventoryEntries.slice(0, 8).map((entry) => <div key={entry.id}>
+              <FoodModelPreview assetId={entry.id} label={entry.name} compact />
+              <span>{entry.name}</span><b>{entry.units}u</b>
+            </div>)}
+          </div>
+          {inventoryEntries.length > 8 ? <small>Plus {inventoryEntries.length - 8} more stocked ingredients.</small> : null}
+        </aside>
+      </section> : null}
+    </main>
 
-        <div className="setup-column">
-          <h2>Restaurant policy</h2>
-          <label className={`setup-option${policyId === null ? ' is-selected' : ''}`}>
-            <input
-              type="radio"
-              name="policy"
-              checked={policyId === null}
-              onChange={() => {
-                setPolicyId(null);
-                setPolicyDishId(null);
-              }}
-            />
-            None
-          </label>
-          {POLICIES.map((policy) => (
-            <label
-              key={policy.id}
-              className={`setup-option${policyId === policy.id ? ' is-selected' : ''}`}
-            >
-              <input
-                type="radio"
-                name="policy"
-                checked={policyId === policy.id}
-                onChange={() => setPolicyId(policy.id)}
-              />
-              {policy.name}
-              <span className="why">
-                {policy.description} ({policy.intendedStrategy})
-              </span>
-            </label>
-          ))}
-          {needsPolicyDish ? (
-            <div className="setup-field">
-              <span>Applies to</span>
-              <select
-                value={policyDishId ?? ''}
-                onChange={(e) => setPolicyDishId(e.target.value || null)}
-                aria-label="House Special dish"
-              >
-                <option value="">choose a dish…</option>
-                {chosenDishes.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          <p className="muted">
-            PRD §7 caps the MVP at two policies; the other three arrive with the balance pass.
-          </p>
-        </div>
+    <footer className="ready-up-footer">
+      <button type="button" className="ready-back" disabled={stageIndex === 0} onClick={() => setStageIndex(stageIndex - 1)}>← Back</button>
+      <div>
+        <strong>{stage === 'mains' ? `${mainIds.length} of ${MENU_MAIN_SLOTS} mains selected` : stage === 'extras' ? `${extraIds.length} of ${MENU_ADDON_SLOTS} extras selected` : `${chosenIds.length} dishes ready to price`}</strong>
+        <span>{stageBlocked ? (priceBlocker ? `${priceBlocker.name} is outside its legal price range.` : `Choose exactly ${MENU_MAIN_SLOTS} mains to continue.`) : status.setupRejection ? `Server rejected the lineup: ${status.setupRejection.detail}` : status.setup ? 'Lineup submitted. Waiting for your rival.' : stage === 'prices' ? 'Recommended inventory and crew posts will be included automatically.' : 'Your choices are saved when you move between stages.'}</span>
       </div>
-    </div>
-  );
+      <button type="button" className="ready-next" disabled={stageBlocked} onClick={continueFlow}>
+        {stage === 'prices' ? (status.setup ? 'Update & ready ✓' : 'Confirm & ready ✓') : 'Confirm & next →'}
+      </button>
+    </footer>
+  </div>;
 }
