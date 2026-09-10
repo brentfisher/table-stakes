@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "description": "Rival Restaurant \u2014 real-time 1v1 competitive restaurant-management game.",
   "scripts": {
+    "postinstall": "npm run install:all && npm run build:client",
     "install:all": "npm --prefix server install && npm --prefix client install && npm --prefix harnesses install",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
