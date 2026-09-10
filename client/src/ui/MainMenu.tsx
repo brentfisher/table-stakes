@@ -17,6 +17,7 @@ import { cacheInvite, type CreatedRoom } from '../app/invite-lobby-types';
 import { HowToPlay } from './HowToPlay';
 import { SettingsPanel } from './SettingsPanel';
 import { PlayVsBotScreen } from './PlayVsBotScreen';
+import { NeonSignHero } from './NeonSignHero';
 
 type VersionState =
   | { status: 'loading' }
@@ -110,6 +111,10 @@ export function MainMenu(): JSX.Element {
   return (
     <div className="app main-menu">
       <div className="main-menu-panel">
+        {/* STORY-032. Visual only — see `NeonSignHero`'s own header. Every action below is
+            unchanged, already-real wiring from STORY-023/024/025. */}
+        <NeonSignHero />
+
         <header className="main-menu-header">
           <h1>Rival Restaurant</h1>
           <p className="muted">Run the floor. Beat the restaurant next door for the same customers.</p>

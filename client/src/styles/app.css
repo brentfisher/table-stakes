@@ -615,7 +615,10 @@ body {
 }
 
 .main-menu-panel {
-  width: min(420px, 100%);
+  /* Widened from 420px (pre-STORY-032) so the neon sign's ~1.8:1 marquee facade isn't cropped
+     to a sliver — the action list below still reads fine at this width, it just no longer
+     spans the full panel edge to edge. */
+  width: min(560px, 100%);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -625,6 +628,40 @@ body {
   border-radius: 12px;
   backdrop-filter: blur(6px);
 }
+
+/* STORY-032. `NeonSignHero`/`NeonSign.ts` — the sign owns its own WebGLRenderer and appends a
+   <canvas> into `.neon-sign-stage` itself; these rules only size the host and style the
+   fallback shown before `.sign-ready` (WebGL unavailable, or the title artwork still loading). */
+.neon-sign-hero { display: flex; justify-content: center; }
+.neon-sign-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 10.4 / 5.7;
+  border-radius: 10px;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #142229 0%, #0c151c 70%);
+  cursor: pointer;
+}
+.neon-sign-stage canvas { display: block; width: 100%; height: 100%; }
+.neon-sign-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ffedcc;
+  text-align: center;
+  line-height: 1.25;
+  pointer-events: none;
+}
+/* `NeonSign.ts` adds this class to the stage element once the title lettering has actually
+   loaded and been built — before that (or if WebGL/the fetch fails) the fallback stays visible
+   as the only title, never overlapping the real 3D lettering once it's ready. */
+.neon-sign-stage.sign-ready .neon-sign-fallback { opacity: 0; transition: opacity 0.6s ease; }
 
 .main-menu-header h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0.01em; }
 .main-menu-header p { margin: 0; }

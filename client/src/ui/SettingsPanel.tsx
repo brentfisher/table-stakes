@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type GraphicsQuality, type Settings } from '../app/settings';
+import { MENU_SIGN_SETTINGS_CHANGED_EVENT } from './NeonSignHero';
 
 export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
@@ -14,6 +15,10 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
 
   useEffect(() => {
     saveSettings(settings);
+    // STORY-032. `NeonSignHero` lives outside this settings state (a sibling modal target, not
+    // a child) and its sign instance is outside React entirely — this is how it hears about a
+    // change. See that component's own header on why an event rather than a lifted ref.
+    window.dispatchEvent(new CustomEvent(MENU_SIGN_SETTINGS_CHANGED_EVENT));
   }, [settings]);
 
   useEffect(() => {
@@ -110,8 +115,35 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
             Reduce motion
           </label>
           <p className="muted settings-note">
-            Not applied to the scene yet — the renderer doesn&rsquo;t read this preference.
+            Applied to the menu&rsquo;s neon sign below (sparks and pointer parallax turn off).
+            Not yet applied to the in-match renderer.
           </p>
+        </section>
+
+        <section className="settings-section">
+          <h3>Menu sign</h3>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={settings.menuSignSparks}
+              disabled={settings.reducedMotion}
+              onChange={(event) => patch({ menuSignSparks: event.target.checked })}
+            />
+            Title sparks
+          </label>
+          <label className="settings-field">
+            <span>Neon bloom</span>
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.05}
+              value={settings.menuSignBloom}
+              onChange={(event) => patch({ menuSignBloom: Number(event.target.value) })}
+            />
+            <span className="settings-value num">{Math.round(settings.menuSignBloom * 100)}%</span>
+          </label>
+          <p className="muted settings-note">Changes apply immediately to the sign on the main menu.</p>
         </section>
 
         <section className="settings-section">

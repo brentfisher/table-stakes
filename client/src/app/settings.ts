@@ -18,6 +18,11 @@ export interface Settings {
   fullscreenPreferred: boolean;
   reducedMotion: boolean;
   graphicsQuality: GraphicsQuality;
+  /** STORY-032. The main-menu neon sign (`NeonSign.ts`) is the one renderer that DOES read this
+   * module today — `reducedMotion` above turns off its sparks/parallax, same as the OS-level
+   * preference it defaults from. Everything else in this file is still save-only. */
+  menuSignSparks: boolean;
+  menuSignBloom: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,6 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
       : false,
   graphicsQuality: 'medium',
+  menuSignSparks: true,
+  menuSignBloom: 0.6,
 };
 
 const STORAGE_KEY = 'rivalRestaurant.settings.v1';
