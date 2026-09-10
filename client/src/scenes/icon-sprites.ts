@@ -76,8 +76,12 @@ export function setGlyphSpriteColor(sprite: THREE.Sprite, colorHex: number): voi
 }
 
 const labelTextureCache = new Map<string, THREE.CanvasTexture>();
-const LABEL_TEXTURE_WIDTH = 256;
-const LABEL_TEXTURE_HEIGHT = 88;
+// Bumped 1.5x (was 256x88 / fontSize 34) — the wayfinding placards (table numbers, station
+// names, PICKUP/PANTRY/UPGRADES/etc.) were reported hard to read from normal camera distance.
+// Raster resolution scales with the world-space size increase in `buildWayfinding` below so
+// text stays crisp rather than just magnifying a lower-res texture.
+const LABEL_TEXTURE_WIDTH = 384;
+const LABEL_TEXTURE_HEIGHT = 132;
 
 /** STORY-030. `glyphTexture` above only fits a 1-2 character symbol in a circle — PRD §5.2's
  * ready-food chips need real short WORDS ("READY", "GOING COLD", "T04"), which need a wider
@@ -95,21 +99,21 @@ function labelTexture(text: string): THREE.CanvasTexture {
   if (!ctx) throw new Error('2D canvas context unavailable');
 
   ctx.clearRect(0, 0, LABEL_TEXTURE_WIDTH, LABEL_TEXTURE_HEIGHT);
-  const radius = LABEL_TEXTURE_HEIGHT / 2 - 4;
+  const radius = LABEL_TEXTURE_HEIGHT / 2 - 6;
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.roundRect(4, 4, LABEL_TEXTURE_WIDTH - 8, LABEL_TEXTURE_HEIGHT - 8, radius);
+  ctx.roundRect(6, 6, LABEL_TEXTURE_WIDTH - 12, LABEL_TEXTURE_HEIGHT - 12, radius);
   ctx.fill();
 
   ctx.fillStyle = '#1b1f24';
   // A single size fits every PRD §5.2 label this ships with ("READY", "GOING COLD", "T04",
   // "T12") — all short enough at this chip width; a future longer label would need its own
   // measurement pass, not a concern for this story's fixed vocabulary.
-  let fontSize = 34;
+  let fontSize = 51;
   ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
   // Destination names and restaurant identity share this chip style with ready-food labels.
   // Fit their text inside the backing instead of clipping longer names such as UPGRADES.
-  while (ctx.measureText(text).width > LABEL_TEXTURE_WIDTH - 28 && fontSize > 16) {
+  while (ctx.measureText(text).width > LABEL_TEXTURE_WIDTH - 42 && fontSize > 24) {
     fontSize -= 1;
     ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
   }
