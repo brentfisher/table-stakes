@@ -193,11 +193,31 @@ export class InteractionController {
     // STORY-012. `OWNER_CARRY_CAPACITY` baseline unless a Serving Tray upgrade raised it.
     if (this.carrying.length >= this.carryCapacity) return null;
     if (!this.inRange(position, 'service_pass')) return null;
-    const ready = this.orders.find(
-      (o) => o.restaurantId === this.restaurantId && o.state === 'ready',
-    );
-    if (!ready) return null;
-    return { targetId: 'service_pass', action: 'pickup', label: `Pick Up ${dishName(ready.dishId)}` };
+    // A party's order can decompose into several tickets (one per dish) sharing one `orderId`,
+    // and `order-system.js#readyOrders` — the pool the real `pickup` interact reads — only
+    // offers an order once EVERY ticket on it is `ready` (or `cancelled`); STORY-031's
+    // `carrying[]` treats a whole order as one carry slot, not one dish. A single ticket can
+    // individually be `ready` (and render READY/GOING COLD at the pass, STORY-030) while a
+    // sibling dish on the same order is still cooking — offering "E to pick up" then looks
+    // legitimate but the server silently rejects it `nothing_ready`. Only offer the prompt for
+    // an order whose every ticket has actually finished.
+    const mine = this.orders.filter((o) => o.restaurantId === this.restaurantId);
+    const ticketsByOrder = new Map<string, OrderSnapshot[]>();
+    for (const ticket of mine) {
+      const group = ticketsByOrder.get(ticket.orderId);
+      if (group) group.push(ticket);
+      else ticketsByOrder.set(ticket.orderId, [ticket]);
+    }
+    let best: OrderSnapshot | null = null;
+    for (const tickets of ticketsByOrder.values()) {
+      if (!tickets.every((t) => t.state === 'ready' || t.state === 'cancelled')) continue;
+      const readyTickets = tickets.filter((t) => t.state === 'ready');
+      if (readyTickets.length === 0) continue; // every ticket on this order was cancelled
+      const oldest = readyTickets.reduce((a, b) => (b.readyAgeMs > a.readyAgeMs ? b : a));
+      if (!best || oldest.readyAgeMs > best.readyAgeMs) best = oldest;
+    }
+    if (!best) return null;
+    return { targetId: 'service_pass', action: 'pickup', label: `Pick Up ${dishName(best.dishId)}` };
   }
 
   private seatCandidate(position: Vec3): InteractionPrompt | null {

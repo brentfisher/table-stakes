@@ -984,6 +984,9 @@ export class GameClient {
     this.scene.restaurant.updateReadyDishAnimations(this.elapsedSeconds);
     // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same per-frame split.
     this.scene.restaurant.updateCarryTargetAnimations(this.elapsedSeconds);
+    // Smooths worker positions between ~10Hz snapshots — see updateWorkerAnimations's own
+    // comment on why workers need this and owners don't.
+    this.scene.restaurant.updateWorkerAnimations();
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (self) this.scene.cameraController.setTarget(

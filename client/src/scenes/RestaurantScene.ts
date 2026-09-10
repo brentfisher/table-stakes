@@ -1543,10 +1543,17 @@ export class RestaurantScene {
       helpGlyph.name = 'job_help';
       group.add(helpGlyph);
       group.name = `worker_${state.workerId}`;
+      group.position.set(state.position.x, state.position.y, state.position.z);
+      group.userData.positionTarget = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
       this.workers.set(state.workerId, group);
       this.scene.add(group);
     }
-    group.position.set(state.position.x, state.position.y, state.position.z);
+    // `upsertWorker` is called once per `match_snapshot` (~10 Hz), unlike owners (called every
+    // render frame via `StateInterpolator`) — snapping `group.position` directly here, as this
+    // used to, makes every worker visibly teleport between positions every ~100ms ("skippy").
+    // Same fix as `upsertCustomer`'s below: defer to `positionTarget`, smoothed once per frame
+    // by `updateWorkerAnimations`.
+    (group.userData.positionTarget as THREE.Vector3).set(state.position.x, state.position.y, state.position.z);
 
     for (const kind of Object.keys(WORKER_TASK_LABELS)) {
       const sprite = group.getObjectByName(`job_${kind}`) as THREE.Sprite | undefined;
@@ -1572,6 +1579,18 @@ export class RestaurantScene {
 
   workerIds(): string[] {
     return [...this.workers.keys()];
+  }
+
+  /** Smooths `upsertWorker`'s ~10 Hz snapshot positions toward the latest target every render
+   * frame — the same split `updateCustomerAnimations` uses for customers/workers, both of which
+   * only get new positions at snapshot cadence, unlike the owner avatar (interpolated every
+   * frame upstream by `StateInterpolator`, so it needs no second smoothing pass). Called every
+   * frame from `GameClient#handleFrame`, same lerp factor as customers for a consistent feel. */
+  updateWorkerAnimations(): void {
+    for (const group of this.workers.values()) {
+      const target = group.userData.positionTarget as THREE.Vector3 | undefined;
+      if (target) group.position.lerp(target, 0.035);
+    }
   }
 
   // --- STORY-016: tables / stations / pass / rival / event — updated once per snapshot -------
