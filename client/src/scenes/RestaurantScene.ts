@@ -615,7 +615,7 @@ export class RestaurantScene {
     if (!stand || !old) return;
     if (old.userData.specialId === specialId) return;
     old.parent?.remove(old);
-    const label = createLabelSprite(specialId ? specialId.replace(/_/g, ' ').toUpperCase() : 'WELCOME', 0xd4e7dd, 0.42);
+    const label = createLabelSprite(specialId ? specialId.replace(/_/g, ' ').toUpperCase() : 'WELCOME', 0xd4e7dd, 0.68);
     label.name = 'label_host_stand'; label.userData.specialId = specialId; label.position.copy(old.position);
     stand.add(label);
   }
@@ -637,7 +637,7 @@ export class RestaurantScene {
     const label = createLabelSprite(
       `PANTRY · ${risk}${deliveryCount > 0 ? ` · ${deliveryCount} INBOUND` : ''}`,
       colors[risk] ?? 0xd4e7dd,
-      0.48,
+      0.74,
     );
     label.name = 'label_pantry';
     label.userData.pantrySignature = signature;
@@ -717,7 +717,7 @@ export class RestaurantScene {
     const old = board?.getObjectByName('label_kitchen_command_board');
     if (!board || !old || old.userData.focusName === focusName) return;
     old.parent?.remove(old);
-    const label = createLabelSprite(focusName.toUpperCase(), 0xffd27a, 0.38);
+    const label = createLabelSprite(focusName.toUpperCase(), 0xffd27a, 0.6);
     label.name = 'label_kitchen_command_board';
     label.userData.focusName = focusName;
     label.position.copy(old.position);
@@ -749,7 +749,7 @@ export class RestaurantScene {
           color,
         );
         group.add(prop);
-        const label = createLabelSprite(labelText, 0xf4ead5, 0.32);
+        const label = createLabelSprite(labelText, 0xf4ead5, 0.5);
         label.position.set(0, id === 'street_signage_1' ? 1.7 : 0.8, 0);
         group.add(label);
         this.scene.add(group);
@@ -766,18 +766,21 @@ export class RestaurantScene {
             upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
             kitchen_command_board: 'RUSH THE PASS' } as Record<string, string>)[entity.id];
       if (!label) continue;
-      const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.42);
+      // Bumped 1.6x from 0.42 — these wayfinding placards (table numbers, station names,
+      // PICKUP/PANTRY/UPGRADES/etc.) were reported hard to read from the normal play camera.
+      const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.68);
       sprite.name = `label_${entity.id}`;
-      // Table ids sit alongside the tabletop, leaving the existing state badge above it.
-      sprite.position.set(0, entity.type === 'table' ? 0.18 : 0.15,
+      // Table ids sit alongside the tabletop, leaving the existing state badge above it. Y
+      // nudged up slightly to match the larger chip so it still clears the tabletop surface.
+      sprite.position.set(0, entity.type === 'table' ? 0.22 : 0.19,
         entity.type === 'table' ? -1.7 : entity.type === 'station' ? -1.25 : -0.85);
       this.scene.getObjectByName(entity.id)?.add(sprite);
     }
-    const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 0.9);
+    const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 1.3);
     title.position.set(0, 3.6, 11.8);
     title.name = 'restaurant_identity';
     this.scene.add(title);
-    const rival = createLabelSprite('RIVAL', 0xf0c2ad, 0.8);
+    const rival = createLabelSprite('RIVAL', 0xf0c2ad, 1.15);
     rival.position.set(0, 3.8, -26);
     this.competitor.add(rival);
   }
