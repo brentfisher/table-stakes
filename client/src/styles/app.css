@@ -606,68 +606,341 @@ body {
    sheet — restated here so a keyboard user never loses the focus ring.
    ------------------------------------------------------------------------------------------ */
 
+/* STORY-032. Ported from the source design's own `start.css` (`docs/table-stakes-neon-menu.zip`)
+   — a two-column "neon marquee" layout (header / `.restaurant` sign column + `.menu-panel` real
+   menu / footer), restyled onto this repo's real, already-wired `MainMenu` markup rather than
+   the source's own static preview HTML. Colors below (`--menu-cream`/`--menu-orange`/
+   `--menu-cyan`) are the sign's own brand palette, kept as literals rather than folded into the
+   app-wide `:root` tokens above since nothing outside this menu uses them. */
 .main-menu {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  overflow-y: auto;
-}
-
-.main-menu-panel {
-  /* Widened from 420px (pre-STORY-032) so the neon sign's ~1.8:1 marquee facade isn't cropped
-     to a sliver — the action list below still reads fine at this width, it just no longer
-     spans the full panel edge to edge. */
-  width: min(560px, 100%);
+  --menu-cream: #fff0d7;
+  --menu-orange: #fca13c;
+  --menu-cyan: #64d6df;
+  --menu-muted: #8ca0a8;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 28px 26px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  backdrop-filter: blur(6px);
+  height: 100%;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 19% 32%, #38292150, transparent 53%),
+    radial-gradient(ellipse at 85% 80%, #19384640, transparent 40%),
+    var(--bg);
 }
 
-/* STORY-032. `NeonSignHero`/`NeonSign.ts` — the sign owns its own WebGLRenderer and appends a
-   <canvas> into `.neon-sign-stage` itself; these rules only size the host and style the
-   fallback shown before `.sign-ready` (WebGL unavailable, or the title artwork still loading). */
-.neon-sign-hero { display: flex; justify-content: center; }
-.neon-sign-stage {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 10.4 / 5.7;
-  border-radius: 10px;
-  overflow: hidden;
-  background: radial-gradient(ellipse at center, #142229 0%, #0c151c 70%);
+/* A local() lookup for the system-installed condensed italic family the source design was
+   authored against — present on macOS, silently falling back to Impact/Arial Narrow (still
+   bold/condensed/available everywhere) elsewhere rather than failing to render at all. */
+@font-face {
+  font-family: 'Menu Title';
+  src: local('Avenir Next Condensed Heavy Italic'), local('AvenirNextCondensed-HeavyItalic');
+  font-weight: 900;
+  font-style: italic;
+}
+
+.menu-topbar {
+  height: 84px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 4%;
+}
+.menu-brand {
+  font-size: 32px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.09em;
+  color: var(--menu-cream);
+}
+.menu-brand span { color: var(--menu-orange); font-size: 36px; }
+.menu-topbar-rule { height: 22px; border-left: 1px solid var(--border); }
+.menu-edition { font-size: 8px; line-height: 1.8; letter-spacing: 0.14em; text-transform: uppercase; color: var(--menu-muted); }
+.menu-edition b { color: #c0c7c5; font-weight: 600; }
+.sign-effects-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  background: #16242c70;
+  border: 1px solid #44535c60;
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #99abb0;
   cursor: pointer;
 }
-.neon-sign-stage canvas { display: block; width: 100%; height: 100%; }
-.neon-sign-fallback {
-  position: absolute;
-  inset: 0;
-  display: flex;
+.sign-effects-toggle i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--menu-cyan);
+  box-shadow: 0 0 8px #6edec88a;
+  margin-right: 8px;
+}
+.sign-effects-toggle[aria-pressed="false"] i { background: #869294; box-shadow: none; }
+
+.menu-main {
+  flex: 1;
+  min-height: 0;
+  max-width: 1700px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 58%) minmax(320px, 42%);
   align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #ffedcc;
+  gap: 28px;
+  padding: 12px 4% 28px;
+}
+
+/* --- left column: the sign, its caption, marketing copy, spark button ----------------------- */
+
+.restaurant { position: relative; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+
+.neon-sign-stage {
+  position: relative;
+  height: 360px;
+  width: calc(100% + 6%);
+  margin-left: -3%;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: radial-gradient(ellipse at center, #142229 0%, #0c151c 70%);
+  /* Fades the sign's own hard rectangular canvas edge into the page background instead of
+     showing a visible seam. */
+  mask-image: linear-gradient(0deg, transparent, #000 9%, #000 92%, transparent);
+}
+.neon-sign-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.neon-sign-fallback-title {
+  position: absolute;
+  inset: 18% 0 0;
+  margin: 0;
   text-align: center;
-  line-height: 1.25;
+  font: bold 52px/0.95 Impact, Arial, sans-serif;
+  color: #ffd5a0;
+  text-shadow: 0 0 20px #ff7700;
+  letter-spacing: 0.03em;
   pointer-events: none;
 }
-/* `NeonSign.ts` adds this class to the stage element once the title lettering has actually
-   loaded and been built — before that (or if WebGL/the fetch fails) the fallback stays visible
-   as the only title, never overlapping the real 3D lettering once it's ready. */
-.neon-sign-stage.sign-ready .neon-sign-fallback { opacity: 0; transition: opacity 0.6s ease; }
+.neon-sign-loading {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #a1876c;
+  pointer-events: none;
+}
+/* Once ready, the real 3D lettering is on screen — the fallback stays in the accessibility
+   tree (this is still the page's <h1>) but is visually replaced rather than removed. */
+.neon-sign-stage.sign-ready .neon-sign-fallback-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
-.main-menu-header h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0.01em; }
-.main-menu-header p { margin: 0; }
+.sign-caption { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin: 10px 5% 18px; }
+.open-tag { font-size: 8px; letter-spacing: 0.13em; text-transform: uppercase; color: #95d8d6; white-space: nowrap; }
+.open-tag i, .menu-panel-foot i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #75decd;
+  box-shadow: 0 0 8px #6edec88a;
+  margin-right: 7px;
+}
+.coordinates { font-size: 6px; letter-spacing: 0.09em; text-transform: uppercase; color: #6a818c; white-space: nowrap; }
 
-.main-menu-actions { display: flex; flex-direction: column; gap: 10px; }
+.restaurant-copy { padding: 8px 5% 0; position: relative; }
+.restaurant-copy .eyebrow { color: var(--menu-muted); font-size: 8px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.restaurant-copy h2 {
+  font: 900 italic 38px/0.97 'Menu Title', Impact, 'Arial Narrow', sans-serif;
+  letter-spacing: -0.01em;
+  margin: 10px 0;
+  color: #e8e4d8;
+}
+.restaurant-copy h2 em { font: inherit; color: #9aafb4; }
+.restaurant-copy p { font-size: 12px; color: var(--menu-muted); line-height: 1.65; margin: 14px 0 0; }
 
+.spark-button {
+  align-self: flex-start;
+  margin: 18px 5% 0;
+  background: none;
+  border: 1px solid #72604a6b;
+  border-radius: 2px;
+  color: #c8a879;
+  font-size: 9px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 11px 14px;
+  transform: rotate(-2deg);
+  cursor: pointer;
+}
+.spark-button span { color: #ffd28c; font-size: 15px; vertical-align: middle; margin-right: 7px; }
+.spark-button:hover { border-color: #efb66a; box-shadow: 0 0 20px #ffa13215; }
+
+/* --- right column: the real menu panel ------------------------------------------------------- */
+
+.menu-panel {
+  padding: 30px 7% 22px;
+  background: linear-gradient(130deg, #26333b4f, #17242b);
+  border: 1px solid #5d717c45;
+  border-top-color: #5d717c70;
+  box-shadow: 0 25px 70px #00000020;
+  position: relative;
+}
+.menu-panel-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.menu-panel-top .eyebrow { font-size: 8px; letter-spacing: 0.13em; text-transform: uppercase; color: #b5b3a6; }
+.menu-panel h2 {
+  font: 900 italic clamp(28px, 3vw, 44px)/0.96 'Menu Title', Impact, 'Arial Narrow', sans-serif;
+  letter-spacing: -0.01em;
+  margin: 18px 0 12px;
+}
+.menu-panel h2 em { font: inherit; color: var(--menu-orange); }
+.menu-panel-intro { font-size: 11px; color: var(--menu-muted); margin: 0 0 20px; }
+
+.play-options { display: grid; gap: 10px; }
+.mode {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  gap: 14px;
+  background: #28374077;
+  border: 1px solid #60747e5b;
+  border-radius: 2px;
+  min-height: 66px;
+  padding: 14px 16px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.mode-icon { font-size: 20px; width: 22px; font-weight: 400; color: #89a9b4; flex: none; }
+.mode b { font-size: 15px; letter-spacing: -0.01em; font-weight: 700; display: block; }
+.mode small { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; display: block; margin-top: 5px; color: #8aabb7; }
+.mode-arrow { margin-left: auto; font-size: 20px; font-weight: 400; color: #a5bdc1; flex: none; }
+.mode:not(:disabled):hover { background: #3e56647d; border-color: #94c6d1; transform: translateX(3px); box-shadow: -3px 0 0 #92dee5; }
+.mode.featured { background: linear-gradient(110deg, #ffc77e, #f6a644); border-color: #ffdc9a; color: #26333b; box-shadow: 0 5px 25px #ffb14016; }
+.mode.featured small { color: #75603c; }
+.mode.featured .mode-icon, .mode.featured .mode-arrow { color: #534936; }
+.mode.featured:hover { background: #ffd699; box-shadow: -3px 0 0 #fff1ce, 0 0 35px #ffa23228; border-color: #ffe4b5; }
+.mode.unavailable { background: #131f2745; border-color: #61717a25; color: #667983; cursor: not-allowed; }
+.mode.unavailable .mode-icon, .mode.unavailable small { color: #4e6671; }
+.mode-badge {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid #55647050;
+  border-radius: 2px;
+  padding: 5px 7px;
+  margin-left: auto;
+  color: #6c838d;
+}
+.menu-invite-error { margin: 8px 0 0; color: var(--bad); font-size: 13px; }
+
+.join-form { margin-top: 22px; }
+.join-form label { display: block; font-size: 8px; letter-spacing: 0.12em; text-transform: uppercase; color: #9caeb4; margin-bottom: 9px; }
+.join-row { display: flex; gap: 8px; }
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 12px;
+  background: #0f1d2570;
+  border: 1px solid #4f647062;
+  border-radius: 2px;
+  color: #d9e6e8;
+  font: inherit;
+  font-size: 12px;
+}
+.join-row input::placeholder { color: #6b828e; }
+.join-row button {
+  border: 1px solid #58727e6b;
+  border-radius: 2px;
+  background: #29404b5e;
+  padding: 10px 15px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+  cursor: pointer;
+}
+.join-row button span { padding-left: 6px; color: #8dabb7; }
+.join-row button:hover { background: #3f626f70; }
+.join-row button:disabled { background: #1a232870; color: var(--menu-muted); cursor: not-allowed; }
+
+.menu-utility { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 18px; }
+.menu-utility button {
+  background: transparent;
+  border: 1px solid #60768145;
+  border-radius: 2px;
+  padding: 12px 6px;
+  font-size: 12px;
+  color: #b3c3c7;
+  cursor: pointer;
+}
+.menu-utility button span { margin-right: 7px; color: #7e9ba5; }
+.menu-utility button:hover { border-color: #94bac4; color: #efffff; }
+
+.menu-panel-foot {
+  border-top: 1px solid #58707e32;
+  padding-top: 16px;
+  margin-top: 22px;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #63828f;
+}
+
+.menu-footer {
+  flex: none;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 4%;
+  border-top: 1px solid #5b788126;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: #657d89;
+}
+.menu-footer b { font-weight: 400; color: #96a9ad; margin: 0 6px; }
+.menu-footer-error { color: var(--bad); }
+.menu-footer-retry {
+  margin-left: 6px;
+  padding: 2px 9px;
+  background: #232b33;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .menu-main { grid-template-columns: 1fr; padding: 12px 5% 24px; gap: 16px; }
+  .restaurant-copy { display: none; }
+  .neon-sign-stage { height: 260px; width: 108%; margin-left: -4%; }
+  .spark-button { position: relative; margin-top: 14px; }
+  .sign-caption { justify-content: center; }
+  .coordinates { display: none; }
+}
+
+/* PlayVsBotScreen still uses these two classes for its own bot-select action list/badge — left
+   in place, unchanged, when the rest of this section's markup moved to `.mode`/`.mode-badge`
+   above. */
 .main-menu-action {
   position: relative;
   display: flex;
@@ -697,64 +970,14 @@ body {
   letter-spacing: 0.04em;
 }
 
-.main-menu-join { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.main-menu-join label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
-.main-menu-join-row { display: flex; gap: 8px; }
-.main-menu-join-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 9px 10px;
-  background: #1b2128;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-}
-.main-menu-join-row button {
-  padding: 9px 16px;
-  background: #2c4a26;
-  border: 1px solid #3f6b31;
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-.main-menu-join-row button:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
-
-.main-menu-secondary { display: flex; gap: 10px; margin-top: 4px; }
-.main-menu-secondary button {
-  flex: 1;
-  padding: 9px 10px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-}
-.main-menu-secondary button:hover { border-color: #48545f; }
-
-.main-menu-footer { text-align: center; min-height: 1.2em; }
-.main-menu-backend-error { color: var(--bad); }
-.main-menu-invite-error { margin: -4px 0 0; color: var(--bad); font-size: 13px; }
-.main-menu-retry {
-  margin-left: 6px;
-  padding: 2px 9px;
-  background: #232b33;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
 .main-menu-action:focus-visible,
-.main-menu-secondary button:focus-visible,
-.main-menu-join-row button:focus-visible,
-.main-menu-join-row input:focus-visible,
-.main-menu-retry:focus-visible,
+.mode:focus-visible,
+.join-row button:focus-visible,
+.join-row input:focus-visible,
+.menu-utility button:focus-visible,
+.menu-footer-retry:focus-visible,
+.sign-effects-toggle:focus-visible,
+.spark-button:focus-visible,
 .route-placeholder-card button:focus-visible,
 .menu-modal-close:focus-visible,
 .settings-reset:focus-visible {
