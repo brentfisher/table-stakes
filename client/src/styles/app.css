@@ -403,7 +403,18 @@ body {
 }
 .results-top-right { display: flex; align-items: center; gap: 12px; }
 
-.results-outcome { margin: 0; font-size: 26px; letter-spacing: 0.02em; }
+/* STORY-034. "Game Over" — a small, high-contrast kicker deliberately styled nothing like this
+   panel's other muted eyebrow labels, so it's the first thing read, not blended into the rest
+   of the stat sheet below it. */
+.results-game-over {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.results-outcome { margin: 0; font-size: 48px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.05; }
 .results-outcome--win { color: var(--ok); }
 .results-outcome--loss { color: var(--bad); }
 .results-outcome--draw { color: var(--warn); }
