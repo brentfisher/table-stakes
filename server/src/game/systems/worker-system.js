@@ -736,24 +736,37 @@ function advanceWorker(match, staff, worker, dtMs) {
   worker.task = null;
 }
 
-/** Move `worker` toward `target` at `WORKER_MOVE_SPEED`; true once it is there. */
-function stepToward(worker, target, dtMs) {
-  const dx = target.x - worker.position.x;
-  const dz = target.z - worker.position.z;
+/**
+ * STORY-044. A REAL top-level export, not a reach into `_internal` below (whose own header
+ * forbids that) — the same justified-promotion move Decision 67 made for `compareTickets`
+ * (STORY-043). What justifies it: this function is a pure integration over any
+ * `{ position: { x, z } }`-shaped object and a `{ x, z }` target — it reads/writes only
+ * `.position.x`/`.position.z`, closes over nothing worker-specific (no `staff`, no `match`), and
+ * `speed`/`arrivalEpsilon` are now parameters rather than the two hardcoded worker tunables, with
+ * every existing call site left unchanged by defaulting them to those same constants. Renamed the
+ * first parameter `worker` -> `entity` to match: `customer-system.js#advanceParty` is the second
+ * caller, walking a district party's `position` toward its own `destinationPosition` every tick
+ * (see that file's own header on the decision/movement split this mirrors), and "worker" was no
+ * longer accurate for what the function actually touches. `_internal.stepToward` below still
+ * points at this same function, so `scripts/check-workers.mjs` is unaffected.
+ */
+export function stepToward(entity, target, dtMs, speed = WORKER_MOVE_SPEED, arrivalEpsilon = WORKER_ARRIVAL_EPSILON) {
+  const dx = target.x - entity.position.x;
+  const dz = target.z - entity.position.z;
   const remaining = Math.hypot(dx, dz);
-  if (remaining <= WORKER_ARRIVAL_EPSILON) {
-    worker.position.x = target.x;
-    worker.position.z = target.z;
+  if (remaining <= arrivalEpsilon) {
+    entity.position.x = target.x;
+    entity.position.z = target.z;
     return true;
   }
-  const stride = WORKER_MOVE_SPEED * (dtMs / 1000);
+  const stride = speed * (dtMs / 1000);
   if (stride >= remaining) {
-    worker.position.x = target.x;
-    worker.position.z = target.z;
+    entity.position.x = target.x;
+    entity.position.z = target.z;
     return true;
   }
-  worker.position.x += (dx / remaining) * stride;
-  worker.position.z += (dz / remaining) * stride;
+  entity.position.x += (dx / remaining) * stride;
+  entity.position.z += (dz / remaining) * stride;
   return false;
 }
 

@@ -46,6 +46,10 @@ import { buildCriticalAlerts, capCriticalAlerts, type CriticalAlert } from '../.
 // moment" decision, including the null-revenue first-sample guard — is pulled out as its own
 // pure, dual-imported (client + check script) function rather than left inline here.
 import { cashFeedbackFor } from '../../../shared/game-logic/hud-cash-feedback';
+// STORY-044. See that file's own header: the one predicate deciding whether a customer snapshot
+// belongs on THIS viewer's floor, dual-imported by `scripts/check-district-population.mjs` so
+// this filter and that check can never quietly diverge.
+import { shouldRenderCustomerForViewer } from '../../../shared/game-logic/district-population';
 // STORY-029. PRD-027 §9 "Presentation Event Reducer" — the ONE place a `match_snapshot` diff
 // turns into deduplicated, stably-keyed `PresentationEvent`s for the arcade toast layer
 // (`client/src/ui/ArcadeToast.tsx`). Same Decision 4 shape/dual-import reasoning as
@@ -816,15 +820,24 @@ export class GameClient {
       // STORY-016 PRD §4.4/§14 "visual state language". Customers and this restaurant's own
       // workers are spawn/despawn entities reconciled through `EntityViewRegistry`, the same
       // seam `players` above already uses — see `RestaurantScene.ts`'s own comment on why
-      // `customers` is filtered to `restaurantId === restaurantId` HERE (STORY-039: this
-      // snapshot's own resolved restaurant, not `playerId` — see that const's own comment
-      // above), before the registry ever sees it: table ids are shared literal strings across
-      // both restaurants' own internal layouts, so an unfiltered reconcile would try to render
-      // the rival's party onto this restaurant's floor. Everything else this story adds (table
-      // badges, station queue/shortage, rival activity, the event effect) is NOT a spawn/despawn
-      // entity — those update through the single `updateFloorState` call below, which does its
-      // own restaurant-scoped filtering (see that method's own header).
-      const selfCustomers = customers.filter((c) => c.restaurantId === restaurantId);
+      // `customers` is filtered HERE (STORY-039: this snapshot's own resolved restaurant, not
+      // `playerId` — see that const's own comment above), before the registry ever sees it:
+      // table ids are shared literal strings across both restaurants' own internal layouts, so
+      // an unfiltered reconcile would try to render the rival's queued/seated party onto this
+      // restaurant's floor. Everything else this story adds (table badges, station
+      // queue/shortage, rival activity, the event effect) is NOT a spawn/despawn entity — those
+      // update through the single `updateFloorState` call below, which does its own
+      // restaurant-scoped filtering (see that method's own header).
+      //
+      // STORY-044. Widened from a bare `c.restaurantId === restaurantId` equality (an OR added,
+      // not removed — the table-collision reason above still holds for a party actually queued
+      // or seated at the rival) to also include every party currently in genuinely shared
+      // district space — still deciding, or already gone — regardless of whose restaurant it
+      // belongs to: `shouldRenderCustomerForViewer` (`shared/game-logic/district-population.js`)
+      // is the ONE place that OR is expressed, dual-imported by this story's own check script so
+      // the two can never quietly diverge. This is what makes "it seems like they just show up"
+      // false: a party's whole pre-decision walk, and its walk back out, are now visible here.
+      const renderableCustomers = customers.filter((c) => shouldRenderCustomerForViewer(c, restaurantId));
       const orderLabelForCustomer = (customer: CustomerSnapshot): string | null => {
         if (!customer.orderId) return null;
         const dishes = orders
@@ -833,7 +846,7 @@ export class GameClient {
         const distinct = [...new Set(dishes)];
         return distinct.length > 0 ? distinct.slice(0, 2).join(' + ') : null;
       };
-      this.registry.reconcile('customers', selfCustomers.map((c) => ({
+      this.registry.reconcile('customers', renderableCustomers.map((c) => ({
         ...c,
         id: c.customerId,
         orderLabel: orderLabelForCustomer(c),
