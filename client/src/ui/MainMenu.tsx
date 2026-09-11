@@ -10,6 +10,11 @@
 // STORY-025 wires "Play vs Bot" to `PlayVsBotScreen` — the same `activeModal` pattern
 // `HowToPlay`/`SettingsPanel` already use, rather than a fourth top-level route (see that
 // screen's own header for why).
+//
+// STORY-032 restyled this into the two-column "neon marquee" layout from the source design
+// (`docs/table-stakes-neon-menu.zip`'s `start.html`) — brand header, `NeonSignHero` on the left,
+// this real menu panel on the right, brand/version footer. Every action below is the SAME
+// already-real wiring from STORY-023/024/025 — only the surrounding markup/classes changed.
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { navigate } from '../app/router';
@@ -17,7 +22,8 @@ import { cacheInvite, type CreatedRoom } from '../app/invite-lobby-types';
 import { HowToPlay } from './HowToPlay';
 import { SettingsPanel } from './SettingsPanel';
 import { PlayVsBotScreen } from './PlayVsBotScreen';
-import { NeonSignHero } from './NeonSignHero';
+import { NeonSignHero, MENU_SIGN_SETTINGS_CHANGED_EVENT } from './NeonSignHero';
+import { loadSettings, saveSettings } from '../app/settings';
 
 type VersionState =
   | { status: 'loading' }
@@ -62,12 +68,35 @@ function useVersion(): [VersionState, () => void] {
   return [state, () => setAttempt((n) => n + 1)];
 }
 
+/** The header's quick "SIGN EFFECTS ON/STEADY" toggle — the same on/off pairing
+ * `SettingsPanel`'s two menu-sign fields already expose individually, collapsed into one button
+ * for a fast toggle without opening Settings. Reads/writes the same `loadSettings()`/
+ * `saveSettings()` source of truth and fires the same event `SettingsPanel` does, so
+ * `NeonSignHero` hears about it identically either way. */
+function useSignEffectsToggle(): [boolean, () => void] {
+  const [enabled, setEnabled] = useState(() => {
+    const s = loadSettings();
+    return s.menuSignSparks && !s.reducedMotion;
+  });
+
+  const toggle = () => {
+    const settings = loadSettings();
+    const next = !(settings.menuSignSparks && !settings.reducedMotion);
+    saveSettings({ ...settings, menuSignSparks: next, reducedMotion: !next });
+    setEnabled(next);
+    window.dispatchEvent(new CustomEvent(MENU_SIGN_SETTINGS_CHANGED_EVENT));
+  };
+
+  return [enabled, toggle];
+}
+
 export function MainMenu(): JSX.Element {
   const [version, retryVersion] = useVersion();
   const [joinCode, setJoinCode] = useState('');
   const [activeModal, setActiveModal] = useState<'how-to-play' | 'settings' | 'play-vs-bot' | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [signEffectsOn, toggleSignEffects] = useSignEffectsToggle();
 
   const submitJoinCode = (event: FormEvent) => {
     event.preventDefault();
@@ -110,47 +139,83 @@ export function MainMenu(): JSX.Element {
 
   return (
     <div className="app main-menu">
-      <div className="main-menu-panel">
-        {/* STORY-032. Visual only — see `NeonSignHero`'s own header. Every action below is
-            unchanged, already-real wiring from STORY-023/024/025. */}
+      <header className="menu-topbar">
+        <span className="menu-brand" aria-label="Table Stakes">
+          T<span>/</span>S
+        </span>
+        <span className="menu-topbar-rule" />
+        <span className="menu-edition">
+          A little hospitality.
+          <br />
+          <b>A lot of competition.</b>
+        </span>
+        <button
+          type="button"
+          className="sign-effects-toggle"
+          aria-pressed={signEffectsOn}
+          onClick={toggleSignEffects}
+        >
+          <i /> Sign effects {signEffectsOn ? 'on' : 'steady'}
+        </button>
+      </header>
+
+      <main className="menu-main">
         <NeonSignHero />
 
-        <header className="main-menu-header">
-          <h1>Rival Restaurant</h1>
-          <p className="muted">Run the floor. Beat the restaurant next door for the same customers.</p>
-        </header>
+        <section className="menu-panel" aria-label="Main menu">
+          <div className="menu-panel-top">
+            <span className="eyebrow">Pull up a chair</span>
+          </div>
 
-        <nav className="main-menu-actions" aria-label="Main menu">
-          {/* PRD acceptance list: "Play Online" — no matchmaking queue exists yet (only
-              direct room-id/invite joins do), so this is disabled rather than silently
-              creating a lobby nobody else can find. */}
-          <button type="button" className="main-menu-action" disabled aria-disabled="true" title="No matchmaking queue exists yet">
-            Play Online
-            <span className="main-menu-action-badge">Unavailable</span>
-          </button>
+          <h2>
+            Let&rsquo;s eat.
+            <br />
+            <em>Let&rsquo;s compete.</em>
+          </h2>
+          <p className="menu-panel-intro">Choose how you take the floor.</p>
 
-          <button
-            type="button"
-            className="main-menu-action"
-            disabled={inviting}
-            aria-disabled={inviting}
-            onClick={inviteOpponent}
-          >
-            {inviting ? 'Creating…' : 'Invite Opponent'}
-          </button>
-          {inviteError ? <p className="main-menu-invite-error">{inviteError}</p> : null}
+          <nav className="play-options">
+            {/* PRD acceptance list: "Play Online" — no matchmaking queue exists yet (only
+                direct room-id/invite joins do), so this is disabled rather than silently
+                creating a lobby nobody else can find. */}
+            <button type="button" className="mode unavailable" disabled aria-disabled="true" title="No matchmaking queue exists yet">
+              <span className="mode-icon">◎</span>
+              <span>
+                <b>Play Online</b>
+                <small>Find your next rival</small>
+              </span>
+              <span className="mode-badge">Unavailable</span>
+            </button>
 
-          <button
-            type="button"
-            className="main-menu-action"
-            onClick={() => setActiveModal('play-vs-bot')}
-          >
-            Play vs Bot
-          </button>
+            <button
+              type="button"
+              className="mode"
+              disabled={inviting}
+              aria-disabled={inviting}
+              onClick={inviteOpponent}
+            >
+              <span className="mode-icon">↗</span>
+              <span>
+                <b>{inviting ? 'Creating…' : 'Invite Opponent'}</b>
+                <small>Settle it over dinner</small>
+              </span>
+              <span className="mode-arrow">↗</span>
+            </button>
 
-          <form className="main-menu-join" onSubmit={submitJoinCode}>
-            <label htmlFor="join-code">Join Private Match</label>
-            <div className="main-menu-join-row">
+            <button type="button" className="mode featured" onClick={() => setActiveModal('play-vs-bot')}>
+              <span className="mode-icon">▣</span>
+              <span>
+                <b>Play vs Bot</b>
+                <small>Your next shift starts here</small>
+              </span>
+              <span className="mode-arrow">→</span>
+            </button>
+          </nav>
+          {inviteError ? <p className="menu-invite-error">{inviteError}</p> : null}
+
+          <form className="join-form" onSubmit={submitJoinCode}>
+            <label htmlFor="join-code">Join private match</label>
+            <div className="join-row">
               <input
                 id="join-code"
                 type="text"
@@ -160,38 +225,47 @@ export function MainMenu(): JSX.Element {
                 autoComplete="off"
               />
               <button type="submit" disabled={!joinCode.trim()}>
-                Join
+                Join <span>→</span>
               </button>
             </div>
           </form>
 
-          <div className="main-menu-secondary">
+          <div className="menu-utility">
             <button type="button" onClick={() => setActiveModal('how-to-play')}>
-              How to Play
+              <span>?</span> How to Play
             </button>
             <button type="button" onClick={() => setActiveModal('settings')}>
-              Settings
+              <span>⚙</span> Settings
             </button>
           </div>
-        </nav>
 
-        <footer className="main-menu-footer">
-          {version.status === 'loading' ? <span className="muted">Checking server…</span> : null}
-          {version.status === 'ready' ? (
-            <span className="muted num">
-              Build {version.server} · three.js {version.threeVersion}
+          <div className="menu-panel-foot">
+            <span>
+              <i /> Kitchen&rsquo;s ready. Are you?
             </span>
-          ) : null}
-          {version.status === 'error' ? (
-            <span className="main-menu-backend-error">
-              Can&rsquo;t reach the server.{' '}
-              <button type="button" className="main-menu-retry" onClick={retryVersion}>
-                Retry
-              </button>
-            </span>
-          ) : null}
-        </footer>
-      </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="menu-footer">
+        <span>
+          Table Stakes <b>/</b> The Restaurant Rivalry Game
+        </span>
+        {version.status === 'loading' ? <span className="muted">Checking server…</span> : null}
+        {version.status === 'ready' ? (
+          <span className="muted num">
+            Build {version.server} · three.js {version.threeVersion}
+          </span>
+        ) : null}
+        {version.status === 'error' ? (
+          <span className="menu-footer-error">
+            Can&rsquo;t reach the server.{' '}
+            <button type="button" className="menu-footer-retry" onClick={retryVersion}>
+              Retry
+            </button>
+          </span>
+        ) : null}
+      </footer>
 
       {activeModal === 'how-to-play' ? <HowToPlay onClose={() => setActiveModal(null)} /> : null}
       {activeModal === 'settings' ? <SettingsPanel onClose={() => setActiveModal(null)} /> : null}
