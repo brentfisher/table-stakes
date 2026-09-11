@@ -34,6 +34,7 @@ import { FrontDoorBoard } from '../ui/FrontDoorBoard';
 import { ServiceStationBoard } from '../ui/ServiceStationBoard';
 import { PantryBoard } from '../ui/PantryBoard';
 import { KitchenCommandBoard } from '../ui/KitchenCommandBoard';
+import { StationMenu } from '../ui/StationMenu';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -266,6 +267,16 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       ) : null}
       {status?.nearKitchenCommandBoard && status.showKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <KitchenCommandBoard status={status} onFocus={(focusId) => clientRef.current?.kitchenFocusCommand(focusId)} />
+      ) : null}
+      {/* STORY-042 AC4: co-op only (`sharedRestaurant`) — a non-co-op match keeps its
+          single-tap `E — Cook X`/`E — Plate X` prompt below (`status?.prompt`) untouched, since
+          `nearStation` is computed unconditionally but only rendered here under this extra
+          gate. Phase-gated like the boards above it, not like `UpgradeTerminal` (which has no
+          phase gate) — `cook`/`plate` itself is `service`/`final_rush`-only
+          (`action-validator.js`'s `INTERACT_PHASES`), so this panel would otherwise offer a
+          menu whose one action is guaranteed to be rejected outside those phases. */}
+      {status?.nearStation && status.sharedRestaurant && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <StationMenu status={status} station={status.nearStation} onSelect={(station) => clientRef.current?.cookOrPlateAt(station)} />
       ) : null}
       {/* STORY-015 §8 "Tab: tactical overview panel". Toggled by `InputController
           #onToggleOverview`; `GameClient` already force-closes this (`showTacticalOverview:

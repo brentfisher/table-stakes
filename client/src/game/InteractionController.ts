@@ -113,6 +113,24 @@ export class InteractionController {
     return distanceXZ(position, this.entityVec(entity)) <= radius;
   }
 
+  /**
+   * STORY-042. Which station (by name, e.g. `'grill'`) the owner is close enough to browse a
+   * "what to cook here" menu for, or null. Same `nearUpgradeTerminal` shape — a proximity read,
+   * not a prompt — deliberately kept OUT of `resolve()`'s candidate list: `stationCandidate`
+   * already owns the single-tap `E — Cook X` prompt for non-co-op play, and this method adds a
+   * second, independent read of the exact same range check rather than touching that list, so a
+   * non-co-op match's existing prompt behavior is provably unaffected by this story (AC4). The
+   * four station entities sit `>=4` apart on the x axis versus `OWNER_INTERACT_RANGE`'s `2.2`,
+   * so at most one station can ever be in range at once — first match in `STATIONS` order wins,
+   * same as `cookCandidate`'s own loop.
+   */
+  nearStation(position: Vec3): string | null {
+    for (const station of STATIONS) {
+      if (this.inRange(position, `station_${station}`)) return station;
+    }
+    return null;
+  }
+
   /** The owner's own position/facing, sampled the same way the render loop samples it —
    * interpolated, not raw server state, since this is a UX hint and the small playback delay
    * (`StateInterpolator`'s ~110ms) is invisible at prompt-refresh cadence. */

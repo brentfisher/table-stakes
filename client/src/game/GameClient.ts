@@ -230,6 +230,15 @@ export interface GameClientStatus {
   pantry: PantrySnapshot | null;
   nearKitchenCommandBoard: boolean;
   showKitchenCommandBoard: boolean;
+  /**
+   * STORY-042. Which station (`'prep' | 'grill' | 'oven' | 'plating'`), by name, the owner is
+   * close enough to browse a "what to cook here" menu for, or null — straight off
+   * `InteractionController#nearStation`, same per-frame/patch-on-change discipline as
+   * `nearUpgradeTerminal`. Rendering `StationMenu` on this ALSO requires `sharedRestaurant`
+   * (AC4: co-op only) — that gate lives in `GameView.tsx`, not here, so this field stays a
+   * plain proximity read usable by any future non-co-op consumer too.
+   */
+  nearStation: string | null;
   /** STORY-034. Reported: "the two restaurants read as on top of each other" — both floors
    * already share one camera frame (PRD's "rival activity visible" requirement), but the
    * camera's normal narrow pan range (`handleFrame`'s own `setTarget` call) stays centered on
@@ -412,6 +421,7 @@ export class GameClient {
     pantry: null,
     nearKitchenCommandBoard: false,
     showKitchenCommandBoard: false,
+    nearStation: null,
     peeking: false,
     kitchenCommand: null,
     managerLedger: null,
@@ -1070,6 +1080,19 @@ export class GameClient {
 
   kitchenFocusCommand(focusId: string): void { this.network.sendInteract(`kitchen_focus_${focusId}`, 'kitchen_command'); }
 
+  /**
+   * STORY-042. `StationMenu`'s row buttons all call this — it is BYTE-IDENTICAL to what the
+   * single-tap `E — Cook X`/`E — Plate X` prompt already sends for this station
+   * (`InteractionController#stationCandidate`, `action-validator.js#resolveCookOrPlate`): same
+   * targetId, same action, no dish/ticket id anywhere in the wire payload. The server still
+   * auto-picks the oldest-queued ticket at this station regardless of which menu row was
+   * clicked — see `StationMenu.tsx`'s own header for why the menu's ranking and the server's
+   * selection are expected to usually agree without the client ever choosing a ticket.
+   */
+  cookOrPlateAt(station: string): void {
+    this.network.sendInteract(`station_${station}`, station === 'plating' ? 'plate' : 'cook');
+  }
+
   private handleFrame(dt: number): void {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
@@ -1140,6 +1163,11 @@ export class GameClient {
           nearKitchenCommandBoard,
           showKitchenCommandBoard: nearKitchenCommandBoard ? this.status.showKitchenCommandBoard : false,
         });
+      }
+      // STORY-042. Same per-frame/patch-on-change discipline as every `nearX` read above.
+      const nearStation = this.interaction.nearStation(self.position);
+      if (nearStation !== this.status.nearStation) {
+        this.patchStatus({ nearStation });
       }
     }
 

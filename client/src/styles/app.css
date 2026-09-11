@@ -383,6 +383,44 @@ body {
 .upgrade-terminal-row.is-owned .upgrade-terminal-name { color: var(--ok); }
 .upgrade-terminal-row.is-locked { opacity: 0.6; }
 
+/* STORY-042. Same proximity-panel treatment as `.upgrade-terminal` just above (opens on
+   walking into range, no `E` press first) but anchored LEFT — `.upgrade-terminal` owns the
+   right side, and although the two entities are far enough apart in the layout that both
+   panels being open at once should not happen, giving them distinct sides keeps it harmless if
+   it ever does. */
+.station-menu {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 260px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid #d99a45;
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+.station-menu h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd27a; }
+.station-menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.station-menu li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+.station-menu li:first-child { border-top: none; }
+.station-menu-name { font-weight: 600; }
+.station-menu li.no-demand .station-menu-name { color: var(--muted); font-weight: 400; }
+.station-menu-count { font-variant-numeric: tabular-nums; color: #ffd27a; font-weight: 700; }
+.station-menu li button {
+  padding: 5px 10px;
+  background: #2c4a26;
+  border: 1px solid #3f6b31;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.station-menu li button:disabled { background: #232b33; border-color: var(--border); color: var(--muted); cursor: default; }
+.station-menu-empty, .station-menu-note { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+
 /* ------------------------------------------------------------------------------------------
    STORY-014 (PRD §11 results screen + §5's 30-60s results window, 20s in the prototype
    preset). A full-bleed overlay, same `.setup` pattern: the match is over, so the restaurant
