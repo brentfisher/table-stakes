@@ -3,6 +3,7 @@
 
 import { Router } from 'express';
 import { readFileSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as matchManager from '../game/match-manager.js';
@@ -14,6 +15,39 @@ import { THREE_VERSION, PHASE_DURATIONS_MS, PHASE_PRESETS } from '../../../share
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(here, '../../package.json'), 'utf8'));
+// Same source of truth `index.js` reads for the listener itself — duplicated here rather than
+// imported so this module doesn't need a boot-order dependency on the entry point; both just
+// read the identical env var, so there's no drift to worry about.
+const PORT = Number(process.env.PORT ?? 3000);
+
+/** Returns the first non-internal IPv4 address of any network interface — i.e. this machine's
+ * LAN address, the one another device on the same Wi-Fi/network can actually reach. `null` if
+ * there isn't one (offline, or every interface is loopback-only). */
+function firstLanIPv4() {
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === 'IPv4' && !address.internal) return address.address;
+    }
+  }
+  return null;
+}
+
+/**
+ * STORY-033. `req.get('host')` reflects whatever hostname/port the INVITING player's own
+ * browser happened to use to reach the server — exactly right for them, but useless as a
+ * SHARED link: "localhost" resolves to whichever device opens it, not this machine, and the
+ * dev client's own port (Vite's :5173) may leak through the Host header when the API call was
+ * proxied rather than answered directly. Swap in this machine's real LAN IP (and the server's
+ * actual listening port, not a possibly-proxied one) whenever the request came in on
+ * localhost/127.0.0.1 — a request that already arrived on a real hostname (a LAN IP, a domain
+ * behind a real deployment) is left alone and trusted as-is.
+ */
+function inviteHost(req) {
+  const requestHost = req.hostname; // Express's `hostname` getter already strips any port.
+  if (requestHost !== 'localhost' && requestHost !== '127.0.0.1') return req.get('host');
+  const lanIp = firstLanIPv4();
+  return lanIp ? `${lanIp}:${PORT}` : req.get('host');
+}
 
 export function apiRouter() {
   const router = Router();
@@ -101,7 +135,7 @@ export function apiRouter() {
     res.status(201).json({
       ...status,
       ...(room.inviteToken
-        ? { joinUrl: `${req.protocol}://${req.get('host')}/join/${room.inviteToken}` }
+        ? { joinUrl: `${req.protocol}://${inviteHost(req)}/join/${room.inviteToken}` }
         : {}),
       ...(mode === 'solo_bot' ? { bot: true, botDifficulty } : {}),
     });
