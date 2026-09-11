@@ -77,6 +77,10 @@ import layout from '../../../../shared/game-data/restaurant-layout.json' with { 
 import { ORDER_STATES } from '../../../../shared/schemas/game-state.js';
 import { STATIONS } from '../../../../shared/schemas/messages.js';
 import { dishDemandMultiplier, neutralEventEffects } from './event-system.js';
+// STORY-043. `compareTickets` is a real top-level export precisely so this file can reuse it
+// (see that function's own comment) — `queuedTicketsAcrossStations` below is the sole reason it
+// is imported here.
+import { compareTickets } from './worker-system.js';
 import {
   ORDER_RNG_STREAM,
   STATION_CONCURRENCY,
@@ -958,6 +962,23 @@ function createKitchenFacade(match, state) {
           blockedByIngredientId: ticket.blockedByIngredientId ?? null,
         };
       });
+    },
+
+    /**
+     * STORY-043 "Kitchen order queue board" — restaurant-WIDE priority order, across every
+     * station this layout has, computed with the exact comparator `selectCookTask` already uses
+     * to pick the AI cook's next move (`worker-system.js#compareTickets`, promoted to a real
+     * export for this — see that function's own comment). Deliberately NOT filtered by
+     * `isBlockedNow`/`stationHasCapacity` the way `selectCookTask`'s own candidate list is: this
+     * is answering "what is outstanding, in priority order", not "what can start right now", so
+     * a blocked ticket stays on the board (its `blockedByIngredientId` carries through
+     * unchanged) rather than silently vanishing. No new priority math — `queuedTicketsAt`'s own
+     * per-ticket fields already carry everything `compareTickets` reads.
+     */
+    queuedTicketsAcrossStations(restaurantId) {
+      return LAYOUT_STATIONS.flatMap((station) => this.queuedTicketsAt(restaurantId, station)).sort(
+        compareTickets,
+      );
     },
 
     /** True while that station has a free pair of hands for a new ticket. */

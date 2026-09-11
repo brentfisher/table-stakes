@@ -10,6 +10,7 @@ import { InteractionController, type InteractionPrompt } from './InteractionCont
 import type {
   BotSnapshotEntry,
   CustomerSnapshot,
+  KitchenQueueBoardEntry,
   MatchCompleteMessage,
   ManagerLedgerSnapshot,
   MatchEndReason,
@@ -25,7 +26,12 @@ import type {
 // `RestaurantScene.ts`'s own `upsertCustomer`/`upsertWorker` accept — see that file's own
 // header on why `WorkerRenderState` is extracted from `RestaurantSnapshot['workers']` rather
 // than redeclared.
-import type { CustomerRenderState, ReadyDishRenderState, WorkerRenderState } from '../scenes/RestaurantScene';
+import type {
+  CustomerRenderState,
+  QueueBoardDishRenderState,
+  ReadyDishRenderState,
+  WorkerRenderState,
+} from '../scenes/RestaurantScene';
 import type { AcceptedSetup } from '../../../shared/schemas/setup-rules';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
@@ -230,6 +236,17 @@ export interface GameClientStatus {
   pantry: PantrySnapshot | null;
   nearKitchenCommandBoard: boolean;
   showKitchenCommandBoard: boolean;
+  /** STORY-043. Same proximity/toggle pair as `nearKitchenCommandBoard`/`showKitchenCommandBoard`
+   * just above, for the SECOND, distinct board this story adds — see `KitchenQueueBoard.tsx`'s
+   * own header on why it is a separate entity/panel, not a mode of the existing one. */
+  nearKitchenOrderQueueBoard: boolean;
+  showKitchenOrderQueueBoard: boolean;
+  /**
+   * STORY-043. This restaurant's own outstanding tickets, every station, already ranked by
+   * `worker-system.js#compareTickets` — straight off the private `you.kitchenQueueBoard`. `[]`,
+   * not null, before `match.kitchen` exists — see that wire field's own `.d.ts` comment.
+   */
+  kitchenQueueBoard: KitchenQueueBoardEntry[];
   /**
    * STORY-042. Which station (`'prep' | 'grill' | 'oven' | 'plating'`), by name, the owner is
    * close enough to browse a "what to cook here" menu for, or null — straight off
@@ -421,6 +438,9 @@ export class GameClient {
     pantry: null,
     nearKitchenCommandBoard: false,
     showKitchenCommandBoard: false,
+    nearKitchenOrderQueueBoard: false,
+    showKitchenOrderQueueBoard: false,
+    kitchenQueueBoard: [],
     nearStation: null,
     peeking: false,
     kitchenCommand: null,
@@ -535,6 +555,13 @@ export class GameClient {
       remove: (id) => this.scene.restaurant.removeReadyDish(id),
       ids: () => this.scene.restaurant.readyDishIds(),
     });
+    // STORY-043. Same seam, second pool — see `RestaurantScene.ts#upsertQueueBoardDish`'s own
+    // header on why this one is rank-indexed rather than held-slot like `readyDishes` above.
+    this.registry.register<QueueBoardDishRenderState & { id: string }>('queueBoardDishes', {
+      upsert: (state) => this.scene.restaurant.upsertQueueBoardDish(state),
+      remove: (id) => this.scene.restaurant.removeQueueBoardDish(id),
+      ids: () => this.scene.restaurant.queueBoardDishIds(),
+    });
 
     this.network.onStatusChange = (connection) => this.patchStatus({ connection });
     this.network.onMessage = (message) => this.handleMessage(message);
@@ -556,6 +583,10 @@ export class GameClient {
       }
       if (this.status.nearKitchenCommandBoard) {
         this.patchStatus({ showKitchenCommandBoard: !this.status.showKitchenCommandBoard });
+        return;
+      }
+      if (this.status.nearKitchenOrderQueueBoard) {
+        this.patchStatus({ showKitchenOrderQueueBoard: !this.status.showKitchenOrderQueueBoard });
         return;
       }
       if (this.status.nearServiceStation) {
@@ -687,6 +718,7 @@ export class GameClient {
             pantry?: PantrySnapshot | null;
             kitchenCommand?: GameClientStatus['kitchenCommand'];
             managerLedger?: ManagerLedgerSnapshot | null;
+            kitchenQueueBoard?: KitchenQueueBoardEntry[];
           }
         | null;
       // STORY-039. `you.restaurantId` off the wire — `playerId` for every pre-existing mode, the
@@ -848,6 +880,23 @@ export class GameClient {
         })),
       );
 
+      // STORY-043. `you.kitchenQueueBoard` arrives ALREADY ranked (server-side
+      // `worker-system.js#compareTickets`, via `queuedTicketsAcrossStations`) — `rank` here is
+      // just this array's own index, not a re-ranking (Pattern 4/11: the client labels
+      // already-ordered state, it does not compute order). No restaurant-id filtering needed,
+      // unlike `selfReadyOrders`/`orders` above: `you.kitchenQueueBoard` is already viewer-scoped
+      // to this restaurant server-side (`match.js#toSnapshot`'s own comment).
+      const kitchenQueueBoard = you?.kitchenQueueBoard ?? [];
+      this.registry.reconcile(
+        'queueBoardDishes',
+        kitchenQueueBoard.map((entry, rank) => ({
+          id: entry.ticketId,
+          ticketId: entry.ticketId,
+          dishId: entry.dishId,
+          rank,
+        })),
+      );
+
       this.scene.restaurant.updateFloorState({
         selfRestaurantId: restaurantId,
         restaurants,
@@ -949,6 +998,10 @@ export class GameClient {
         serviceStation,
         kitchenCommand: (you?.kitchenCommand ?? null) as GameClientStatus['kitchenCommand'],
         managerLedger: you?.managerLedger ?? null,
+        // STORY-043. Same array `kitchenQueueBoard` above (the const feeding the scene reconcile)
+        // reads — reused, not recomputed, so the panel and the scene pool can never disagree on
+        // which tickets exist or their order.
+        kitchenQueueBoard,
         ...(serviceStationNotice ? { serviceStationNotice } : {}),
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.
@@ -1168,6 +1221,14 @@ export class GameClient {
       const nearStation = this.interaction.nearStation(self.position);
       if (nearStation !== this.status.nearStation) {
         this.patchStatus({ nearStation });
+      }
+      // STORY-043. Same pattern as `nearKitchenCommandBoard` just above, for the second board.
+      const nearKitchenOrderQueueBoard = this.interaction.inRangeOf(self.position, 'kitchen_order_queue_board');
+      if (nearKitchenOrderQueueBoard !== this.status.nearKitchenOrderQueueBoard) {
+        this.patchStatus({
+          nearKitchenOrderQueueBoard,
+          showKitchenOrderQueueBoard: nearKitchenOrderQueueBoard ? this.status.showKitchenOrderQueueBoard : false,
+        });
       }
     }
 

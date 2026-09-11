@@ -34,6 +34,7 @@ import { FrontDoorBoard } from '../ui/FrontDoorBoard';
 import { ServiceStationBoard } from '../ui/ServiceStationBoard';
 import { PantryBoard } from '../ui/PantryBoard';
 import { KitchenCommandBoard } from '../ui/KitchenCommandBoard';
+import { KitchenQueueBoard } from '../ui/KitchenQueueBoard';
 import { StationMenu } from '../ui/StationMenu';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
@@ -268,6 +269,13 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       {status?.nearKitchenCommandBoard && status.showKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <KitchenCommandBoard status={status} onFocus={(focusId) => clientRef.current?.kitchenFocusCommand(focusId)} />
       ) : null}
+      {/* STORY-043. Renders in every mode (Decision 72 in this story's own `design.md`) — not
+          gated on `sharedRestaurant` like `StationMenu` below, since a staffed match's board is
+          still a truthful, harmless read of PRD §17 rules 2/3, just not the ONLY thing directing
+          play there the way it is in co-op. */}
+      {status?.nearKitchenOrderQueueBoard && status.showKitchenOrderQueueBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <KitchenQueueBoard status={status} />
+      ) : null}
       {/* STORY-042 AC4: co-op only (`sharedRestaurant`) — a non-co-op match keeps its
           single-tap `E — Cook X`/`E — Plate X` prompt below (`status?.prompt`) untouched, since
           `nearStation` is computed unconditionally but only rendered here under this extra
@@ -314,6 +322,8 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
         <div className="interact-prompt"><kbd>E</kbd>Manage Pantry</div>
       ) : status?.nearKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Direct Kitchen</div>
+      ) : status?.nearKitchenOrderQueueBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <div className="interact-prompt"><kbd>E</kbd>Read Order Queue</div>
       ) : status?.nearServiceStation && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Manage Dining Room</div>
       ) : status?.nearHostStand && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (

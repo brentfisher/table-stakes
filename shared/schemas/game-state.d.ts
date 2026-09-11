@@ -385,6 +385,31 @@ export interface OrderSnapshot {
 }
 
 /**
+ * `match_snapshot.you.kitchenQueueBoard[]` — STORY-043 "Kitchen order queue board". One entry per
+ * queued ticket, RESTAURANT-WIDE (every station, not one) already ranked by
+ * `worker-system.js#compareTickets` (PRD §17 rules 2/3: queue-age bucket, then patience risk) —
+ * index 0 is the highest-priority outstanding ticket in the whole kitchen. Field-for-field
+ * identical to `order-system.js#queuedTicketsAt`'s own per-station shape; this is the first
+ * place `queueAgeMs`/`patienceRisk` are published at all (`OrderSnapshot` carries neither — see
+ * `StationMenu.tsx`'s own comment on why STORY-042 could not reconstruct them). Server-computed
+ * by `order-system.js`'s `queuedTicketsAcrossStations`, viewer-scoped the same way `kitchenCommand`
+ * is (own restaurant only — PRD §18/Decision 16).
+ */
+export interface KitchenQueueBoardEntry {
+  ticketId: string;
+  orderId: string;
+  dishId: string;
+  price: number;
+  station: Station;
+  currentStepIndex: number;
+  totalSteps: number;
+  remainingProductionMs: number;
+  queueAgeMs: number;
+  patienceRisk: number;
+  blockedByIngredientId: string | null;
+}
+
+/**
  * `match.eventEffects` — the combined effect of every event active RIGHT NOW, published onto
  * match state every tick by `server/src/game/systems/event-system.js` (STORY-011).
  *

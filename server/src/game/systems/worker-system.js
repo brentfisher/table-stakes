@@ -324,7 +324,18 @@ function urgencyBucket(ticket) {
   return Math.floor(ticket.queueAgeMs / WORKER_TICKET_URGENCY_BUCKET_MS);
 }
 
-function compareTickets(a, b) {
+/**
+ * STORY-043. A REAL top-level export, not a reach into `_internal` below (whose own header
+ * forbids that) — deliberately promoted, not a workaround. This is a pure function over
+ * ticket-shaped data (`queueAgeMs`, `patienceRisk`, `ticketId`); it closes over nothing from
+ * `match`/`state`, so exporting it changes nothing about its behavior or couples nothing new to
+ * worker-system.js internals. What justifies the promotion NOW: `order-system.js`'s
+ * `queuedTicketsAcrossStations` (the kitchen order queue board's facade) publishes this exact
+ * ordering on the wire, which makes rules 2/3 a snapshot contract other code legitimately reuses
+ * — not the test-only peek into private AI state `_internal` exists for. `_internal.compareTickets`
+ * below still points at this same function; `scripts/check-workers.mjs` is unaffected.
+ */
+export function compareTickets(a, b) {
   const bucketDelta = urgencyBucket(b) - urgencyBucket(a);
   if (bucketDelta !== 0) return bucketDelta; // rule 2: older bucket first
   if (b.patienceRisk !== a.patienceRisk) return b.patienceRisk - a.patienceRisk; // rule 3
