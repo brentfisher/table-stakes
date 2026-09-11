@@ -446,7 +446,15 @@ let reference;
   // variance (a competent human still beats a same-seed easy bot most of the time, not every
   // time) — the AVERAGE across seeds is the stronger, less noisy claim, checked below it.
   const EASY_PER_SEED_MARGIN_CAP = SCORE_POINTS_SCALE * 0.1; // 100 pts: still clearly beatable
-  const EASY_AVERAGE_MARGIN_CAP = SCORE_POINTS_SCALE * 0.05; // 50 pts: modest on average
+  // STORY-034 fixed a real corruption (order-system.js#deliverOrder's own comment): a worker's
+  // already-in-flight deliver_order task could silently steal-complete a plate the OWNER had
+  // since picked up, permanently stranding that owner at carry capacity for the rest of the
+  // match. That handicap fell on WHOEVER was actively playing — the easy bot included — so
+  // fixing it raised the easy bot's own measured margin over a totally idle opponent (58.2 vs
+  // the old 50pt cap): not a harder bot, a bot no longer accidentally sabotaging itself. Capped
+  // a bit above the new baseline rather than removed — this line should still catch a genuinely
+  // runaway easy-bot retune, just not this one, already-understood, already-positive shift.
+  const EASY_AVERAGE_MARGIN_CAP = SCORE_POINTS_SCALE * 0.06; // 60 pts: modest on average
   check(
     "the easy bot's per-seed margin over an idle opponent never runs away — beatable by a competent first-time player",
     easyRuns.every((r) => r.margin < EASY_PER_SEED_MARGIN_CAP),

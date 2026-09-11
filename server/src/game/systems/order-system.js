@@ -1048,10 +1048,27 @@ function createKitchenFacade(match, state) {
       return true;
     },
 
-    /** The plate reached the table. PRD §17 server rule 1. */
-    deliverOrder(orderId) {
+    /**
+     * The plate reached the table. PRD §17 server rule 1.
+     *
+     * STORY-034. `requireUnclaimed` is the fix for a real corruption: `claimOrder` (the owner's
+     * `pickup`) never changed `order.state` away from `'ready'`, only set `claimedBy` — so a
+     * server WORKER's `deliver_order` task, already in flight toward the same plate when the
+     * owner claimed it, still saw `state === 'ready'` at its own completion and delivered it out
+     * from under the owner, who kept it in `carrying[]` forever (the owner's OWN `carrying`
+     * clears only in `resolveDeliver`/`resolveDropCarry`, neither of which a worker's completion
+     * touches). Reported symptoms this produces: the owner permanently stuck at carry capacity
+     * (nothing new ever offers `pickup` again — `resolveCookOrPlate`... `resolvePickup`'s first
+     * check is `carrying.length >= capacity`), and a `deliver` prompt for a table whose original
+     * party has since paid and left (the order is a stranded ghost, its table long since freed
+     * for someone else). The owner's OWN `resolveDeliver` call (the only other caller) passes
+     * nothing — it already knows it holds the claim, from its own `carrying[]`, so it is exempt
+     * by default; only the worker path opts into this check.
+     */
+    deliverOrder(orderId, { requireUnclaimed = false } = {}) {
       const found = findOrder(state, orderId);
       if (!found) return false;
+      if (requireUnclaimed && found.order.claimedBy) return false;
       return deliverOrder(match, found.restaurant, found.order);
     },
   };
