@@ -89,7 +89,7 @@ function goodSubmission(overrides = {}) {
     ],
     addons: [{ dishId: 'espresso', price: 5 }],
     startingUpgradeId: 'serving_tray_1',
-    staffAssignments: { cook_1: 'grill', server_1: 'dining_room' },
+    staffAssignments: { cook_1: 'grill', server_1: 'dining_room', host_1: 'host_stand' },
     startingInventory: { beef: 20, bun: 20, cheese: 20, lettuce: 10 },
     policyId: 'friendly_staff',
     ...overrides,
@@ -125,7 +125,7 @@ check(
     ],
     addons: [{ dishId: 'espresso', price: 5 }],
     startingUpgradeId: 'serving_tray_1',
-    staffAssignments: { cook_1: 'grill', server_1: 'dining_room' },
+    staffAssignments: { cook_1: 'grill', server_1: 'dining_room', host_1: 'host_stand' },
   };
   const shape = validateClientMessage(prdExample);
   const authority = validateSetupSubmission(prdExample);
@@ -527,7 +527,7 @@ registerSystem(setupSystem);
     ],
     addons: [{ dishId: 'cheesecake', price: 9.99 }],
     startingUpgradeId: 'pantry_shelves_1',
-    staffAssignments: { cook_1: 'oven', server_1: 'pass' },
+    staffAssignments: { cook_1: 'oven', server_1: 'pass', host_1: 'host_stand' },
     startingInventory: { steak: 12, potatoes: 20 },
     policyId: 'house_special',
     policyDishId: 'steak_frites',
@@ -707,7 +707,7 @@ async function overTheWire() {
       ],
       addons: [{ dishId: 'cheesecake', price: 8.88 }],
       startingUpgradeId: 'maintenance_plan_1',
-      staffAssignments: { cook_1: 'oven', server_1: 'pass' },
+      staffAssignments: { cook_1: 'oven', server_1: 'pass', host_1: 'host_stand' },
       startingInventory: { steak: 10 },
       policyId: 'friendly_staff',
     }),

@@ -798,7 +798,7 @@ const ticketsOf = (match, restaurantId = 'p1') => {
     menu: PROBE_MAINS,
     addons: [],
     startingUpgradeId: null,
-    staffAssignments: { cook_1: 'prep', server_1: 'dining_room' },
+    staffAssignments: { cook_1: 'prep', server_1: 'dining_room', host_1: 'host_stand' },
     startingInventory: { beef: 20, bun: 20, cheese: 20, lettuce: 10 },
     policyId: null,
   };

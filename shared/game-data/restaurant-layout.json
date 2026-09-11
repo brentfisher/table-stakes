@@ -39,7 +39,7 @@
     "customerEntry": [-7, 0, -11]
   },
   "staff": {
-    "_comment": "PRD §7 'Staffing setup' — the initial worker roster and the posts setup_submit's `staffAssignments` may name. §7's first playable version is '1 cook, 1 server, 1 owner-player', so the roster is two hired workers; the owner is the player and is never assigned a post. `posts` is the closed vocabulary of assignable positions: the four kitchen stations (each pointing at the station entity above) plus the three front-of-house posts. `dining_room` is spelled exactly as PRD §12's `setup_submit` example spells it, which is why the post id and the zone id differ. Worker roles come from WORKER_ROLES in shared/schemas/game-state.js; `prep_worker` and `host` are declared there but not rostered for MVP, per §7 ('Optional for MVP; may be abstracted initially').",
+    "_comment": "PRD §7 'Staffing setup' — the initial worker roster and the posts setup_submit's `staffAssignments` may name. `posts` is the closed vocabulary of assignable positions: the four kitchen stations (each pointing at the station entity above) plus the three front-of-house posts. `dining_room` is spelled exactly as PRD §12's `setup_submit` example spells it, which is why the post id and the zone id differ. Worker roles come from WORKER_ROLES in shared/schemas/game-state.js. STORY-034 rostered `host_1`, revising §7's original 'abstract host behavior' MVP call — reported UX gap: the owner having to personally walk to the host stand for every seating read as the server's job silently missing a body. The owner can still seat a party directly (the pre-existing `seat` interact at the host stand is unchanged) whenever the host is already busy walking another party over — same shared-claim mechanism (`match.floor.seatParty`/`waitingParties`) that already let the owner and server race for the same party before this story. `prep_worker` remains unrostered, per §7 ('Optional for MVP; may be abstracted initially') — nothing in this story's report asked for a fourth kitchen body.",
     "posts": [
       { "id": "prep", "label": "Prep Station", "station": "prep", "entityId": "station_prep" },
       { "id": "grill", "label": "Grill", "station": "grill", "entityId": "station_grill" },
@@ -63,6 +63,13 @@
         "role": "server",
         "description": "Seats, takes orders, delivers food, clears tables. Can be overwhelmed by a large dining room.",
         "posts": ["dining_room", "pass", "host_stand"]
+      },
+      {
+        "id": "host_1",
+        "name": "Host",
+        "role": "host",
+        "description": "Greets and seats waiting parties at the host stand, freeing the server for the dining room.",
+        "posts": ["host_stand"]
       }
     ]
   }
