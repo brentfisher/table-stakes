@@ -43,7 +43,7 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-038 | [Three-Stage Ready-Up Menu](STORY-038-three-stage-ready-up-menu.md) | complete |
 | STORY-039 | [Co-op match mode and invite entry point](STORY-039-coop-match-mode-and-invite.md) | pr-opened |
 | STORY-040 | [No automated staff in co-op mode; lock staff-only upgrades](STORY-040-coop-no-automated-staff.md) | in progress |
-| STORY-041 | [Player-driven timed cooking, with a "waiting to cook" indicator](STORY-041-coop-timed-cooking-and-waiting-indicator.md) | in progress |
+| STORY-041 | [Player-driven timed cooking, with a "waiting to cook" indicator](STORY-041-coop-timed-cooking-and-waiting-indicator.md) | pr-opened |
 | STORY-042 | [Station "what to cook" menu, suggested from pending orders](STORY-042-coop-what-to-cook-menu.md) | pending |
 | STORY-043 | [Kitchen order queue board, with real dish models](STORY-043-coop-kitchen-order-queue-board.md) | pending |
 | STORY-044 | [Animate the district's full customer population walking to their chosen restaurant, or neither](STORY-044-district-population-walk-and-render.md) | pending |
