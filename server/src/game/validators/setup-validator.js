@@ -76,6 +76,10 @@ function resolveContext({ catalogue = shippedCatalogue, layout, startingCash } =
 export function validateSetupSubmission(message, options = {}) {
   const { catalogue, layout, startingCash } = resolveContext(options);
   const phase = options.phase ?? 'setup';
+  // STORY-040. A co-op restaurant (`Match#sharedRestaurant`) has no roster — the two players
+  // ARE the staff — so `staffAssignments` is legitimately empty for it. Defaults to `false` so
+  // every pre-existing (non-coop) caller is byte-identical to before this story.
+  const isCoop = options.sharedRestaurant === true;
 
   // PRD §7: "Players can alter the menu only during setup in MVP", and §20 puts dynamic menu
   // changes during service out of scope. The phase check is here rather than only in the
@@ -227,23 +231,34 @@ export function validateSetupSubmission(message, options = {}) {
   }
 
   // --- 5. worker station assignments, PRD §7 "Staffing setup" -----------------------------
+  // STORY-040. A co-op restaurant has no roster to assign at all — the layout's `staff.roster`
+  // is still the mandatory list every OTHER mode reads here, but a co-op submission is not
+  // "every other mode with an incomplete roster"; it is legitimately staff-less. Skip both the
+  // per-entry legality check and the "every roster worker needs a post" completeness check, and
+  // ignore whatever `staffAssignments` the client sent — a co-op restaurant's stored assignments
+  // are always `{}`, never a hostile client's guess at phantom posts (harmless either way, since
+  // `worker-system.js#buildStaff` gates on `match.sharedRestaurant` and ignores this object
+  // entirely for a co-op restaurant, but storing `{}` keeps `player.setup.staffAssignments`
+  // honest for anything that reads it directly, e.g. this story's own check script).
   const roster = rosterOf(layout);
-  const rosterById = new Map(roster.map((worker) => [worker.id, worker]));
-  for (const [workerId, post] of Object.entries(message.staffAssignments)) {
-    const worker = rosterById.get(workerId);
-    if (!worker) {
-      return reject('unknown_worker', `no worker "${workerId}" on this restaurant's roster`);
+  if (!isCoop) {
+    const rosterById = new Map(roster.map((worker) => [worker.id, worker]));
+    for (const [workerId, post] of Object.entries(message.staffAssignments)) {
+      const worker = rosterById.get(workerId);
+      if (!worker) {
+        return reject('unknown_worker', `no worker "${workerId}" on this restaurant's roster`);
+      }
+      if (!worker.posts.includes(post)) {
+        return reject(
+          'invalid_station_assignment',
+          `"${workerId}" cannot work "${post}" — allowed: ${worker.posts.join(', ')}`,
+        );
+      }
     }
-    if (!worker.posts.includes(post)) {
-      return reject(
-        'invalid_station_assignment',
-        `"${workerId}" cannot work "${post}" — allowed: ${worker.posts.join(', ')}`,
-      );
-    }
-  }
-  for (const worker of roster) {
-    if (!Object.prototype.hasOwnProperty.call(message.staffAssignments, worker.id)) {
-      return reject('worker_unassigned', `"${worker.id}" has no post; every worker needs one`);
+    for (const worker of roster) {
+      if (!Object.prototype.hasOwnProperty.call(message.staffAssignments, worker.id)) {
+        return reject('worker_unassigned', `"${worker.id}" has no post; every worker needs one`);
+      }
     }
   }
 
@@ -271,7 +286,7 @@ export function validateSetupSubmission(message, options = {}) {
       menu: normalizedMains,
       addons: normalizedAddons,
       startingUpgradeId: upgradeId,
-      staffAssignments: { ...message.staffAssignments },
+      staffAssignments: isCoop ? {} : { ...message.staffAssignments },
       startingInventory: normalizedInventory,
       policyId,
       policyDishId,
@@ -307,7 +322,14 @@ export function acceptSetupSubmission(match, playerId, message, options = {}) {
     return reject('wrong_phase', 'the menu is locked; it cannot be changed after service begins');
   }
 
-  const result = validateSetupSubmission(message, { ...options, phase: match.phase });
+  // STORY-040. Derived from the live match, not passed in by the caller — `message-router.js`
+  // does not (and should not) need to know co-op exists as a concept; `match.sharedRestaurant`
+  // is already the one seam STORY-039 established for exactly this kind of mode check.
+  const result = validateSetupSubmission(message, {
+    ...options,
+    phase: match.phase,
+    sharedRestaurant: match.sharedRestaurant,
+  });
   if (!result.ok) return result;
 
   // Nothing above this line has touched the match.
@@ -340,15 +362,20 @@ export function acceptSetupSubmission(match, playerId, message, options = {}) {
  */
 export function defaultSubmission(options = {}) {
   const { catalogue, layout, startingCash } = resolveContext(options);
+  // STORY-040. An idle player in a co-op match still gets a working restaurant — same as every
+  // other mode — but "working" means an empty roster, not the mandatory one every other mode
+  // falls back to. Threaded through to `validateSetupSubmission` below exactly like a real
+  // submission's `sharedRestaurant` option is.
+  const isCoop = options.sharedRestaurant === true;
   const mains = selectableMains(catalogue.dishes, layout).slice(0, MENU_MAIN_SLOTS);
   const message = {
     type: 'setup_submit',
     menu: mains.map((dish) => ({ dishId: dish.id, price: dish.suggestedPrice })),
     addons: [],
     startingUpgradeId: null,
-    staffAssignments: Object.fromEntries(
-      rosterOf(layout).map((worker) => [worker.id, worker.posts[0]]),
-    ),
+    staffAssignments: isCoop
+      ? {}
+      : Object.fromEntries(rosterOf(layout).map((worker) => [worker.id, worker.posts[0]])),
     startingInventory: defaultInventoryAllocation(mains, catalogue.ingredients, {
       cash: startingCash,
       cashShare: STARTING_INVENTORY_DEFAULT_CASH_SHARE,
@@ -358,7 +385,12 @@ export function defaultSubmission(options = {}) {
     policyId: null,
   };
 
-  const result = validateSetupSubmission(message, { catalogue, layout, startingCash });
+  const result = validateSetupSubmission(message, {
+    catalogue,
+    layout,
+    startingCash,
+    sharedRestaurant: isCoop,
+  });
   if (!result.ok) {
     // The catalogue cannot produce three producible mains for this layout. That is a content
     // problem, and a match cannot run without a menu, so say so loudly rather than starting

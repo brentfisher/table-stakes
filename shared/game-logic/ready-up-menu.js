@@ -23,6 +23,11 @@ export function buildReadyUpPayload({
   dishes,
   ingredients,
   layout,
+  // STORY-040. A co-op restaurant (`Match#sharedRestaurant`) has no roster at all — the two
+  // players ARE the staff — so it gets an empty `staffAssignments` instead of one post per
+  // `rosterOf(layout)` entry. Defaults to `false` so every pre-existing (non-coop) caller of
+  // this builder is byte-identical to before this story.
+  sharedRestaurant = false,
 }) {
   const dishById = new Map(dishes.map((dish) => [dish.id, dish]));
   const selected = [...mainIds, ...extraIds]
@@ -43,9 +48,12 @@ export function buildReadyUpPayload({
     menu: mainIds.map(slot),
     addons: extraIds.map(slot),
     startingUpgradeId: null,
-    staffAssignments: Object.fromEntries(
-      rosterOf(layout).map((worker) => [worker.id, worker.posts[0]]),
-    ),
+    // STORY-040. Empty roster in, empty assignments out — see the `sharedRestaurant` param
+    // comment above. `setup-validator.js`'s `worker_unassigned` rejection is co-op-aware for
+    // exactly the same reason, so this empty object is a legal submission, not an incomplete one.
+    staffAssignments: sharedRestaurant
+      ? {}
+      : Object.fromEntries(rosterOf(layout).map((worker) => [worker.id, worker.posts[0]])),
     startingInventory,
     policyId: null,
     policyDishId: null,

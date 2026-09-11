@@ -35,7 +35,9 @@ export const setupSystem = {
 
     for (const player of match.players.values()) {
       if (!player.setup) {
-        player.setup = defaultSubmission();
+        // STORY-040. A co-op match's idle-player fallback gets the same empty roster a real
+        // co-op submission does — see `defaultSubmission`'s own `sharedRestaurant` comment.
+        player.setup = defaultSubmission({ sharedRestaurant: match.sharedRestaurant });
         player.setup.submittedAtMs = Math.round(match.elapsedMs);
         console.log(
           `[setup] ${match.id} ${player.playerId} never submitted — default menu applied ` +

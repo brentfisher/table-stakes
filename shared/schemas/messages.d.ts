@@ -404,6 +404,9 @@ export interface MatchSnapshotMessage {
   serverTime: number;
   matchPhase: MatchPhase;
   timeRemainingMs: number | null;
+  /** STORY-040. `Match#sharedRestaurant` — public and identical for both co-op seats. See
+   * `match.js#toSnapshot`'s own comment on why this is not under `you`. */
+  sharedRestaurant: boolean;
   /** The §12 step-5 public market data. Null during `lobby`, set from `market_reveal` on. */
   market: PublicMarket | null;
   /** The viewer's own private slice — see SnapshotViewer. */
