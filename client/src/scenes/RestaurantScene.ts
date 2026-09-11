@@ -237,6 +237,15 @@ const CARRY_TARGET_CHIP_Y = 2.05;
  * remain visible without geometry overlap" — overlapping would violate it outright, a briefly
  * uncounted 9th plate would not. See `claimReadyDishSlot`. */
 const MAX_READY_DISH_SLOTS = 8;
+
+/** How many spark sprites orbit the ready bell (`buildReadyBell`) while it's active — enough to
+ * read as "sparkling", cheap enough to animate every frame with a plain per-sprite sin(). */
+const READY_BELL_SPARK_COUNT = 4;
+/** The bell's bounce rate/height (`updateReadyBellAnimation`) — a real service bell dings,
+ * settles, dings again, rather than bobbing continuously, which is what makes it still catch the
+ * eye on a long glance rather than reading as background scenery motion. */
+const READY_BELL_JUMP_HZ = 1.6;
+const READY_BELL_JUMP_HEIGHT = 0.16;
 /** Local-space X range across the service pass's own 16-unit width (`buildEntity`'s
  * `service_pass` box), leaving a margin so a plate's own radius never clips past the pass edge. */
 const READY_DISH_SLOT_X_RANGE = 6.5;
@@ -554,6 +563,13 @@ export class RestaurantScene {
    * see `readyDishSlotPosition`'s own comment on why slots are stable, not reflowed. */
   private readonly readyDishSlots = new Map<string, number>();
   private readonly readyDishSlotUsed: boolean[] = new Array(MAX_READY_DISH_SLOTS).fill(false);
+  /** The counter bell (`buildReadyBell`) — replaces the ticket-ready screen toast with a
+   * diegetic, hard-to-miss cue: it bounces and sparks whenever `readyDishes` is non-empty, and
+   * sits still and dark otherwise. One fixed fixture, not spawn/despawn per ticket like
+   * `readyDishes` above — it signals "something is ready", not which ticket. */
+  private readyBell!: THREE.Group;
+  private readyBellActive = false;
+  private readonly readyBellSparks: THREE.Sprite[] = [];
   /** The rival's own "table" boxes and sign, captured from `buildCompetitor()` so
    * `updateRivalActivity` can recolor them without rebuilding the shell. */
   private readonly competitorTables: THREE.Mesh[] = [];
@@ -599,6 +615,7 @@ export class RestaurantScene {
     this.competitorSign = this.competitor.getObjectByName('competitor_sign') as THREE.Mesh;
 
     this.buildWayfinding();
+    this.buildReadyBell();
     this.buildStreetscape();
     this.scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
@@ -807,6 +824,66 @@ export class RestaurantScene {
     const rival = createLabelSprite('RIVAL', 0xf0c2ad, 1.15);
     rival.position.set(0, 3.8, -26);
     this.competitor.add(rival);
+  }
+
+  /** Reported: the ticket-ready screen toast was easy to miss/ignore mid-rush. This builds a
+   * physical bell on the counter instead — `ArcadeToast.tsx` no longer queues a toast for
+   * `ticket-ready` at all, and `setReadyBellActive`/`updateReadyBellAnimation` below make the
+   * bell itself the "something is ready" cue. Positioned past `READY_DISH_SLOT_X_RANGE`'s own
+   * span so it never overlaps a plate proxy, however many tickets are live. */
+  private buildReadyBell(): void {
+    const group = new THREE.Group();
+    group.name = 'ready_bell';
+
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.38, 0.08, 20),
+      new THREE.MeshStandardMaterial({ color: 0x8a6a34, roughness: 0.4, metalness: 0.6 }),
+    );
+    base.position.y = 0.04;
+    group.add(base);
+
+    // A sphere clipped to its top hemisphere (thetaLength = PI/2) is a dome — a real call
+    // bell's body — sitting flat-side-down on `base` without needing a lathe geometry.
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.32, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0xd8ad3f, roughness: 0.3, metalness: 0.75 }),
+    );
+    dome.position.y = 0.08;
+    group.add(dome);
+
+    const knob = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf3d979, roughness: 0.25, metalness: 0.8 }),
+    );
+    knob.position.y = 0.4;
+    group.add(knob);
+
+    for (let i = 0; i < READY_BELL_SPARK_COUNT; i += 1) {
+      const spark = createGlyphSprite('•', STATE_COLORS.healthy, 0.22);
+      spark.visible = false;
+      spark.name = `ready_bell_spark_${i}`;
+      group.add(spark);
+      this.readyBellSparks.push(spark);
+    }
+
+    group.position.set(-7.3, 0.45, -0.1);
+    this.readyBell = group;
+    const passMesh = this.scene.getObjectByName('service_pass');
+    if (passMesh) passMesh.add(group);
+    else this.scene.add(group); // defensive: layout has always declared exactly one service_pass
+  }
+
+  /** Toggled by `upsertReadyDish`/`removeReadyDish` off `readyDishes.size` — see `buildReadyBell`'s
+   * own comment. A no-op when the state hasn't actually changed, so a snapshot with one ready
+   * ticket replacing another doesn't reset the bounce/spark phase mid-animation. */
+  private setReadyBellActive(active: boolean): void {
+    if (this.readyBellActive === active) return;
+    this.readyBellActive = active;
+    for (const spark of this.readyBellSparks) spark.visible = active;
+    if (!active) {
+      this.readyBell.position.y = 0.45;
+      this.readyBell.rotation.z = 0;
+    }
   }
 
   private buildStreetscape(): void {
@@ -1298,6 +1375,8 @@ export class RestaurantScene {
     const coldLabel = group.getObjectByName('label_cold') as THREE.Sprite;
     readyLabel.visible = !stale;
     coldLabel.visible = stale;
+
+    this.setReadyBellActive(true);
   }
 
   removeReadyDish(ticketId: string): void {
@@ -1307,6 +1386,7 @@ export class RestaurantScene {
     disposeFoodObject(group);
     this.readyDishes.delete(ticketId);
     this.releaseReadyDishSlot(ticketId);
+    this.setReadyBellActive(this.readyDishes.size > 0);
   }
 
   readyDishIds(): string[] {
@@ -1329,6 +1409,26 @@ export class RestaurantScene {
       const pulse = 1.25 + Math.sin(elapsedSeconds * 3.2) * 0.12;
       ring.scale.set(pulse, pulse, 1);
     }
+  }
+
+  /** The counter bell's bounce+spark while `readyBellActive` — see `buildReadyBell`'s own
+   * comment. `Math.max(0, sin(...))` clips the bounce to a "ding, settle, ding" cadence (half a
+   * period of motion, half a period flat) rather than a continuous bob that fades into
+   * background motion on a long glance. A no-op while inactive, same idle-cost discipline as
+   * `updateReadyDishAnimations`. */
+  updateReadyBellAnimation(elapsedSeconds: number): void {
+    if (!this.readyBellActive) return;
+    const phase = elapsedSeconds * READY_BELL_JUMP_HZ;
+    const bounce = Math.max(0, Math.sin(phase));
+    this.readyBell.position.y = 0.45 + bounce * READY_BELL_JUMP_HEIGHT;
+    this.readyBell.rotation.z = bounce * 0.18;
+
+    this.readyBellSparks.forEach((spark, i) => {
+      const t = elapsedSeconds * 2.4 + (i / this.readyBellSparks.length) * Math.PI * 2;
+      const radius = 0.42 + bounce * 0.12;
+      spark.position.set(Math.cos(t) * radius, 0.42 + Math.sin(t * 1.7) * 0.18, Math.sin(t) * radius);
+      (spark.material as THREE.SpriteMaterial).opacity = 0.5 + Math.sin(elapsedSeconds * 5 + i) * 0.5;
+    });
   }
 
   // --- STORY-031: destination-table target marker (chip + arrow + pulsing ring) --------------
@@ -1889,6 +1989,7 @@ export class RestaurantScene {
     this.readyDishes.clear();
     this.readyDishSlots.clear();
     this.readyDishSlotUsed.fill(false);
+    this.readyBellSparks.length = 0;
     this.carriedDishes.clear();
     this.carryTargets.clear();
     this.scene.clear();
