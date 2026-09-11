@@ -117,6 +117,13 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
     <div className="results">
       <div className="results-top">
         <div>
+          {/* STORY-034. Reported: the match-end transition read as the screen "going black" —
+              this backdrop (`ResultsScene.ts`) is a deliberately dim "curtain call" stage, and
+              the win/loss headline it sits behind was the same 26px size as every other label
+              on this panel, easy to miss on the first glance that matters most. A short, large,
+              unmissable "GAME OVER" kicker makes the state change itself obvious before the
+              reader has processed anything else on the panel. */}
+          <p className="results-game-over">Game Over</p>
           <h1 className={`results-outcome results-outcome--${complete.winnerPlayerId === selfId ? 'win' : complete.winnerPlayerId === null ? 'draw' : 'loss'}`}>
             {outcome}
           </h1>
