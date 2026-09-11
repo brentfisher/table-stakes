@@ -25,6 +25,7 @@
 
     { "id": "service_pass", "type": "service_pass", "position": [0, 0, 2] },
     { "id": "kitchen_command_board", "type": "kitchen_command_board", "position": [2.5, 0, 2], "interactionRadius": 1.6, "generated": true },
+    { "id": "kitchen_order_queue_board", "type": "kitchen_order_queue_board", "position": [-3, 0, 10.8], "interactionRadius": 1.8, "generated": true },
 
     { "id": "station_prep", "type": "station", "station": "prep", "position": [-6, 0, 5] },
     { "id": "station_grill", "type": "station", "station": "grill", "position": [-2, 0, 5] },

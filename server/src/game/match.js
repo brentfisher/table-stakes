@@ -649,6 +649,11 @@ export class Match {
             // payroll and this restaurant's conversion history, so it follows those sources
             // under `you` rather than leaking through the public restaurant array.
             managerLedger: this.managerLedger?.privateFor(viewerRestaurantId) ?? null,
+            // STORY-043. Restaurant-wide ranked ticket queue — same viewer-scoping reasoning as
+            // `kitchenCommand` just above (own restaurant's kitchen only, never the rival's).
+            // `[]`, not `null` (unlike `kitchenCommand`): see `GameClientStatus.kitchenQueueBoard`'s
+            // own comment on why this field has no meaningful null/empty distinction to carry.
+            kitchenQueueBoard: this.kitchen?.queuedTicketsAcrossStations(viewerRestaurantId) ?? [],
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already

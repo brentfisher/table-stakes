@@ -3,6 +3,7 @@
 
 import type {
   CustomerSnapshot,
+  KitchenQueueBoardEntry,
   OrderSnapshot,
   PlayerSnapshot,
   RestaurantSnapshot,
@@ -16,6 +17,7 @@ import type { ManagerConstraintId, ManagerConstraintSnapshot } from '../game-log
 // path breaks — design Decision 7's "widen, never rename" applied to the type surface.
 export type {
   CustomerSnapshot,
+  KitchenQueueBoardEntry,
   OrderSnapshot,
   PlayerSnapshot,
   RestaurantSnapshot,
@@ -309,6 +311,15 @@ export interface SnapshotViewer {
   } | null;
   /** STORY-037. Compact private management state plus the five authoritative constraints. */
   managerLedger: ManagerLedgerSnapshot | null;
+  /**
+   * STORY-043 "Kitchen order queue board". This restaurant's own outstanding tickets, every
+   * station, already ranked by `worker-system.js#compareTickets` (PRD §17 rules 2/3) — see
+   * `KitchenQueueBoardEntry`'s own comment. Private for the same reason `kitchenCommand` is: it
+   * is exact kitchen-internal state (PRD §18/Decision 16 never reveals a rival's). `[]`, not
+   * `null`, before `match.kitchen` exists — "nothing queued" and "kitchen not attached yet" read
+   * identically to a board with nothing to show either way.
+   */
+  kitchenQueueBoard: KitchenQueueBoardEntry[];
 }
 
 export interface ManagerLedgerSnapshot {

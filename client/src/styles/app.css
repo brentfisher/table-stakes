@@ -1513,3 +1513,19 @@ body {
 .kitchen-focus-options button small { color: #ccbda8; }
 .kitchen-focus-options button.is-active { border-color: #ffd27a; color: #ffd27a; }
 .kitchen-focus-options button:disabled { opacity: .55; }
+
+/* STORY-043 "Kitchen order queue board". Same fixed/bottom-centered board-panel shape as
+   `.kitchen-command-board` just above, but a distinct steel-grey palette (matching the 3D board's
+   own 0x3a4652 tone in `RestaurantScene.ts`) so the two boards read as different fixtures rather
+   than a re-skin of one. */
+.kitchen-queue-board { position: fixed; left: 50%; bottom: 78px; z-index: 14; transform: translateX(-50%); display: grid; gap: 8px; width: min(560px, calc(100vw - 44px)); max-height: 76vh; overflow: auto; padding: 14px; border: 2px solid #6f8697; background: rgba(24,30,34,.97); color: #e7eef2; font-size: 12px; box-shadow: 0 5px 24px #000a; }
+.kitchen-queue-board > strong { color: #8fc8e0; letter-spacing: .06em; }
+.kitchen-queue-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; counter-reset: none; }
+.kitchen-queue-board li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; padding: 6px 8px; background: #232d33; border-left: 3px solid #6f8697; }
+.kitchen-queue-board li.is-blocked { border-left-color: #ef8476; }
+.kitchen-queue-board-rank { font-variant-numeric: tabular-nums; font-weight: 700; color: #8fc8e0; }
+.kitchen-queue-board-name { font-weight: 600; }
+.kitchen-queue-board-station { color: #b8c9d2; font-size: 11px; letter-spacing: .04em; }
+.kitchen-queue-board-remaining { color: #b8c9d2; font-size: 11px; font-variant-numeric: tabular-nums; }
+.kitchen-queue-board-blocked { grid-column: 1 / -1; color: #ef8476; font-size: 11px; }
+.kitchen-queue-board-empty, .kitchen-queue-board-note { margin: 6px 0 0; color: #b8c9d2; font-size: 11px; }

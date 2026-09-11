@@ -98,6 +98,18 @@ export interface CarriedDishRenderState {
   dishId: string;
 }
 
+/** STORY-043 "Kitchen order queue board". One entry per queued ticket, restaurant-wide — `rank`
+ * is the entry's position in the ALREADY-server-ranked `you.kitchenQueueBoard` array
+ * (`worker-system.js#compareTickets` order), computed by `GameClient.ts` as a plain array index
+ * (Pattern 4/11: the client labels published order, it does not compute it) and used directly as
+ * the slot index by `upsertQueueBoardDish` — see that method's own comment on why this pool is
+ * rank-indexed rather than held-slot like `ReadyDishRenderState`'s pool. */
+export interface QueueBoardDishRenderState {
+  ticketId: string;
+  dishId: string;
+  rank: number;
+}
+
 /** A table's derived on-floor badge — PRD §4.4 "Tables show order, meal, payment, and cleanup
  * states". `dirty` always wins (it blocks seating, the most urgent of the four), and is checked
  * before occupancy; see `updateTableBadges`. */
@@ -217,7 +229,16 @@ const CARRY_DISH_SCALE = 0.55;
  * chip comment gives). */
 // The four "walk up and press E" management posts — see `buildWayfinding`'s own comment on the
 // big "E" badge these get, distinct from the plain read-only labels every table/station has.
-const COMMAND_POST_IDS = new Set(['upgrade_terminal', 'host_stand', 'service_station', 'kitchen_command_board']);
+const COMMAND_POST_IDS = new Set([
+  'upgrade_terminal',
+  'host_stand',
+  'service_station',
+  'kitchen_command_board',
+  // STORY-043. The queue board is a read-only "walk up and read" board like `kitchen_command_board`
+  // (it happens to open on the same `E` toggle rather than writing an action — see
+  // `GameClient.ts#onInteract`), so it gets the same big "E" wayfinding badge.
+  'kitchen_order_queue_board',
+]);
 
 const CARRY_TARGET_RING_INNER = 0.95;
 const CARRY_TARGET_RING_OUTER = 1.15;
@@ -257,6 +278,44 @@ function readyDishSlotPosition(slot: number): number {
   if (MAX_READY_DISH_SLOTS <= 1) return 0;
   const t = slot / (MAX_READY_DISH_SLOTS - 1); // 0..1
   return -READY_DISH_SLOT_X_RANGE + t * (READY_DISH_SLOT_X_RANGE * 2);
+}
+
+// --- STORY-043: PRD co-op slice — the kitchen order queue board's real-dish-model pool --------
+//
+// A SECOND fixed-slot pool alongside `readyDishes` above, anchored near a different landmark
+// (`kitchen_order_queue_board` instead of `service_pass`). Deliberately NOT the same held-claim
+// slot discipline `claimReadyDishSlot` uses: `readyDishes`' slots are claimed once and kept so an
+// already-visible dish never jumps sideways when a newer one arrives (see that constant's own
+// comment) — exactly backwards for a board whose entire point is PRIORITY ORDER. Here, slot index
+// IS rank index, recomputed from `you.kitchenQueueBoard`'s own array position every snapshot
+// (`GameClient.ts`), so a prop visibly moves toward the front as its ticket's priority rises —
+// see `upsertQueueBoardDish`'s own comment.
+/** Hides rather than overlaps past this many simultaneously queued tickets, same discipline
+ * `MAX_READY_DISH_SLOTS` documents. Higher than that constant's 8: this list is restaurant-WIDE
+ * across all 4 stations (`queuedTicketsAcrossStations`), not one station's approximation of the
+ * pass, so a busier worst case is plausible. A purely rendering-layout number (how many slots this
+ * scene lays out), not a gameplay tunable — kept local here rather than in
+ * `shared/constants/tuning.js`, the same choice `MAX_READY_DISH_SLOTS` already made for the exact
+ * same reason. */
+const MAX_QUEUE_BOARD_SLOTS = 10;
+/** A grid, not `readyDishSlotPosition`'s single row — the board itself (`buildEntity`'s
+ * `kitchen_order_queue_board` case) is only 3.4 units wide, far narrower than the 16-unit pass a
+ * single row was designed to span; 10 dishes in one row at that width would overlap. */
+const QUEUE_BOARD_COLUMNS = 5;
+const QUEUE_BOARD_SLOT_X_RANGE = 1.5;
+const QUEUE_BOARD_ROW_Y = [1.3, 0.6] as const;
+/** Local-space Z offset in front of the board's own 0.22-deep box (`buildEntity`), just enough
+ * clearance that a dish proxy's own geometry never clips through the board mesh. */
+const QUEUE_BOARD_SLOT_Z = 0.55;
+
+function queueBoardSlotPosition(slot: number): { x: number; y: number } {
+  const column = slot % QUEUE_BOARD_COLUMNS;
+  const row = Math.floor(slot / QUEUE_BOARD_COLUMNS);
+  const t = QUEUE_BOARD_COLUMNS <= 1 ? 0 : column / (QUEUE_BOARD_COLUMNS - 1); // 0..1
+  return {
+    x: -QUEUE_BOARD_SLOT_X_RANGE + t * (QUEUE_BOARD_SLOT_X_RANGE * 2),
+    y: QUEUE_BOARD_ROW_Y[row] ?? QUEUE_BOARD_ROW_Y[QUEUE_BOARD_ROW_Y.length - 1],
+  };
 }
 
 /** PRD §5.2 "target table chip, for example T04" — `OrderSnapshot.tableId` is the layout's own
@@ -567,6 +626,11 @@ export class RestaurantScene {
    * see `readyDishSlotPosition`'s own comment on why slots are stable, not reflowed. */
   private readonly readyDishSlots = new Map<string, number>();
   private readonly readyDishSlotUsed: boolean[] = new Array(MAX_READY_DISH_SLOTS).fill(false);
+  /** STORY-043. The kitchen order queue board's own dish-proxy pool — same spawn/despawn seam as
+   * `readyDishes` (a distinct `EntityViewRegistry` kind, 'queueBoardDishes'), but rank-indexed,
+   * not held-slot — see `queueBoardSlotPosition`'s own header comment on why there is no
+   * `queueBoardDishSlots`/`...SlotUsed` pair to mirror `readyDishSlots` here. */
+  private readonly queueBoardDishes = new Map<string, THREE.Group>();
   /** The counter bell (`buildReadyBell`) — replaces the ticket-ready screen toast with a
    * diegetic, hard-to-miss cue: it bounces and sparks whenever `readyDishes` is non-empty, and
    * sits still and dark otherwise. One fixed fixture, not spawn/despawn per ticket like
@@ -795,7 +859,10 @@ export class RestaurantScene {
         : entity.type === 'station' ? entity.station!.toUpperCase()
         : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
             upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
-            kitchen_command_board: 'RUSH THE PASS' } as Record<string, string>)[entity.id];
+            kitchen_command_board: 'RUSH THE PASS',
+            // STORY-043. "Expo rail" is the real-world name for the shelf a kitchen stages
+            // outstanding tickets on, in priority order, for whoever's free to grab the next one.
+            kitchen_order_queue_board: 'EXPO RAIL' } as Record<string, string>)[entity.id];
       if (!label) continue;
       // Bumped 1.6x from 0.42 — these wayfinding placards (table numbers, station names,
       // PICKUP/PANTRY/UPGRADES/etc.) were reported hard to read from the normal play camera.
@@ -1016,6 +1083,15 @@ export class RestaurantScene {
         return this.box(1.2, 1.0, 0.8, 0x3ab0d9);
       case 'kitchen_command_board':
         return this.box(2.2, 1.5, 0.22, 0x392f27);
+      // STORY-043. A second, distinct board — the restaurant-wide ticket rail, not
+      // `kitchen_command_board`'s focus-policy board (different concern, different entity — see
+      // this story's own notes). Wider (it lists every station, not one focus) and a
+      // distinct steel-grey tone so the two boards read as different fixtures at a glance, not
+      // as one board re-skinned. The real dish-model pool (`upsertQueueBoardDish`) is the actual
+      // AC2 content; this box is only the landmark it's anchored to, same simplicity as
+      // `kitchen_command_board`'s own case.
+      case 'kitchen_order_queue_board':
+        return this.box(3.4, 1.8, 0.22, 0x3a4652);
       case 'queue':
         return this.box(3.4, 0.06, 1.2, 0x2f3843);
       default:
@@ -1407,6 +1483,57 @@ export class RestaurantScene {
 
   readyDishIds(): string[] {
     return [...this.readyDishes.keys()];
+  }
+
+  // --- STORY-043: kitchen order queue board dish proxies — spawn/despawn, reconciled by
+  // EntityViewRegistry ('queueBoardDishes') -------------------------------------------------
+
+  /** Create or update one queue-board dish proxy. Unlike `upsertReadyDish`, geometry is not the
+   * only thing built once — POSITION is rebuilt every call too, at `state.rank`'s slot (Decision
+   * 71 in this story's own `design.md`): the whole point of this board is that a prop visibly
+   * moves toward the front as its ticket's priority rises, so "only update on first sight" would
+   * be wrong here in a way it is correct for `readyDishes`. */
+  upsertQueueBoardDish(state: QueueBoardDishRenderState): void {
+    let group = this.queueBoardDishes.get(state.ticketId);
+    if (!group) {
+      group = new THREE.Group();
+      group.add(buildDishProxy(state.dishId));
+      group.name = `queue_board_dish_${state.ticketId}`;
+      this.queueBoardDishes.set(state.ticketId, group);
+      const board = this.scene.getObjectByName('kitchen_order_queue_board');
+      if (board) board.add(group);
+      else this.scene.add(group); // defensive: layout has always declared exactly one board
+    }
+
+    if (state.rank >= MAX_QUEUE_BOARD_SLOTS) {
+      // Past the rendering pool's cap — hide rather than overlap an already-placed proxy, same
+      // "hide past a generous cap" discipline `claimReadyDishSlot`'s own comment documents for
+      // `readyDishes` (Decision 70 in this story's own `design.md`: the SERVER list is never
+      // truncated, only how many of it this scene has slots to draw).
+      group.visible = false;
+      return;
+    }
+    group.visible = true;
+    const { x, y } = queueBoardSlotPosition(state.rank);
+    // Local space, relative to `kitchen_order_queue_board`'s own box mesh (`buildEntity`'s case):
+    // `QUEUE_BOARD_SLOT_Z` clears the board's 0.22-deep face.
+    group.position.set(x, y, QUEUE_BOARD_SLOT_Z);
+    // Smaller than `readyDishes`' 2.4 (`buildDishProxy`'s own default) — this board packs up to
+    // `MAX_QUEUE_BOARD_SLOTS` props into a grid in front of a 3.4-unit-wide board, not one row
+    // across a 16-unit pass.
+    group.scale.setScalar(0.5);
+  }
+
+  removeQueueBoardDish(ticketId: string): void {
+    const group = this.queueBoardDishes.get(ticketId);
+    if (!group) return;
+    group.parent?.remove(group);
+    disposeFoodObject(group);
+    this.queueBoardDishes.delete(ticketId);
+  }
+
+  queueBoardDishIds(): string[] {
+    return [...this.queueBoardDishes.keys()];
   }
 
   /** PRD §5.2 "highlight or pulse the oldest ready ticket first" — the per-frame half of
@@ -2021,6 +2148,7 @@ export class RestaurantScene {
     this.readyDishes.clear();
     this.readyDishSlots.clear();
     this.readyDishSlotUsed.fill(false);
+    this.queueBoardDishes.clear();
     this.readyBellSparks.length = 0;
     this.carriedDishes.clear();
     this.carryTargets.clear();
