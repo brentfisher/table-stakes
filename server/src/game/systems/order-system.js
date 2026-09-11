@@ -1048,6 +1048,15 @@ function createKitchenFacade(match, state) {
       return true;
     },
 
+    /** STORY-034. Lets `worker-system.js` notice, mid-walk, that the owner's `pickup` claimed the
+     * exact plate a server is already en route to deliver — see that file's `decide()` — rather
+     * than only finding out at task completion (`deliverOrder`'s `requireUnclaimed`), by which
+     * point the whole travel-and-carry trip was wasted on a plate the server was never going to
+     * be allowed to hand over. Returns the claiming playerId, or null if unclaimed/unknown. */
+    orderClaimedBy(orderId) {
+      return findOrder(state, orderId)?.order.claimedBy ?? null;
+    },
+
     /**
      * The plate reached the table. PRD §17 server rule 1.
      *

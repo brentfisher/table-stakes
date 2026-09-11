@@ -1073,9 +1073,20 @@ export const BOT_DECISION_INTERVAL_MS = Object.freeze({
  * than `easy`); `premium` is the most precise of all five, on the theory that a "premium"
  * restaurant's owner rarely fumbles, even though — see `BOT_DECISION_INTERVAL_MS` — it is not
  * the fastest-reacting profile.
+ *
+ * `easy` WAS 0.35. STORY-034's second fix (`worker-system.js#decide` dropping a `deliver_order`
+ * task the instant the owner's own `pickup` claims its target, instead of only discovering the
+ * theft at task completion) recovers a server worker's ENTIRE wasted delivery trip, not just the
+ * one plate — and that recovery compounds with every future ready order the worker would
+ * otherwise have been stuck mid-walk for. Measured effect: `easy`'s average score margin over a
+ * totally idle opponent (`scripts/check-bot.mjs` §6) nearly doubled, ~58pt -> ~115pt. Raised to
+ * 0.42 as a deliberate, requested compromise (not a full retune back to the old baseline) — the
+ * fix itself was explicitly kept as-is ("the player supersedes the server, so be it if that
+ * makes the bot better — make it only slightly better"), so this knob only softens the spike,
+ * landing `easy` at ~100pt average rather than ~115pt or the pre-fix ~58pt.
  */
 export const BOT_MISTAKE_PROBABILITY = Object.freeze({
-  easy: 0.35,
+  easy: 0.42,
   hard: 0.05,
   balanced: 0.2,
   fast_service: 0.1,

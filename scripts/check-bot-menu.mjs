@@ -87,13 +87,20 @@ console.log('Play vs Bot menu-flow check\n');
   );
 }
 
-// --- 2. STORY-017's own two profiles are byte-identical to what it shipped ------------------
+// --- 2. STORY-017's own two profiles are untouched by STORY-025 (the profile-adding story this
+//    check was written for) -----------------------------------------------------------------
+//
+// `BOT_MISTAKE_PROBABILITY.easy` was 0.35 at STORY-017/STORY-025 time; STORY-034 deliberately
+// raised it to 0.42 afterward (see that constant's own comment in tuning.js) to soften — not
+// undo — a real difficulty increase from fixing a worker/owner delivery race. This pin's job was
+// only ever "STORY-025 didn't sneak a change in here", so it moves in step with any later,
+// deliberate, documented retune rather than fighting it.
 {
   check(
     'easy/hard tuning is untouched by this story',
     BOT_DECISION_INTERVAL_MS.easy === 900 &&
       BOT_DECISION_INTERVAL_MS.hard === 220 &&
-      BOT_MISTAKE_PROBABILITY.easy === 0.35 &&
+      BOT_MISTAKE_PROBABILITY.easy === 0.42 &&
       BOT_MISTAKE_PROBABILITY.hard === 0.05 &&
       BOT_SPRINT_ENABLED.easy === false &&
       BOT_SPRINT_ENABLED.hard === true &&

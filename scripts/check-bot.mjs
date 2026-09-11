@@ -445,16 +445,24 @@ let reference;
   // stay meaningful if the scoring weights are ever retuned. A single seed is allowed some
   // variance (a competent human still beats a same-seed easy bot most of the time, not every
   // time) — the AVERAGE across seeds is the stronger, less noisy claim, checked below it.
-  const EASY_PER_SEED_MARGIN_CAP = SCORE_POINTS_SCALE * 0.1; // 100 pts: still clearly beatable
-  // STORY-034 fixed a real corruption (order-system.js#deliverOrder's own comment): a worker's
-  // already-in-flight deliver_order task could silently steal-complete a plate the OWNER had
-  // since picked up, permanently stranding that owner at carry capacity for the rest of the
-  // match. That handicap fell on WHOEVER was actively playing — the easy bot included — so
-  // fixing it raised the easy bot's own measured margin over a totally idle opponent (58.2 vs
-  // the old 50pt cap): not a harder bot, a bot no longer accidentally sabotaging itself. Capped
-  // a bit above the new baseline rather than removed — this line should still catch a genuinely
-  // runaway easy-bot retune, just not this one, already-understood, already-positive shift.
-  const EASY_AVERAGE_MARGIN_CAP = SCORE_POINTS_SCALE * 0.06; // 60 pts: modest on average
+  // STORY-034 fixed two real corruptions in the same owner-vs-worker delivery race
+  // (order-system.js#deliverOrder's own comment): first, a worker's already-in-flight
+  // deliver_order task could silently steal-complete a plate the OWNER had since picked up,
+  // permanently stranding that owner at carry capacity (58.2pt margin, cap raised 50->60). Then,
+  // worker-system.js#decide was taught to drop that same stale task THE INSTANT the owner's
+  // pickup claims its target, rather than only discovering the theft at task completion — which
+  // recovers the server's entire wasted trip, not just the one plate, and compounds with every
+  // ready order the worker would otherwise have sat out mid-walk for. Both handicaps fell on
+  // WHOEVER was actively playing — the easy bot included — so fixing them raises the easy bot's
+  // own measured margin over a totally idle opponent further still. Requested tradeoff: keep the
+  // reroute fix exactly as built (an active player, bot or human, should always be able to
+  // supersede a worker), and only partly soften the resulting spike via BOT_MISTAKE_PROBABILITY
+  // rather than fully re-tuning it away — see that constant's own comment. Measured at
+  // easy=0.42: per-seed 86.7/55.0/157.1, avg 99.6 (was 58.2 pre-fix, ~115 with no compensating
+  // retune at all). Capped a bit above THIS baseline, not the old one — this line should still
+  // catch a genuinely runaway easy-bot retune, just not this already-understood, requested shift.
+  const EASY_PER_SEED_MARGIN_CAP = SCORE_POINTS_SCALE * 0.17; // 170 pts: still clearly beatable
+  const EASY_AVERAGE_MARGIN_CAP = SCORE_POINTS_SCALE * 0.11; // 110 pts: modest on average
   check(
     "the easy bot's per-seed margin over an idle opponent never runs away — beatable by a competent first-time player",
     easyRuns.every((r) => r.margin < EASY_PER_SEED_MARGIN_CAP),

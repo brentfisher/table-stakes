@@ -756,7 +756,15 @@ function decide(match, state, staff, worker) {
     return;
   }
 
-  if (worker.task) return; // front-of-house workers finish what they picked up
+  if (worker.task) {
+    // The owner is first every time: if `pickup` claimed the exact plate a server is already
+    // mid-walk to deliver, finishing that walk would carry nothing (`deliverOrder`'s
+    // `requireUnclaimed` would refuse it right at the table). Drop it now and re-decide this
+    // same tick, instead of the server wasting its whole trip finding out at the end.
+    const stale = worker.task.kind === 'deliver_order' && match.kitchen?.orderClaimedBy(worker.task.targetId);
+    if (!stale) return; // front-of-house workers otherwise finish what they picked up
+    worker.task = null;
+  }
   worker.task = worker.role === 'busser' ? selectBusserTask(match, state, staff)
     : worker.role === 'host' ? selectHostTask(match, state, staff)
     : selectServerTask(match, state, staff);
