@@ -1022,6 +1022,8 @@ export class GameClient {
     // STORY-030 PRD §5.2 "highlight or pulse the oldest ready ticket first" — per-frame, same
     // split as the customer posture animation above.
     this.scene.restaurant.updateReadyDishAnimations(this.elapsedSeconds);
+    // The counter bell replacing the ticket-ready screen toast — same per-frame split.
+    this.scene.restaurant.updateReadyBellAnimation(this.elapsedSeconds);
     // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same per-frame split.
     this.scene.restaurant.updateCarryTargetAnimations(this.elapsedSeconds);
     // Smooths worker positions between ~10Hz snapshots — see updateWorkerAnimations's own

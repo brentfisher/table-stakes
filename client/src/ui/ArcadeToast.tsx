@@ -18,7 +18,7 @@
 // `GameClient.handleMessage` patches a new `presentationEvents` batch in, i.e. at snapshot
 // cadence (~10 Hz), never per animation frame (Notable Pattern 3).
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { GameClientStatus } from '../game/GameClient';
 import type { EmittedPresentationEvent, PresentationEvent } from '../../../shared/game-logic/presentation-event-reducer';
 import { presentationEventPriority } from '../../../shared/game-logic/presentation-event-reducer';
@@ -196,7 +196,19 @@ function usePresentationToastQueue(incoming: EmittedPresentationEvent[]): Queued
  * renders whichever single toast is currently on top.
  */
 export function ArcadeToast({ status }: { status: GameClientStatus | null }): JSX.Element | null {
-  const current = usePresentationToastQueue(status?.presentationEvents ?? EMPTY_PRESENTATION_EVENTS);
+  // Reported: this toast's own "FOOD READY — TABLE N" popup was easy to miss/ignore mid-rush.
+  // Replaced with a physical bell on the counter (`RestaurantScene#buildReadyBell`) that bounces
+  // and sparks instead — `ticket-ready` is filtered out here rather than at the reducer, since
+  // the reducer's own contract is "emit every §9 transition" and other future consumers of
+  // `presentationEvents` may still want it. `useMemo`, keyed on the same object reference
+  // `GameClient` already holds stable across empty snapshots (see `EMPTY_PRESENTATION_EVENTS`'s
+  // own comment), so a snapshot with nothing new still doesn't re-run `usePresentationToastQueue`'s
+  // effect below.
+  const toastableEvents = useMemo(
+    () => (status?.presentationEvents ?? EMPTY_PRESENTATION_EVENTS).filter((e) => e.event.type !== 'ticket-ready'),
+    [status?.presentationEvents],
+  );
+  const current = usePresentationToastQueue(toastableEvents);
   if (!current) return null;
 
   const tone = toastToneFor(current.event);
