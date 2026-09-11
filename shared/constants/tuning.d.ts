@@ -287,3 +287,7 @@ export declare const BOT_ARRIVAL_EPSILON: number;
 
 // --- STORY-024: private invite lobby ----------------------------------------------------------
 export declare const INVITE_TOKEN_EXPIRY_MS: number;
+
+// --- STORY-045: district Peek strategy signal --------------------------------------------------
+export declare const PEEK_CAMERA_DISTANCE: number;
+export declare const PEEK_CAMERA_TARGET_Z: number;

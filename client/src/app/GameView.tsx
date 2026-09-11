@@ -36,6 +36,7 @@ import { PantryBoard } from '../ui/PantryBoard';
 import { KitchenCommandBoard } from '../ui/KitchenCommandBoard';
 import { KitchenQueueBoard } from '../ui/KitchenQueueBoard';
 import { StationMenu } from '../ui/StationMenu';
+import { PeekReadout } from '../ui/PeekReadout';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
@@ -187,6 +188,12 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           👀 Peek at rival <kbd>Q</kbd>
         </button>
       ) : null}
+      {/* STORY-045 AC2. Gated on `status.peeking` alone (not phase) — same gate `handleFrame`'s
+          camera branch already uses (own comment there), so this overlay's visibility always
+          matches what the camera is actually doing. `PeekReadout` itself degrades gracefully
+          (`status.managerLedger` is null before `service`), so no extra phase check is needed
+          for correctness. */}
+      {status?.peeking ? <PeekReadout status={status} /> : null}
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
           this one is reading `status`, which stops updating the instant the socket drops, so
           nothing here needs its own gating besides the two fields this overlay itself owns. */}
