@@ -1386,6 +1386,7 @@ body {
 .service-priorities { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .service-priorities .is-active { border-color: #ffd27a; color: #ffd27a; }
 .service-station-confirmation { position: fixed; z-index: 22; left: 50%; top: 128px; transform: translateX(-50%); padding: 10px 18px; border: 2px solid #7ed9f5; background: #163640; color: #e7f8ff; font-weight: 900; letter-spacing: .08em; box-shadow: 0 4px 18px #0009; }
+.graphics-context-banner { position: fixed; z-index: 22; left: 50%; top: 128px; transform: translateX(-50%); padding: 8px 16px; border: 2px solid var(--bad); border-radius: 4px; background: #341b1b; color: #ffd9d9; font-weight: 700; font-size: 12px; letter-spacing: .04em; box-shadow: 0 4px 18px #0009; }
 .kitchen-command-board { position: fixed; left: 50%; bottom: 78px; z-index: 14; transform: translateX(-50%); display: grid; gap: 8px; width: min(760px, calc(100vw - 44px)); max-height: 76vh; overflow: auto; padding: 14px; border: 2px solid #d99a45; background: rgba(35,25,19,.97); color: #fff2d8; font-size: 12px; box-shadow: 0 5px 24px #000a; }
 .kitchen-command-board > strong, .kitchen-recommendation strong { color: #ffd27a; letter-spacing: .06em; }
 .kitchen-pressure-grid, .kitchen-shortage-state, .kitchen-menu-state, .kitchen-worker-intent { display: flex; flex-wrap: wrap; gap: 6px 14px; }

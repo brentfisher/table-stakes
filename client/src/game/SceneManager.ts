@@ -23,6 +23,16 @@ export class SceneManager {
   private active: THREE.Scene;
 
   onFrame: ((dt: number) => void) | null = null;
+  /**
+   * Fired on `webglcontextlost`/`webglcontextrestored` — see this file's own comment on those
+   * listeners below for why this codebase needs them at all. `GameClient` patches these into
+   * `GameClientStatus` so the HUD can tell a player "reconnecting" instead of leaving a silent,
+   * unresponsive-looking black canvas with no explanation.
+   */
+  onContextLost: (() => void) | null = null;
+  onContextRestored: (() => void) | null = null;
+  private readonly handleContextLost: (event: Event) => void;
+  private readonly handleContextRestored: () => void;
 
   constructor(container: HTMLElement, restaurant = new RestaurantScene(), results = new ResultsScene()) {
     this.container = container;
@@ -35,6 +45,31 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
+
+    // A GPU driver reset, an OS putting the tab to sleep, or the browser simply reclaiming a
+    // context under memory/GPU pressure over a long play session can all fire
+    // `webglcontextlost` at any time — and by default that loss is PERMANENT: the spec requires
+    // `event.preventDefault()` on this exact event before the browser will ever fire
+    // `webglcontextrestored`, and this codebase previously listened for neither (see
+    // `food-preview-renderer.ts`'s header for the first incident this caused, via a different
+    // trigger — too many simultaneous WebGL contexts forcing the browser to evict one). Without
+    // this listener, the canvas goes black and never comes back; a match that had been running
+    // fine for a while, especially once `final_rush`'s extra customers/particles/effects push
+    // GPU load higher, is exactly when a starved context is most likely to get reclaimed.
+    this.handleContextLost = (event) => {
+      event.preventDefault();
+      console.warn('[SceneManager] WebGL context lost — waiting for the browser to restore it.');
+      this.onContextLost?.();
+    };
+    this.handleContextRestored = () => {
+      // Three.js's own WebGLRenderer re-uploads textures/geometries/shaders for everything
+      // still referenced in the scene graph the first time each is rendered again — no manual
+      // re-initialization needed here, unlike a raw WebGL app.
+      console.info('[SceneManager] WebGL context restored.');
+      this.onContextRestored?.();
+    };
+    this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
 
     const aspect = container.clientWidth / Math.max(1, container.clientHeight);
     this.cameraController = new CameraController(aspect);
@@ -75,6 +110,8 @@ export class SceneManager {
     cancelAnimationFrame(this.frame);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.restaurant.dispose();
     this.results.dispose();
     this.renderer.dispose();

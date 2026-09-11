@@ -271,6 +271,11 @@ export interface GameClientStatus {
    * reopens and rejoins, or reconnection is given up (see `disconnectedTerminal`). Never true
    * before the FIRST successful join — see `handleConnectionChange`'s own guard. */
   reconnecting: boolean;
+  /** True between `SceneManager`'s `webglcontextlost` and `webglcontextrestored` — see that
+   * file's own comment on why this can happen mid-match with no user action at fault. The
+   * websocket connection is unaffected (this is a GPU/browser-level event, not a network one),
+   * so `reconnecting` above stays false the whole time; this is a separate signal. */
+  graphicsContextLost: boolean;
   /**
    * STORY-024. `match_snapshot.players[]`, narrowed to what `LobbyScreen` needs — a slot's
    * identity, connection, and ready state — and NOTHING position/scene-related (that half of
@@ -373,6 +378,7 @@ export class GameClient {
     presentationEvents: EMPTY_PRESENTATION_EVENTS,
     showTacticalOverview: false,
     reconnecting: false,
+    graphicsContextLost: false,
     disconnectedTerminal: null,
     players: [],
     bots: [],
@@ -465,6 +471,11 @@ export class GameClient {
     this.network.onStatusChange = (connection) => this.patchStatus({ connection });
     this.network.onMessage = (message) => this.handleMessage(message);
     this.scene.onFrame = (dt) => this.handleFrame(dt);
+    // See `SceneManager`'s own comment on why this can happen at all — surfaced into the HUD
+    // (`GameClientStatus.graphicsContextLost`) so a player sees an explicit "reconnecting"
+    // state instead of a silent black canvas with no explanation.
+    this.scene.onContextLost = () => this.patchStatus({ graphicsContextLost: true });
+    this.scene.onContextRestored = () => this.patchStatus({ graphicsContextLost: false });
 
     // PRD §8: `E` sends whatever `InteractionController` currently has resolved; `F` is the
     // secondary action, always "put down what I'm carrying" while carrying something and a

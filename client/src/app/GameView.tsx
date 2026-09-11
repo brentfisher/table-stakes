@@ -111,6 +111,15 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           `.event-banner*`. */}
       <ArcadeToast status={status} />
       {status?.serviceStationNotice ? <div className="service-station-confirmation" role="status">{status.serviceStationNotice}</div> : null}
+      {/* See `SceneManager`'s own comment on `webglcontextlost` — not full-bleed like
+          `ReconnectOverlay` below: the match/socket is unaffected, and the browser usually
+          restores the context within a frame or two, so blocking the whole screen for what's
+          often a sub-second GPU hiccup would be worse than the small banner it replaces. */}
+      {status?.graphicsContextLost ? (
+        <div className="graphics-context-banner" role="status">
+          Graphics reconnecting…
+        </div>
+      ) : null}
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
           this one is reading `status`, which stops updating the instant the socket drops, so
