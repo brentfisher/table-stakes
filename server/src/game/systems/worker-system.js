@@ -622,7 +622,11 @@ function completeTask(match, staff, worker, task) {
       return false;
     }
     case 'deliver_order':
-      return match.kitchen?.deliverOrder(task.targetId) === true;
+      // STORY-034. `requireUnclaimed` — see `order-system.js#deliverOrder`'s own comment: the
+      // owner may have claimed (picked up) this same plate while the worker was mid-walk to it.
+      // A no-op here (this task simply fails, like a `seat_party`/`take_order` race already
+      // does elsewhere in this file) is correct — the plate is spoken for, not lost.
+      return match.kitchen?.deliverOrder(task.targetId, { requireUnclaimed: true }) === true;
     case 'seat_party':
       return (match.floor?.seatParty(task.targetId) ?? {}).ok === true;
     case 'take_order':
