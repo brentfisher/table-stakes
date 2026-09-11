@@ -36,6 +36,8 @@ import {
   CUSTOMER_ARRIVAL_EPSILON,
   CUSTOMER_LEAVING_MS,
   CUSTOMER_EXIT_LINGER_MS,
+  CUSTOMER_ENTER_DISTRICT_MS,
+  CUSTOMER_EVALUATE_RESTAURANTS_MS,
 } from '../shared/constants/tuning.js';
 
 const results = [];
@@ -336,6 +338,58 @@ console.log('District population walk-and-render check\n');
     'the farthest table\'s exit walk completes before cleanupExitedParties would remove it',
     walkMs < budgetMs,
     `farthest=${farthest.toFixed(2)}u walkMs=${walkMs.toFixed(0)} budgetMs=${budgetMs}`,
+  );
+}
+
+// --- 8. STORY-046: the "walked by neither" visible-duration floor doesn't silently regress ----
+// `scripts/measure-district-crowd-density.mjs` measured that a party choosing NEITHER restaurant
+// (no queue/table time to pad it out — decide, then walk to the exit, then linger) is visible for
+// a flat, real 5000ms today (400 + 600 + 4000 — see `CUSTOMER_EXIT_LINGER_MS`'s own STORY-046
+// comment in tuning.js for why only IT was tuned, and not the decide-phase pair). This is the
+// regression guard: it re-measures the same real quantity from a live per-tick advance (not a
+// hand-derived sum of the constants) and fails if `CUSTOMER_EXIT_LINGER_MS` ever drifts back
+// toward its pre-STORY-046 value (400 + 600 + 2000 = 3000ms). 4200ms is the floor — comfortably
+// above the old total, comfortably below the new one.
+{
+  const match = makeDistrict({ id: 'm_walkby_duration', seed: 'walkby-duration' });
+  runUntilPhase(match, 'service');
+  const state = _internal.ensureState(match);
+  // Forces `resolveEvaluateRestaurants`'s own pre-existing "empty district" branch
+  // (`scored.length === 0` -> deterministic LEAVE_DISTRICT, customer-system.js's own comment: "An
+  // empty district... has nothing to choose between") — a deterministic outcome from real district
+  // STATE, not a probability draw, the same "force the branch by shaping district state" house
+  // discipline `check-district-choice.mjs#tallyChoices` and this file's own section 1 already use
+  // (occupying every table to force genuine queueing). `state.restaurants` is this match's own
+  // in-memory Map, not shared game data — clearing it touches nothing outside this one test.
+  state.restaurants.clear();
+  const party = _internal.spawnParty(match, state, NEUTRAL_EFFECTS);
+
+  let ticks = 0;
+  quiet(() => {
+    while (party.state !== CUSTOMER_STATES.LEAVE_DISTRICT && ticks < 200) {
+      _internal.advanceParty(match, state, party, TICK_MS);
+      match.elapsedMs += TICK_MS;
+      ticks += 1;
+    }
+  });
+  check(
+    'an empty-district party (no restaurant registered) resolves deterministically to LEAVE_DISTRICT',
+    party.state === CUSTOMER_STATES.LEAVE_DISTRICT,
+    `state=${party.state} after ${ticks} ticks`,
+  );
+
+  quiet(() => {
+    while (match.elapsedMs - party.exitAtMs < CUSTOMER_EXIT_LINGER_MS + TICK_MS && ticks < 400) {
+      _internal.advanceParty(match, state, party, TICK_MS);
+      match.elapsedMs += TICK_MS;
+      ticks += 1;
+    }
+  });
+  const visibleMs = match.elapsedMs - party.spawnedAtMs;
+  check(
+    'a party that chose neither restaurant stays visible (decide + exit-walk + linger) at least 4200ms — STORY-046 regression guard',
+    visibleMs >= 4200,
+    `measured visibleMs=${visibleMs} (CUSTOMER_ENTER_DISTRICT_MS=${CUSTOMER_ENTER_DISTRICT_MS} CUSTOMER_EVALUATE_RESTAURANTS_MS=${CUSTOMER_EVALUATE_RESTAURANTS_MS} CUSTOMER_EXIT_LINGER_MS=${CUSTOMER_EXIT_LINGER_MS})`,
   );
 }
 

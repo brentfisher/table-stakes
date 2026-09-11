@@ -163,8 +163,29 @@ export const EVENT_DEMAND_SHIFT_BAND = Object.freeze({ min: 1.15, max: 1.4 });
 /** The named RNG sub-stream (Decision 18) the customer system draws from. */
 export const CUSTOMER_RNG_STREAM = 'customers';
 
-/** Ms spent in each brief "deciding" state before its outcome resolves. Kept short but
- * non-zero so the state is actually observable in a sampled snapshot, not skipped in one tick. */
+/**
+ * Ms spent in each brief "deciding" state before its outcome resolves. Kept short but non-zero
+ * so the state is actually observable in a sampled snapshot, not skipped in one tick.
+ *
+ * STORY-046 CONSIDERED and REJECTED doubling these (a real, tried, measured experiment — not a
+ * hypothetical) as a way to grow the average number of parties simultaneously visible
+ * mid-decision near the entrance (Little's Law: L = λ·W — more dwell time here means more
+ * concurrent population at the same arrival rate, and unlike `baseFootTrafficPerMinute` this
+ * would not touch arrival volume or the choice model). It was reverted after `npm run
+ * check:orders`'s own PRD §24 balance section (`bal-4`/`stadium_district`) FAILED with it in
+ * place: parties served dropped from a measured 44 to 39 for that exact seed, tipping it under
+ * the 40-party band and into that check's "misdiagnosed" case (spawned=114, well past its
+ * arrival-limited ceiling, so the drop could not be waved off as "the district was just quiet").
+ * The mechanism, confirmed by reverting ONLY this pair and re-running (identical bal-1..bal-9
+ * output to master, byte for byte): every party's decide phase runs BEFORE it ever reaches a
+ * queue or table, so lengthening it delays every single arrival's entry into the kitchen/table
+ * pipeline by the same amount — a real throughput cost in a market whose kitchen is already
+ * running hot (stadium_district's stations were ~70-75% busy in that run), not merely a cosmetic
+ * change. `CUSTOMER_EXIT_LINGER_MS` below does not have this problem (the table is always freed
+ * before a party ever reaches a lingering state) and is where STORY-046's actual tuning landed
+ * instead. Left at the original values here on purpose — do not double these without re-running
+ * `check:orders`'s balance section against the market with the highest baseFootTrafficPerMinute.
+ */
 export const CUSTOMER_ENTER_DISTRICT_MS = 400;
 export const CUSTOMER_EVALUATE_RESTAURANTS_MS = 600;
 
@@ -187,9 +208,43 @@ export const CUSTOMER_PAYING_MS = 3_000;
 /** Walking out, after which the party enters REVIEW (Decision 13: one step, not two). */
 export const CUSTOMER_LEAVING_MS = 1_500;
 
-/** How long an exited/reviewed party lingers in match_snapshot.customers before removal, so the
- * HUD (and this story's own checks) can observe the outcome rather than it vanishing same-tick. */
-export const CUSTOMER_EXIT_LINGER_MS = 2_000;
+/**
+ * How long an exited/reviewed party lingers in match_snapshot.customers before removal, so the
+ * HUD (and this story's own checks) can observe the outcome rather than it vanishing same-tick.
+ * Originally 2000ms. STORY-046 doubled this — by Little's Law (L = λ·W: average concurrent
+ * population = arrival rate × dwell time), this is the only remaining DWELL-TIME knob, after
+ * `CUSTOMER_ENTER_DISTRICT_MS`/`CUSTOMER_EVALUATE_RESTAURANTS_MS` were tried and reverted for a
+ * real kitchen-throughput regression (see that pair's own comment), that grows how many parties
+ * are visible at once WITHOUT touching `baseFootTrafficPerMinute` or the choice model.
+ * `CUSTOMER_MOVE_SPEED`/`CUSTOMER_EXIT_OFFSET` (below) were also considered and left unchanged:
+ * the walk to `state.exitPosition` for a party with no queue/table history covers only ~4-6 world
+ * units (the offset plus this cluster's own spread), which at 4.0 u/s completes in ~1-1.5s — well
+ * inside even the ORIGINAL 2000ms linger, so the walk itself was never the bottleneck. Removal is
+ * gated on `exitAtMs + CUSTOMER_EXIT_LINGER_MS`, a fixed clock, not on whether the party has
+ * arrived (see `cleanupExitedParties`), so slowing the walk down would only convert standing-still
+ * time into walking time, not add any visible duration — and it would cut into the farthest-table
+ * exit-walk margin `CUSTOMER_MOVE_SPEED`'s own comment tracks, for no gain. This linger constant
+ * is also the single most relevant knob for "the crowds just walking by" specifically: a party that chose
+ * neither restaurant has no queue/table time at all, so this linger is the entirety of its
+ * post-decision visible life. Safe in a way the decide-phase pair was not: `freeTable` always
+ * runs BEFORE a party enters any lingering state (every exit state's own `exitParty`, and the
+ * ordinary paid path's `PAYING` -> `LEAVING` transition), so this constant never delays a table
+ * becoming available for the next party — confirmed empirically, not just reasoned: reverting
+ * ONLY `CUSTOMER_ENTER_DISTRICT_MS`/`CUSTOMER_EVALUATE_RESTAURANTS_MS` while keeping this constant
+ * doubled reproduced `check:orders`'s `bal-1`..`bal-9` PRD §24 balance rows byte-for-byte
+ * identical to master's own (pre-STORY-046) output — zero measurable effect on kitchen
+ * utilisation, station queue depth, or parties served, for every seed that check exercises.
+ * Measured (`scripts/measure-district-crowd-density.mjs`): the "chose neither restaurant"
+ * cohort's real spawn-to-removal duration moved from a flat, measured 3000ms (400 + 600 decide +
+ * 2000 linger) to a flat, measured 5000ms (400 + 600 + 4000) — confirmed against a real
+ * simulation, not asserted; see this story's Implementation notes for the full before/after
+ * console output. Also widens the farthest-table exit-walk margin `CUSTOMER_MOVE_SPEED`'s own
+ * comment tracks (`CUSTOMER_LEAVING_MS + CUSTOMER_EXIT_LINGER_MS` budget: was 3500ms against a
+ * ~3362ms walk, ~138ms margin; is now 5500ms against the same walk, ~2138ms margin) —
+ * `check-district-population.mjs`'s own arithmetic check confirms this against the real layout
+ * file.
+ */
+export const CUSTOMER_EXIT_LINGER_MS = 4_000;
 
 /**
  * STORY-044. World units/second a district party walks at — the missing precedent
