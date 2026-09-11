@@ -1,14 +1,24 @@
 ---
 id: STORY-039
 title: Co-op match mode and invite entry point
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/039-coop-match-mode-and-invite
+worktree_path: /Users/brent/table-stakes-story-039
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: true
+approach_summary: >
+  Add a new `mode: 'coop'` value to `POST /api/rooms`, reusing the existing private-invite
+  token/joinUrl plumbing in `server/src/http/routes.js` (`inviteHost()`, invite token
+  generation) rather than building a second invite system. A co-op room seats two players into
+  ONE shared restaurant (`match.restaurants` carries a single entry, not two) with no bot
+  opponent and no rival. Likely touches `server/src/http/routes.js`, `server/src/game/
+  match-manager.js`, wherever `match.js`/`customer-system.js` currently assume exactly two
+  restaurants, and the client main menu for a new "Co-op" entry plus invite-link sharing UI
+  matching the existing private-human flow. District-choice behavior with only one restaurant
+  in the pool needs an explicit, documented call (see the story's own AC3), not a silent
+  fallback. New coverage in the style of `scripts/check-invite-lobby.mjs`.
 created: 2026-09-10
 updated: 2026-09-10
 ---

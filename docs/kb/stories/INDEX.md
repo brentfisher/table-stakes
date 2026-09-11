@@ -41,7 +41,7 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-036 | [The Kitchen Command Board](STORY-036-kitchen-command-board.md) | complete |
 | STORY-037 | [The Manager's Ledger](STORY-037-managers-ledger.md) | complete |
 | STORY-038 | [Three-Stage Ready-Up Menu](STORY-038-three-stage-ready-up-menu.md) | complete |
-| STORY-039 | [Co-op match mode and invite entry point](STORY-039-coop-match-mode-and-invite.md) | pending |
+| STORY-039 | [Co-op match mode and invite entry point](STORY-039-coop-match-mode-and-invite.md) | in progress |
 | STORY-040 | [No automated staff in co-op mode; lock staff-only upgrades](STORY-040-coop-no-automated-staff.md) | pending |
 | STORY-041 | [Player-driven timed cooking, with a "waiting to cook" indicator](STORY-041-coop-timed-cooking-and-waiting-indicator.md) | pending |
 | STORY-042 | [Station "what to cook" menu, suggested from pending orders](STORY-042-coop-what-to-cook-menu.md) | pending |
