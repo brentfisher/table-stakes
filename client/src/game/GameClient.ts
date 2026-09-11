@@ -190,6 +190,13 @@ export interface GameClientStatus {
   pantry: PantrySnapshot | null;
   nearKitchenCommandBoard: boolean;
   showKitchenCommandBoard: boolean;
+  /** STORY-034. Reported: "the two restaurants read as on top of each other" — both floors
+   * already share one camera frame (PRD's "rival activity visible" requirement), but the
+   * camera's normal narrow pan range (`handleFrame`'s own `setTarget` call) stays centered on
+   * the owner, so the rival's floor is only ever a small, distant sliver of the shot. `setPeeking`
+   * swings the SAME camera to the rival's floor instead while held — see that method's own
+   * comment on why this is a hold, not a toggle. */
+  peeking: boolean;
   kitchenCommand: {
     activeFocusId: string;
     cooldownForMs: number;
@@ -363,6 +370,7 @@ export class GameClient {
     pantry: null,
     nearKitchenCommandBoard: false,
     showKitchenCommandBoard: false,
+    peeking: false,
     kitchenCommand: null,
     managerLedger: null,
     canAffordUpgrade: false,
@@ -951,6 +959,17 @@ export class GameClient {
   }
 
   /**
+   * STORY-034. Client-only camera state, never sent to the server — "peeking" doesn't move the
+   * owner or affect anything authoritative, it only re-aims `handleFrame`'s camera target at the
+   * rival's floor instead of the owner's. A HOLD (the HUD button's pointerdown/pointerup), not a
+   * toggle: while peeking, the owner's own floor is off-screen, so leaving it engaged would be a
+   * trap a player has to remember to cancel rather than a quick glance.
+   */
+  setPeeking(peeking: boolean): void {
+    this.patchStatus({ peeking });
+  }
+
+  /**
    * PRD §7 / §12 `setup_submit`. Sent as intent like everything else: the client's own checks
    * are UX, and `setup-validator.js` decides. Acceptance shows up as `you.setup` in the next
    * snapshot; refusal as a `setup_rejected` error carrying the reason.
@@ -1000,10 +1019,18 @@ export class GameClient {
     this.scene.restaurant.updateWorkerAnimations();
 
     const self = players.find((p) => p.playerId === this.status.playerId);
-    if (self) this.scene.cameraController.setTarget(
-      Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
-      Math.max(-1.5, Math.min(1.5, self.position.z * 0.18)),
-    );
+    if (this.status.peeking) {
+      // `buildCompetitor` (RestaurantScene.ts) centers the rival's table cluster/sign around
+      // x=0, z=-20..-26 — this target is that cluster's rough middle, reusing the SAME camera
+      // offset/angle the owner's own floor uses (CameraController has exactly one setting for
+      // both), not a dedicated "rival cam" framing.
+      this.scene.cameraController.setTarget(0, -20);
+    } else if (self) {
+      this.scene.cameraController.setTarget(
+        Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
+        Math.max(-1.5, Math.min(1.5, self.position.z * 0.18)),
+      );
+    }
 
     // STORY-008. Re-resolved every frame against interpolated position (cheap: a handful of
     // array scans, no allocation on the hot path beyond the winning candidate), but only

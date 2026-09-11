@@ -206,6 +206,10 @@ const CARRY_DISH_SCALE = 0.55;
  * beneath it. All three always the §14 blue "opportunity" tone (a delivery is a revenue
  * opportunity, never a freshness/urgency signal — same reasoning `upsertReadyDish`'s own table
  * chip comment gives). */
+// The four "walk up and press E" management posts — see `buildWayfinding`'s own comment on the
+// big "E" badge these get, distinct from the plain read-only labels every table/station has.
+const COMMAND_POST_IDS = new Set(['upgrade_terminal', 'host_stand', 'service_station', 'kitchen_command_board']);
+
 const CARRY_TARGET_RING_INNER = 0.95;
 const CARRY_TARGET_RING_OUTER = 1.15;
 const CARRY_TARGET_ARROW_Y = 1.6;
@@ -775,6 +779,20 @@ export class RestaurantScene {
       sprite.position.set(0, entity.type === 'table' ? 0.22 : 0.19,
         entity.type === 'table' ? -1.7 : entity.type === 'station' ? -1.25 : -0.85);
       this.scene.getObjectByName(entity.id)?.add(sprite);
+
+      // Reported: the command-post labels (UPGRADES/WELCOME/SERVICE/RUSH THE PASS) weren't
+      // "obvious enough to change the operation" even after the label-scale pass above. A text
+      // pill still reads as scenery from across the floor; a big "E" badge — the exact key the
+      // HUD's own `.interact-prompt` already shows once in range (`GameView.tsx`) — reads as an
+      // affordance at a glance, the same way a real venue's illuminated door/counter signage
+      // does. Scoped to just these four: tables/stations are READ (their badge/state is the
+      // point), not walked-up-to-and-pressed-E the way these command posts are.
+      if (COMMAND_POST_IDS.has(entity.id)) {
+        const badge = createGlyphSprite('E', 0xffd27a, 0.95);
+        badge.name = `command_badge_${entity.id}`;
+        badge.position.set(0, 1.75, entity.type === 'station' ? -1.25 : -0.85);
+        this.scene.getObjectByName(entity.id)?.add(badge);
+      }
     }
     const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 1.3);
     title.position.set(0, 3.6, 11.8);
@@ -1326,7 +1344,9 @@ export class RestaurantScene {
 
     // Table-number chip, reusing `formatTableChip`/`createLabelSprite` exactly as `upsertReadyDish`'s
     // own pass-side table chip does — same "T04" formatting, same blue tone, one shared vocabulary.
-    const chip = createLabelSprite(formatTableChip(tableId), STATE_COLORS.opportunity, 0.42);
+    // Matches the 0.68 scale the STORY-030 wayfinding-legibility pass gave every other placard —
+    // this chip had been left at the pre-pass 0.42 (reported: "not clear where items need to go").
+    const chip = createLabelSprite(formatTableChip(tableId), STATE_COLORS.opportunity, 0.68);
     chip.position.y = CARRY_TARGET_CHIP_Y;
     chip.name = 'target_chip';
     group.add(chip);

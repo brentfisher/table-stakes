@@ -73,6 +73,32 @@ body {
 .status-connecting { color: var(--warn); }
 .status-closed { color: var(--bad); }
 
+/* STORY-034. Mirrors `.help`'s bottom-left placement on the opposite corner — a `<button>`
+   deliberately, not a bare div, so the hold works from touch/keyboard (Space/Enter) too, not
+   only a mouse. `user-select: none`/`touch-action: none` keep a press-and-drag from selecting
+   page text or scrolling on a touchscreen while held. */
+.peek-button {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.peek-button:hover { border-color: #48545f; }
+.peek-button--active {
+  background: var(--opportunity);
+  border-color: #7db8ea;
+  color: #0d1520;
+}
+
 .help {
   position: absolute;
   left: 12px;
@@ -109,6 +135,32 @@ body {
   font-weight: 600;
   pointer-events: none;
 }
+/* STORY-034. The one prompt that means "you're carrying something AND standing at its table" —
+   made deliberately louder than every other `.interact-prompt` (bigger text, warm fill, a
+   gentle pulse) so it reads as unmissable rather than blending into the same generic pill as
+   "Manage Pantry"/"Seat Party". Reported UX gap: players carrying an order couldn't tell where
+   to go or that they'd arrived. */
+.interact-prompt--deliver {
+  bottom: 78px;
+  padding: 11px 22px;
+  background: var(--warn);
+  border-color: #ffcf6b;
+  color: #241a06;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 0 0 0 #d9a74a80;
+  animation: deliver-prompt-pulse 1.1s ease-in-out infinite;
+}
+.interact-prompt--deliver kbd { background: #241a06; border-color: #241a06; color: var(--warn); }
+@keyframes deliver-prompt-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #d9a74a80; }
+  50% { box-shadow: 0 0 0 10px #d9a74a00; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .interact-prompt--deliver { animation: none; }
+}
+
 .interact-prompt kbd {
   background: #232b33;
   border: 1px solid var(--border);
