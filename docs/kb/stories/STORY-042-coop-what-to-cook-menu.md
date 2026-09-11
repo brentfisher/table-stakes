@@ -1,7 +1,7 @@
 ---
 id: STORY-042
 title: Station "what to cook" menu, suggested from pending orders
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
 branch: story/042-coop-what-to-cook-menu
 worktree_path: /Users/brent/table-stakes-story-042

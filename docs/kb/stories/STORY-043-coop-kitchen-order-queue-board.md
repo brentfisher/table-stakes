@@ -1,16 +1,48 @@
 ---
 id: STORY-043
 title: Kitchen order queue board, with real dish models
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/043-coop-kitchen-order-queue-board
+worktree_path: /Users/brent/table-stakes-story-043
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: true
+approach_summary: >
+  A new `kitchen_order_queue_board` entity in `restaurant-layout.json`, modeled directly on
+  `kitchen_command_board`'s own entry (same `type`/`position`/`interactionRadius` shape, and
+  critically `generated: true` — this sidesteps needing a hand-authored GLB node entirely, since
+  `check-scenery.mjs` only requires GLB alignment for non-generated entities; the board is built
+  procedurally in `RestaurantScene.ts` the same way `kitchen_command_board` already is). Server
+  side: a new small facade method (on `match.kitchen`, alongside `queuedTicketsAt`, or a thin new
+  one) that concatenates `queuedTicketsAt(restaurantId, station)` across every station and sorts
+  with `worker-system.js`'s already-exported `compareTickets` (module.exports line ~1002) — no
+  new priority logic, direct reuse, matching the AC's explicit constraint. Published on the
+  snapshot as a new field (e.g. `kitchenQueueBoard: TicketBoardEntry[]`), viewer-scoped like
+  `kitchenCommand: this.kitchenCommand?.privateFor(viewerRestaurantId)` already is in
+  `match.js` (~line 647) — never the rival's queue. Client: `RestaurantScene.ts` gets a new
+  `buildEntity`/`case 'kitchen_order_queue_board'` following the `kitchen_command_board` case as
+  direct precedent, rendering each entry's real dish model via `FoodModels.ts`'s existing
+  `buildArcadeFoodProxy` (same GLBs `readyDishes`/`carriedDishes` already use — no new assets).
+  A new `status.nearKitchenOrderQueueBoard`/board-panel pair follows the same `nearX`/`showXBoard`
+  convention `KitchenCommandBoard` uses in `GameView.tsx`, not `UpgradeTerminal`'s simpler
+  ungated pattern, since this needs the co-op-primary but non-co-op-harmless behavior AC4 asks
+  for (render read-only in every mode; the AI cook already acts on the identical ranking, so a
+  non-co-op board is a truthful mirror, not a dead affordance). AC2's REAL 3D dish models are NOT
+  the `kitchen_command_board` case (that's a flat box + a 2D React panel, no in-world dish props)
+  — the right precedent is `RestaurantScene.ts`'s existing `readyDishes` pool
+  (`upsertReadyDish`/`readyDishSlotPosition`/`MAX_READY_DISH_SLOTS`, ~line 1315), a fixed-slot
+  pool of real `buildArcadeFoodProxy` props placed at stable world positions near a fixed
+  landmark and reconciled per-ticket-id on snapshot diff. This story adds an analogous second
+  pool (e.g. `queueBoardDishes`) anchored near the new board entity's position instead of the
+  service pass. Files: `restaurant-layout.json`,
+  `server/src/game/systems/order-system.js` or `worker-system.js` (new facade export),
+  `server/src/game/match.js` (snapshot wiring), `shared/schemas/messages.d.ts`,
+  `client/src/scenes/RestaurantScene.ts`, `client/src/game/GameClient.ts`, `client/src/ui/`
+  (new board component), `client/src/app/GameView.tsx`. `is_architectural: true` — new snapshot
+  field is a public data-model change (Decision-worthy, needs an OpenSpec change proposal).
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Kitchen order queue board, with real dish models
