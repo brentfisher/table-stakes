@@ -1,3 +1,5 @@
 # coop-match-mode
 
-Add a coop match mode: two players share one restaurant, no bot, reusing the private-invite plumbing
+A new `mode: "coop"` room where two players run one shared restaurant instead of one each,
+reusing `private-invite-lobby`'s invite/token plumbing and `shared-district-choice`'s choice
+model unchanged.

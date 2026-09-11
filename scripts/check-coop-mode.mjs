@@ -232,6 +232,46 @@ function purchase(match, playerId, upgradeId) {
   return handlePurchaseUpgrade(match, playerId, { upgradeId, sequence: seq });
 }
 
+// --- 3b. a co-op seat freed and refilled during lobby still reaches service with ONE -----------
+//         consistent shared restaurant (Match#restaurantIdFor's own comment on why it is
+//         re-derived live, never pinned, at first-seat time)
+{
+  const match = new Match({
+    id: 'coop-lobby-churn',
+    seed: 'coop-lobby-churn',
+    requiredPlayers: 2,
+    sharedRestaurant: true,
+    holdLobbySeatsDuringGrace: true,
+  });
+  match.join({ fallbackPlayerId: 'host' });
+  match.join({ fallbackPlayerId: 'guest' });
+  check(
+    'before any drop, both seats resolve to the original host',
+    match.restaurantIdFor('host') === 'host' && match.restaurantIdFor('guest') === 'host',
+  );
+
+  match.removePlayer('host');
+  quiet(() => match.advanceClock(RECONNECT_GRACE_MS + 1000));
+  check(
+    "once the original host's seat is freed past grace, the resolver follows the actual roster (guest is now first-seated) — not a stale reference",
+    match.players.size === 1 && match.restaurantIdFor('guest') === 'guest',
+    `players=${[...match.players.keys()].join(',')}`,
+  );
+
+  const rejoin = match.join({ fallbackPlayerId: 'newhost' });
+  check('a fresh join fills the freed seat', rejoin.ok === true);
+  match.setReady('guest', true);
+  match.setReady('newhost', true);
+  const reachedService = runUntilPhase(match, 'service');
+  check('the match reaches service after the mid-lobby seat churn', reachedService, `phase=${match.phase}`);
+  check(
+    'both remaining seats resolve to the SAME restaurant once service begins, and match.restaurants has exactly one entry',
+    match.restaurantIdFor('guest') === match.restaurantIdFor('newhost') &&
+      match.restaurants.length === 1,
+    `guest->${match.restaurantIdFor('guest')} newhost->${match.restaurantIdFor('newhost')} restaurants=${JSON.stringify(match.restaurants.map((r) => r.restaurantId))}`,
+  );
+}
+
 // --- 4. both coop seats land in the SAME restaurant once the match actually runs --------------
 {
   const match = new Match({

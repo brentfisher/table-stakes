@@ -72,6 +72,24 @@ the "no-staff kitchen rework" this change is deliberately not doing yet. Anchori
 to an ACTUAL seated player's own id means the untouched systems already have a real bucket under
 that key (see Decision 60).
 
+**Re-derived on every call, never cached/pinned.** `this.players` can only lose an entry during
+`lobby` (`#releaseLobbySeatsPastGrace`, or an instant unguarded drop without
+`holdLobbySeatsDuringGrace`) — never afterward (the only two `.delete(` sites in `match.js` are
+both lobby-phase-guarded). So the first-seated id CAN change while a co-op room still waits in
+its lobby (the original host drops, grace expires, a fresh join takes the freed seat first) —
+but that is fine, not a bug, because every OTHER restaurant-keyed system (`order-system.js`,
+`inventory-system.js`, `worker-system.js`, `upgrade-system.js`) ALSO builds its own bucket map by
+enumerating the CURRENT `match.players.values()`, lazily, the first time it ticks in `service` —
+i.e. from whichever roster is actually seated once the match leaves `lobby`, which is frozen from
+that point on. Re-deriving `restaurantIdFor` live keeps it looking at the exact same roster those
+systems build real buckets from. Pinning the id at first-seat time was considered and rejected:
+if the pinned player's seat were later reclaimed by someone else before service began, every
+other system's bucket map (built from the CURRENT roster) would have no entry for the stale
+pinned id at all, and every action would resolve to a restaurant that was never built — a worse
+failure than the live-derivation this change ships with. Verified empirically in
+`scripts/check-coop-mode.mjs` ("a co-op seat freed and refilled during lobby still reaches
+service with one consistent shared restaurant").
+
 ### Decision 60 — Kitchen/inventory/worker/upgrade/front-door/service-station internals are left
 ### untouched; their orphan per-guest bucket is a deliberate, documented no-op
 

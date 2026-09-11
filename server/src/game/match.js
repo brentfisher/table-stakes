@@ -203,6 +203,26 @@ export class Match {
    * still accepted and stored (nothing rejects it) but never read by anything customer-facing.
    * A real collaborative single-menu flow is explicitly STORY-040+'s job (see that story's own
    * "no-staff kitchen rework"), not this foundation story's.
+   *
+   * DELIBERATELY RE-DERIVED FROM `this.players` ON EVERY CALL, NOT CACHED/PINNED. `this.players`
+   * can only ever lose an entry during `lobby` (a drop past `RECONNECT_GRACE_MS` with
+   * `holdLobbySeatsDuringGrace` — `#releaseLobbySeatsPastGrace` — or, without that flag, an
+   * instant lobby-drop release; see `removePlayer`), which means the FIRST-seated player CAN
+   * change while a co-op room is still waiting in its lobby (the original host drops, grace
+   * expires, a fresh join fills the freed seat first). That is fine, not a bug: every OTHER
+   * restaurant-keyed system in this codebase (`order-system.js`, `inventory-system.js`,
+   * `worker-system.js`, `upgrade-system.js`, ...) also builds its own bucket map by enumerating
+   * `match.players.values()` FRESH, lazily, the first time it ticks during `service` —
+   * i.e. from whichever roster is actually seated once the match leaves `lobby`, which is frozen
+   * from that point on (`this.players` is never deleted from again post-lobby — see the two call
+   * sites of `.delete(` in this file). Re-deriving here keeps `restaurantIdFor` looking at THE
+   * SAME roster those systems build their real buckets from. Pinning the id at first-seat time
+   * would instead risk the opposite failure: if that pinned player's seat was later reclaimed by
+   * someone else before service began, every other system's bucket map would have no entry for
+   * the stale pinned id at all (it enumerates the CURRENT roster), and every action would resolve
+   * to a restaurant that was never built. Verified empirically in
+   * `scripts/check-coop-mode.mjs` ("a co-op seat freed and refilled during lobby still reaches
+   * service with one consistent shared restaurant").
    */
   restaurantIdFor(playerId) {
     if (!this.sharedRestaurant) return playerId;
