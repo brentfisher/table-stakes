@@ -41,10 +41,12 @@
 // unimplementable rule in the middle of it is not the priority list §17 specifies.
 //
 // STILL ABSTRACTED, on purpose:
-//   - THE HOST. PRD §7: "1 cook, 1 server, 1 owner-player. Abstract host behavior or automatic
-//     seating." `restaurant-layout.json` rosters no host and gives `server_1` the `host_stand`
-//     post, so "abstract the host" means there is no host WORKER — not that nobody walks a party
-//     to a table. Seating is the server's, exactly as §17's list says.
+//   - THE HOST is no longer one of these — STORY-034 rosters `host_1` (`restaurant-layout.json`
+//     staff._comment has the reported UX gap this answers) and gives it its own one-rule §17-
+//     style list, `selectHostTask`, below. Seating is now BOTH the host's and the server's:
+//     `selectServerTask` rule 2 is left exactly as it was rather than removed, so whichever body
+//     is free first claims a waiting party — the same shared-claim race the owner's own manual
+//     "Seat Party" interact already ran against a server-only roster.
 //   - STATION CONCURRENCY. `STATION_CONCURRENCY` stays what it always was: how many tickets a
 //     station can have going at once, which is equipment, not hands. The cook LOADS a station
 //     (`tend_station`, ~800ms at the rail) and the station then cooks on its own `stationSteps`
@@ -511,6 +513,33 @@ function selectServerTask(match, state, staff) {
   return null;
 }
 
+/**
+ * STORY-034. The host's entire job, as a one-rule list in the same §17 style every other role
+ * uses — see this file's own header on why that's a hard requirement, not a style choice. This
+ * is `selectServerTask` rule 2 verbatim, extracted rather than shared by reference: the server
+ * keeps that same rule in ITS OWN list too (unchanged, on purpose — see `restaurant-layout.json`
+ * staff._comment), so whichever of the two is free first claims a waiting party through the
+ * exact same `floor.waitingParties()`/`seatParty()` facade the owner's own manual "Seat Party"
+ * interact already races against (`action-validator.js#resolveSeat`). No new claim/lock
+ * mechanism needed: a party only leaves `waitingParties()` once someone actually arrives and
+ * seats them, so a host mid-walk toward a party the owner reaches first simply finds
+ * `seatParty()` returning `not_waiting` when it arrives — a no-op, not an error.
+ */
+function selectHostTask(match, state, staff) {
+  const floor = match.floor;
+  for (const party of floor?.waitingParties(staff.restaurantId) ?? []) {
+    if (!floor.hasTableFor(staff.restaurantId, party.partySize)) continue;
+    return makeTask({
+      kind: 'seat_party',
+      itemId: workItemId('seat_party', party.customerId),
+      targetId: party.customerId,
+      route: [floor.queuePosition()],
+      workMs: workDuration(state, 'seat_party', match.upgrades?.serverSeatingDurationMultiplier(staff.restaurantId) ?? 1),
+    });
+  }
+  return null;
+}
+
 function selectBusserTask(match, state, staff) {
   const [dirty] = match.floor?.dirtyTables(staff.restaurantId) ?? [];
   if (!dirty) return null;
@@ -724,8 +753,8 @@ function decide(match, state, staff, worker) {
   }
 
   if (worker.task) return; // front-of-house workers finish what they picked up
-  worker.task = worker.role === 'busser'
-    ? selectBusserTask(match, state, staff)
+  worker.task = worker.role === 'busser' ? selectBusserTask(match, state, staff)
+    : worker.role === 'host' ? selectHostTask(match, state, staff)
     : selectServerTask(match, state, staff);
 }
 
@@ -936,6 +965,7 @@ export const _internal = {
   resolvePost,
   selectCookTask,
   selectServerTask,
+  selectHostTask,
   cookHelpSignal,
   compareTickets,
   urgencyBucket,
