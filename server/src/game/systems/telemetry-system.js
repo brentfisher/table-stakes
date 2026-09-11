@@ -28,9 +28,14 @@ export const telemetrySystem = {
     if (match.elapsedMs - state.lastSampleMs < TELEMETRY_SAMPLE_INTERVAL_MS) return;
     state.lastSampleMs = match.elapsedMs;
 
+    // STORY-039. De-duplicated through `restaurantIdFor` — a co-op match's two players share
+    // one kitchen ledger, so sampling both raw player ids would log a real revenue figure under
+    // the host's id and a permanently-$0 phantom under the guest's (their own kitchen bucket,
+    // which order-system.js still allocates per-player internally but which nothing ever
+    // writes to once every action/order routes through the shared restaurant id instead).
     const revenueByPlayer = {};
-    for (const playerId of match.players.keys()) {
-      revenueByPlayer[playerId] = match.kitchen.revenueFor(playerId);
+    for (const restaurantId of new Set([...match.players.keys()].map((id) => match.restaurantIdFor(id)))) {
+      revenueByPlayer[restaurantId] = match.kitchen.revenueFor(restaurantId);
     }
     match.logEvent('revenue_sample', { revenueByPlayer });
   },

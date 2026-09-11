@@ -67,7 +67,13 @@ export function App(): JSX.Element {
       const cached = readCachedInvite(route.roomId);
       const invite =
         cached?.joinUrl && cached.expiresAt !== undefined
-          ? { joinUrl: cached.joinUrl, hostDisplayName: cached.hostDisplayName ?? null, expiresAt: cached.expiresAt }
+          ? {
+              joinUrl: cached.joinUrl,
+              hostDisplayName: cached.hostDisplayName ?? null,
+              expiresAt: cached.expiresAt,
+              // STORY-039. See `InvitePanel`'s own comment on why this is here.
+              mode: cached.mode,
+            }
           : null;
       return (
         <GameView roomId={route.roomId} inviteToken={cached?.inviteToken} lobbyUi invite={invite} />

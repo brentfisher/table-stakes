@@ -16,7 +16,9 @@ export function KitchenCommandBoard({
   onFocus: (focusId: string) => void;
 }): JSX.Element | null {
   const command = status.kitchenCommand;
-  const restaurant = status.restaurants.find((item) => item.restaurantId === status.playerId);
+  // STORY-039. `status.restaurantId`, not `status.playerId` — see `GameClientStatus
+  // .restaurantId`'s own comment.
+  const restaurant = status.restaurants.find((item) => item.restaurantId === status.restaurantId);
   if (!command || !restaurant) return null;
   const active = commandData.focuses.find((focus) => focus.id === command.activeFocusId);
   const recommended = commandData.focuses.find((focus) => focus.id === command.recommendation.focusId);

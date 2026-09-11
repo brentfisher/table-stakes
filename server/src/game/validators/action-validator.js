@@ -102,7 +102,13 @@ export function handleInteract(match, playerId, message) {
     return fail('interact_rejected', 'not_ready');
   }
 
-  const restaurantId = playerId; // an owner only ever acts on their own restaurant
+  // STORY-039. `playerId` for every pre-existing mode; the shared co-op restaurant id for
+  // either co-op seat — see `Match#restaurantIdFor`'s own comment for why this is the one seam.
+  // Several check scripts (`check-service-station.mjs`, `check-pantry-board.mjs`, ...) exercise
+  // this function against a hand-built fixture object rather than a real `Match`, so the method
+  // is feature-detected rather than assumed — a fixture with no `restaurantIdFor` at all keeps
+  // its pre-existing `restaurantId === playerId` behavior exactly as before this story.
+  const restaurantId = typeof match.restaurantIdFor === 'function' ? match.restaurantIdFor(playerId) : playerId;
   const { targetId, action } = message;
 
   const resolved = resolveAction(match, restaurantId, player, targetId, action);
@@ -338,7 +344,8 @@ export function handlePurchaseUpgrade(match, playerId, message) {
     return fail('purchase_rejected', 'out_of_range', 'upgrade_terminal');
   }
 
-  const restaurantId = playerId; // an owner only ever buys for their own restaurant
+  // STORY-039. See the identical comment on `handleInteract`'s own `restaurantId` above.
+  const restaurantId = typeof match.restaurantIdFor === 'function' ? match.restaurantIdFor(playerId) : playerId;
   const result = match.upgrades.purchase(restaurantId, message.upgradeId);
   if (typeof message.sequence === 'number') player.lastPurchaseSequence = message.sequence;
   if (!result.ok) return fail('purchase_rejected', result.reason, result.detail);

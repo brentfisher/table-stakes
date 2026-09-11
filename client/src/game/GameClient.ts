@@ -132,6 +132,15 @@ export interface GameClientStatus {
   connection: 'connecting' | 'open' | 'closed';
   roomId: string | null;
   playerId: string | null;
+  /**
+   * STORY-039. Which restaurant THIS viewer belongs to — straight off `you.restaurantId`.
+   * Identical to `playerId` in every pre-existing mode (dev/private_human/solo_bot), so every
+   * PRE-EXISTING comparison against `playerId` for "is this restaurants[]/orders[]/customers[]
+   * entry mine" is unaffected by leaving it alone; NEW code should read THIS instead, since a
+   * co-op guest's `playerId` is never a key into any of those restaurant-keyed structures. Null
+   * before the first `match_snapshot` arrives, same as `playerId`.
+   */
+  restaurantId: string | null;
   seed: string | null;
   playerCount: number;
   serverTime: number;
@@ -340,6 +349,7 @@ export class GameClient {
     connection: 'closed',
     roomId: null,
     playerId: null,
+    restaurantId: null,
     seed: null,
     playerCount: 0,
     serverTime: 0,
@@ -446,11 +456,14 @@ export class GameClient {
           facing: state.facing,
           sprinting: state.sprinting,
           isSelf: state.playerId === this.status.playerId,
-          // See `RestaurantScene#upsertOwner`'s own comment: the opponent's position is their
-          // OWN restaurant's local coordinates, same bounds as the player's own — remapped into
-          // the decorative rival floor's footprint instead of rendered raw (which put them on
-          // this restaurant's own floor, indistinguishable from the real owner).
-          remapToRivalFloor: state.playerId !== this.status.playerId,
+          // See `RestaurantScene#upsertOwner`'s own comment: another player's position is
+          // remapped onto the decorative rival floor ONLY when they belong to a DIFFERENT
+          // restaurant than this viewer — STORY-039's co-op partner shares this viewer's own
+          // restaurant (`restaurantId`, not `playerId` — see `GameClientStatus.restaurantId`'s
+          // own comment) and renders on THIS floor, at their real position, like the real
+          // second owner they are. Every pre-existing mode has `restaurantId === playerId` for
+          // both players, so this is byte-identical to the old `playerId` comparison there.
+          remapToRivalFloor: state.restaurantId !== this.status.restaurantId,
         }),
       remove: (id) => this.scene.restaurant.removeOwner(id),
       ids: () => this.scene.restaurant.ownerIds(),
@@ -623,6 +636,7 @@ export class GameClient {
       this.interpolator.push(players);
       const you = message.you as
         | {
+            restaurantId?: string | null;
             ready?: boolean;
             setup?: AcceptedSetup | null;
             cash?: number | null;
@@ -633,6 +647,11 @@ export class GameClient {
             managerLedger?: ManagerLedgerSnapshot | null;
           }
         | null;
+      // STORY-039. `you.restaurantId` off the wire — `playerId` for every pre-existing mode, the
+      // shared co-op restaurant id for either co-op seat. Falls back to `playerId` only for the
+      // theoretical case of an older server payload missing the field entirely (never true for
+      // this codebase's own server, but cheap insurance against a stale cached build).
+      const restaurantId = you?.restaurantId ?? this.status.playerId;
       const opponent = players.find((p) => p.playerId !== this.status.playerId);
       const self = players.find((p) => p.playerId === this.status.playerId) as
         | (PlayerState & { carrying?: string[]; currentAction?: string | null; carryCapacity?: number })
@@ -673,10 +692,10 @@ export class GameClient {
 
       // STORY-029 PRD-027 §9. Diff this snapshot against the previous one, once, here — the same
       // "compute once per snapshot, patch the already-final result" discipline `criticalAlerts`
-      // below already follows. `selfRestaurantId` is `this.status.playerId`, already set by the
-      // `joined` message before any `match_snapshot` can arrive.
+      // below already follows. `selfRestaurantId` is this snapshot's own resolved `restaurantId`
+      // (STORY-039 — `playerId` in every pre-existing mode, see that const's own comment above).
       const presentationSnapshot: PresentationSnapshotInput = {
-        selfRestaurantId: this.status.playerId,
+        selfRestaurantId: restaurantId,
         orders,
         events,
         // STORY-031. This viewer's OWN owner's carrying — see `detectOwnerPickedUpEvents`/
@@ -698,7 +717,7 @@ export class GameClient {
       // restaurants) only change at snapshot cadence, and re-deriving them at frame rate would
       // be pure waste. `resolve()` itself still runs per frame, against interpolated position.
       this.interaction.setSnapshot({
-        restaurantId: this.status.playerId,
+        restaurantId,
         restaurants,
         orders,
         customers,
@@ -723,14 +742,15 @@ export class GameClient {
       // STORY-016 PRD §4.4/§14 "visual state language". Customers and this restaurant's own
       // workers are spawn/despawn entities reconciled through `EntityViewRegistry`, the same
       // seam `players` above already uses — see `RestaurantScene.ts`'s own comment on why
-      // `customers` is filtered to `restaurantId === this.status.playerId` HERE, before the
-      // registry ever sees it: table ids are shared literal strings across both restaurants'
-      // own internal layouts, so an unfiltered reconcile would try to render the rival's party
-      // onto this restaurant's floor. Everything else this story adds (table badges, station
-      // queue/shortage, rival activity, the event effect) is NOT a spawn/despawn entity — those
-      // update through the single `updateFloorState` call below, which does its own
-      // restaurant-scoped filtering (see that method's own header).
-      const selfCustomers = customers.filter((c) => c.restaurantId === this.status.playerId);
+      // `customers` is filtered to `restaurantId === restaurantId` HERE (STORY-039: this
+      // snapshot's own resolved restaurant, not `playerId` — see that const's own comment
+      // above), before the registry ever sees it: table ids are shared literal strings across
+      // both restaurants' own internal layouts, so an unfiltered reconcile would try to render
+      // the rival's party onto this restaurant's floor. Everything else this story adds (table
+      // badges, station queue/shortage, rival activity, the event effect) is NOT a spawn/despawn
+      // entity — those update through the single `updateFloorState` call below, which does its
+      // own restaurant-scoped filtering (see that method's own header).
+      const selfCustomers = customers.filter((c) => c.restaurantId === restaurantId);
       const orderLabelForCustomer = (customer: CustomerSnapshot): string | null => {
         if (!customer.orderId) return null;
         const dishes = orders
@@ -744,7 +764,7 @@ export class GameClient {
         id: c.customerId,
         orderLabel: orderLabelForCustomer(c),
       })));
-      const selfRestaurantForWorkers = restaurants.find((r) => r.restaurantId === this.status.playerId);
+      const selfRestaurantForWorkers = restaurants.find((r) => r.restaurantId === restaurantId);
       this.registry.reconcile(
         'workers',
         (selfRestaurantForWorkers?.workers ?? []).map((w) => ({ ...w, id: w.workerId })),
@@ -766,7 +786,7 @@ export class GameClient {
       const selfCarryingOrderIds = new Set(self?.carrying ?? []);
       const selfReadyOrders = orders.filter(
         (o) =>
-          o.restaurantId === this.status.playerId &&
+          o.restaurantId === restaurantId &&
           o.state === 'ready' &&
           !selfCarryingOrderIds.has(o.orderId),
       );
@@ -787,7 +807,7 @@ export class GameClient {
       );
 
       this.scene.restaurant.updateFloorState({
-        selfRestaurantId: this.status.playerId,
+        selfRestaurantId: restaurantId,
         restaurants,
         customers,
         orders,
@@ -824,8 +844,13 @@ export class GameClient {
       }
 
       const serviceStation = (message.serviceStation ?? {}) as GameClientStatus['serviceStation'];
-      const previousContracts = this.status.serviceStation[this.status.playerId ?? '']?.contracts ?? [];
-      const nextContracts = serviceStation[this.status.playerId ?? '']?.contracts ?? [];
+      // STORY-039. `serviceStation`/`frontDoor` are now keyed by restaurantId (see
+      // `match.js#toSnapshot`) — `previousContracts` reads the PRIOR snapshot's resolved
+      // restaurant (`this.status.restaurantId`, already patched from it), `nextContracts` reads
+      // THIS one's (the local `restaurantId` const above). Both equal `playerId` in every
+      // pre-existing mode.
+      const previousContracts = this.status.serviceStation[this.status.restaurantId ?? '']?.contracts ?? [];
+      const nextContracts = serviceStation[restaurantId ?? '']?.contracts ?? [];
       const arrived = nextContracts.find((contract) => contract.status === 'active' && previousContracts.find((old) => old.workerId === contract.workerId)?.status === 'arriving');
       const hired = nextContracts.find((contract) => !previousContracts.some((old) => old.workerId === contract.workerId));
       const serviceStationNotice = arrived
@@ -841,6 +866,8 @@ export class GameClient {
 
       this.patchStatus({
         playerCount: players.length,
+        // STORY-039. See that field's own comment.
+        restaurantId,
         // STORY-024. `players[]` on the wire also carries `ready` (see match.js#toSnapshot),
         // which `PlayerState` above does not declare — same narrow cast `opponentReady` already
         // uses just below for the identical reason.
@@ -883,7 +910,7 @@ export class GameClient {
         // once per snapshot — see `criticalAlerts`'s own field comment on why.
         criticalAlerts: capCriticalAlerts(
           buildCriticalAlerts({
-            selfRestaurantId: this.status.playerId,
+            selfRestaurantId: restaurantId,
             restaurants,
             customers,
             orders,
@@ -901,7 +928,7 @@ export class GameClient {
         // STORY-025. Verbatim off the wire — see `GameClientStatus.bots`'s own field comment.
         bots: (message.bots ?? []) as BotSnapshotEntry[],
       });
-      this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[this.status.playerId ?? '']?.activeSpecialId ?? null);
+      this.scene.restaurant.setHostStandSpecial((message.frontDoor as GameClientStatus['frontDoor'] | undefined)?.[restaurantId ?? '']?.activeSpecialId ?? null);
       this.scene.restaurant.setPantryCommandState(you?.pantry?.overallRisk ?? 'STOCKED', you?.pantry?.deliveries.length ?? 0);
       this.scene.restaurant.setPantryIngredients(you?.pantry?.ingredients ?? []);
       const focusId = (you?.kitchenCommand as GameClientStatus['kitchenCommand'] | undefined)?.activeFocusId ?? kitchenCommandData.defaultFocusId;

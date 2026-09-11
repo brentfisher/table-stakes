@@ -7,6 +7,12 @@
 
 export interface PlayerState {
   playerId: string;
+  /** STORY-039. Which restaurant this player belongs to — `playerId` itself in every
+   * pre-existing mode, the shared co-op restaurant id for either co-op seat (see
+   * `match.js#toSnapshot`'s own comment on `players[].restaurantId`). Optional only so a caller
+   * that constructs a bare `PlayerState` without it (none in this codebase do today) still
+   * type-checks; `GameClient` always supplies it off the wire. */
+  restaurantId?: string;
   position: { x: number; y: number; z: number };
   facing: number;
   sprinting?: boolean;
@@ -62,6 +68,7 @@ export class StateInterpolator {
 
       out.push({
         playerId,
+        restaurantId: to.state.restaurantId,
         position: {
           x: from.state.position.x + (to.state.position.x - from.state.position.x) * t,
           y: from.state.position.y + (to.state.position.y - from.state.position.y) * t,

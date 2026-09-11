@@ -93,6 +93,13 @@ export interface Vec3 {
 /** `match_snapshot.players[]` — the owner-avatars. STORY-001 shipped this shape. */
 export interface PlayerSnapshot {
   playerId: string;
+  /**
+   * STORY-039. Which restaurant this player belongs to — identical to `playerId` for a
+   * competitive match (dev/private_human/solo_bot), the shared co-op restaurant id for either
+   * co-op seat. See `match.js#toSnapshot`'s own comment on `Match#restaurantIdFor`. Public for
+   * the same reason `playerId` is public: it names WHICH restaurant, nothing about it.
+   */
+  restaurantId: string;
   position: Vec3;
   facing: number;
   sprinting: boolean;

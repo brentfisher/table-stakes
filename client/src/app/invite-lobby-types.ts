@@ -8,6 +8,11 @@ export interface CreatedRoom {
   joinUrl: string;
   hostDisplayName: string | null;
   inviteExpiresAt: number;
+  /** STORY-039. `'private_human'` or `'coop'` for either invite-flow room this response can
+   * come from — `InvitePanel` reads it to say "opponent" vs "co-op partner" without a second
+   * invite type. Optional so older cached values (written before this field existed) still
+   * parse; `undefined` reads the same as `'private_human'` everywhere it is checked. */
+  mode?: string;
 }
 
 const LOBBY_CACHE_PREFIX = 'story024:lobby:';
@@ -18,6 +23,8 @@ export interface CachedInvite {
   joinUrl?: string;
   hostDisplayName?: string | null;
   expiresAt?: number;
+  /** STORY-039. See `CreatedRoom.mode`'s own comment. */
+  mode?: string;
 }
 
 /**
