@@ -1,16 +1,25 @@
 ---
 id: STORY-040
 title: No automated staff in co-op mode; lock staff-only upgrades
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/040-coop-no-automated-staff
+worktree_path: /Users/brent/table-stakes-story-040
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: true
+approach_summary: >
+  A co-op restaurant (STORY-039's `sharedRestaurant: true`, resolved via `match.restaurantIdFor`)
+  gets an EMPTY `staffAssignments`/roster instead of the mandatory cook/server/host roster every
+  other mode requires. `worker-system.js#buildStaff` produces zero workers for it (already
+  correctly no-ops downstream via the existing `match.brigade?.owns*()` defensive checks — no
+  changes needed there). The real work is upstream: `ready-up-menu.js#buildReadyUpPayload`
+  building an empty `staffAssignments` for co-op instead of `rosterOf(layout).map(...)`, and
+  `setup-validator.js`'s `worker_unassigned` check not firing when there's nothing to assign.
+  Then an audit of `upgrades.json`/`upgrade-system.js#KNOWN_EFFECT_KEYS` for any staff-only
+  effects, locked in `UpgradeTerminal` for co-op with a stated reason.
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # No automated staff in co-op mode; lock staff-only upgrades
