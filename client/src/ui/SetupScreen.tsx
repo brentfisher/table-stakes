@@ -102,7 +102,9 @@ export function SetupScreen({
     dishes: DISHES,
     ingredients: INGREDIENTS,
     layout: LAYOUT,
-  }), [mainIds, extraIds, prices]);
+    // STORY-040. A co-op restaurant has no roster — see that param's own comment.
+    sharedRestaurant: status.sharedRestaurant,
+  }), [mainIds, extraIds, prices, status.sharedRestaurant]);
   const stockCost = inventoryCost(payload.startingInventory, INGREDIENTS) ?? 0;
   const inventoryEntries = Object.entries(payload.startingInventory)
     .map(([id, units]) => ({ id, units, ...INGREDIENTS[id] }))

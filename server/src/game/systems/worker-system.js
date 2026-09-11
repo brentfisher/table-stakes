@@ -59,6 +59,13 @@
 //     worker the MVP does not roster. This is what makes the assignment a real strategic choice
 //     rather than a label: posting the cook to `grill` in `stadium_district` (the station
 //     STORY-005 measured at 78-87% busy) is a different restaurant from posting it to `prep`.
+//   - CO-OP MODE (STORY-040). A `match.sharedRestaurant` restaurant gets `workers: []` from
+//     `buildStaff` below unconditionally — the two players ARE the roster, and every `owns*()`
+//     question this file answers reduces to `false` for it, same as a match still in `dev`
+//     phase before `worker-system.js` existed at all. No new fallback was built for this: the
+//     bullets above ("ORDER_PASS_HANDOFF_MS", "automatic seating", etc.) already describe
+//     exactly what happens when nobody is rostered, and `scripts/check-coop-mode.mjs` now
+//     exercises each of them end-to-end for a real co-op match.
 //
 // ============================================================================================
 // SEAMS
@@ -180,11 +187,24 @@ const zeroByKind = () => ({
   collect_payment: 0,
 });
 
-function buildStaff(player) {
+/**
+ * STORY-040. `match.sharedRestaurant` (STORY-039's co-op flag) means the two players ARE the
+ * entire roster — no automated staff at all, not "a roster that happens to be short a body".
+ * `workers: []` is the one line that makes that real: every `owns*()` question in
+ * `createBrigadeFacade` below reduces to `hasRole(restaurantId, role)` over an empty array, i.e.
+ * `false` for every duty, for every restaurant this match tracks (co-op is match-wide, never
+ * mixed with a rostered restaurant in the same match — see `match-manager.js`'s `isCoop`) —
+ * which is exactly the "no brigade" branch every downstream `owns*()` caller already had before
+ * this story (this file's own header, "WHAT THE WORKERS TOOK OVER, AND WHAT STAYED ABSTRACTED").
+ * Nothing below this file changes; a co-op restaurant just always takes that branch.
+ */
+function buildStaff(match, player) {
   return {
     restaurantId: player.playerId,
     playerId: player.playerId,
-    workers: ROSTER.map((entry) => buildWorker(entry, player.setup?.staffAssignments)),
+    workers: match.sharedRestaurant
+      ? []
+      : ROSTER.map((entry) => buildWorker(entry, player.setup?.staffAssignments)),
     /**
      * PRD §24: "Automated staff should complete approximately 60-75% of routine work."
      *
@@ -235,7 +255,7 @@ function ensureState(match) {
       restaurants: new Map(),
     };
     for (const player of match.players.values()) {
-      state.restaurants.set(player.playerId, buildStaff(player));
+      state.restaurants.set(player.playerId, buildStaff(match, player));
     }
     match._workerSimState = state;
     match.brigade = createBrigadeFacade(state);

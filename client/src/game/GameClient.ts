@@ -101,6 +101,29 @@ export const FRONT_DOOR_UPGRADE_IDS = [
   'maitre_d_radio_1',
   'window_display_1',
 ];
+/**
+ * STORY-040. The audited subset of `WIRED_UPGRADE_IDS` whose effect ONLY matters with automated
+ * staff on the roster. `maitre_d_radio_1`'s `serverSeatingDurationMultiplier` is read in exactly
+ * one place, `worker-system.js`'s automated seat-party task duration (`selectServerTask`/
+ * `selectHostTask`) — never by the owner's own manual "Seat Party" interact
+ * (`action-validator.js#resolveSeat` calls `match.floor.seatParty` directly, no worker-style
+ * duration at all). In a co-op restaurant (`worker-system.js#buildStaff`'s `workers: []`) that
+ * multiplier is applied to a worker that will never exist — a legal, harmless, but completely
+ * dead purchase. Every OTHER `WIRED_UPGRADE_IDS` entry was checked against its own read site and
+ * found to help the PLAYER directly regardless of who is cooking/seating/serving (station speed
+ * and concurrency are equipment, not hands; patience/queue/recovery/front-door multipliers are
+ * customer- or player-triggered, not worker-gated; `restockTravelTimeMultiplier` scales the same
+ * pantry trip the owner's own manual restock takes, per `inventory-system.js#restockDurationMs`'s
+ * own comment), so none of them are locked here.
+ *
+ * FUTURE-PROOFING: `server_radio_1`'s `serverTargetingQuality` ("the server picks better targets
+ * and wastes fewer trips") is, by its own description, exactly as staff-only as
+ * `maitre_d_radio_1` — but it has no live read site yet (`upgrade-system.js#KNOWN_EFFECT_KEYS`
+ * does not name its effect key), so `WIRED_UPGRADE_IDS` already excludes it from the terminal
+ * and there is nothing for this list to lock. Whoever wires that effect should add its id here
+ * in the SAME change, not leave it as a follow-up.
+ */
+export const STAFF_ONLY_UPGRADE_IDS = ['maitre_d_radio_1'];
 
 /** What the §18 setup screen sends. PRD §12 client-to-server example 4, plus §7's extras. */
 export interface SetupSubmitPayload {
@@ -141,6 +164,14 @@ export interface GameClientStatus {
    * before the first `match_snapshot` arrives, same as `playerId`.
    */
   restaurantId: string | null;
+  /**
+   * STORY-040. Straight off the wire's top-level `sharedRestaurant` — `Match#sharedRestaurant`,
+   * public and identical for both co-op seats (see `match.js#toSnapshot`'s own comment on why
+   * this is not under `you`). `false` before the first `match_snapshot` arrives and for every
+   * pre-existing mode. Drives the ready-up flow's empty staff assignments and the upgrade
+   * terminal's staff-only lock.
+   */
+  sharedRestaurant: boolean;
   seed: string | null;
   playerCount: number;
   serverTime: number;
@@ -350,6 +381,7 @@ export class GameClient {
     roomId: null,
     playerId: null,
     restaurantId: null,
+    sharedRestaurant: false,
     seed: null,
     playerCount: 0,
     serverTime: 0,
@@ -868,6 +900,8 @@ export class GameClient {
         playerCount: players.length,
         // STORY-039. See that field's own comment.
         restaurantId,
+        // STORY-040. See that field's own comment.
+        sharedRestaurant: Boolean(message.sharedRestaurant),
         // STORY-024. `players[]` on the wire also carries `ready` (see match.js#toSnapshot),
         // which `PlayerState` above does not declare — same narrow cast `opponentReady` already
         // uses just below for the identical reason.

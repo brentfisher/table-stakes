@@ -20,4 +20,6 @@ export declare function buildReadyUpPayload(input: {
   dishes: Dish[];
   ingredients: Record<string, { unitCost: number }>;
   layout: unknown;
+  /** STORY-040. `Match#sharedRestaurant` — a co-op match's empty roster. Defaults to `false`. */
+  sharedRestaurant?: boolean;
 }): ReadyUpPayload;

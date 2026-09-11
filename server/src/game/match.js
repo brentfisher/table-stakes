@@ -608,6 +608,11 @@ export class Match {
       serverTime: Math.round(this.elapsedMs),
       matchPhase: this.phase,
       timeRemainingMs: this.timeRemainingMs,
+      // STORY-040. Public, not `you`-scoped: both co-op seats need to know their restaurant has
+      // no roster (the ready-up flow builds an empty `staffAssignments`, the upgrade terminal
+      // locks staff-only upgrades) and it is true identically for both of them — same publicness
+      // reasoning as `market`'s own comment just below, not a per-viewer fact like `you.setup`.
+      sharedRestaurant: this.sharedRestaurant,
       market: this.marketRevealed ? publicMarket(this.market) : null,
       // `setup` is here and NOWHERE else: PRD §18 forbids revealing the opponent's exact menu
       // or prices during setup, and `you` is the only key that differs per viewer.

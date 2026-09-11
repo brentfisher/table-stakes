@@ -243,6 +243,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
         <UpgradeTerminal
           cash={status.cash}
           purchasedUpgradeIds={status.purchasedUpgradeIds}
+          sharedRestaurant={status.sharedRestaurant}
           onBuy={(upgradeId) => clientRef.current?.buyUpgrade(upgradeId)}
         />
       ) : null}

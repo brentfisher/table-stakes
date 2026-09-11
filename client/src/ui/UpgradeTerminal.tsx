@@ -14,7 +14,7 @@
 // real cash for nothing, so they simply are not shown.
 
 import upgradesData from '../../../shared/game-data/upgrades.json';
-import { WIRED_UPGRADE_IDS } from '../game/GameClient';
+import { STAFF_ONLY_UPGRADE_IDS, WIRED_UPGRADE_IDS } from '../game/GameClient';
 
 interface Upgrade {
   id: string;
@@ -32,10 +32,15 @@ const money = (cents: number): string => `$${cents.toFixed(0)}`;
 export function UpgradeTerminal({
   cash,
   purchasedUpgradeIds,
+  sharedRestaurant,
   onBuy,
 }: {
   cash: number | null;
   purchasedUpgradeIds: string[];
+  /** STORY-040. `Match#sharedRestaurant` — locks `STAFF_ONLY_UPGRADE_IDS` with a stated reason
+   * instead of a plain "Requires ..."/disabled buy button, so the player understands WHY rather
+   * than wondering if it's a bug (this story's own AC). Every pre-existing mode passes `false`. */
+  sharedRestaurant: boolean;
   onBuy: (upgradeId: string) => void;
 }): JSX.Element {
   return (
@@ -46,12 +51,13 @@ export function UpgradeTerminal({
         const owned = purchasedUpgradeIds.includes(upgrade.id);
         const requiredUpgrade = upgrade.requires ? UPGRADE_BY_ID.get(upgrade.requires) : undefined;
         const locked = Boolean(upgrade.requires) && !purchasedUpgradeIds.includes(upgrade.requires as string);
+        const staffOnlyLocked = sharedRestaurant && STAFF_ONLY_UPGRADE_IDS.includes(upgrade.id);
         const affordable = cash !== null && cash >= upgrade.cost;
-        const buyable = !owned && !locked && affordable;
+        const buyable = !owned && !locked && !staffOnlyLocked && affordable;
         return (
           <div
             key={upgrade.id}
-            className={`upgrade-terminal-row${owned ? ' is-owned' : ''}${locked ? ' is-locked' : ''}`}
+            className={`upgrade-terminal-row${owned ? ' is-owned' : ''}${locked || staffOnlyLocked ? ' is-locked' : ''}`}
           >
             <div className="upgrade-terminal-row-header">
               <span className="upgrade-terminal-name">{upgrade.name}</span>
@@ -61,6 +67,10 @@ export function UpgradeTerminal({
             {owned ? (
               <button type="button" disabled>
                 Owned
+              </button>
+            ) : staffOnlyLocked ? (
+              <button type="button" disabled title="This upgrade only helps automated staff, and a co-op restaurant has none.">
+                No staff to upgrade
               </button>
             ) : locked ? (
               <button type="button" disabled>
