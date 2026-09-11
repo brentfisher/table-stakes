@@ -36,12 +36,14 @@ import { CUSTOMER_STATES } from '../shared/schemas/game-state.js';
 import { readFileSync } from 'node:fs';
 import {
   OWNER_TASK_DURATIONS_MS,
+  OWNER_TASK_SPEED_ADVANTAGE,
   OWNER_CARRY_CAPACITY,
   OWNER_SPRINT_MAX_MS,
   OWNER_SPRINT_COOLDOWN_MS,
   CUSTOMER_VISIBLE_QUEUE_MS,
   UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD,
   WORKER_RESTOCK_THRESHOLD_UNITS,
+  WORKER_TASK_DURATIONS_MS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
 } from '../shared/constants/tuning.js';
 
@@ -326,6 +328,19 @@ function cookProbe(id) {
   const placed = match.kitchen.placeOrder(request({ customerId: 'party_probe_cook' }));
   const order = restaurant.orders.get(placed.orderId);
   const ticket = order.tickets[0];
+  const station = restaurant.stations.get(ticket.station);
+
+  // STORY-041 AC — this is the exact server-side data the client's new "queued, not yet
+  // started" station indicator is driven from (`RestaurantScene.ts#updateStationIndicators`):
+  // the glyph lights whenever `queuedTicketsAt` returns anything for that station, full stop —
+  // deliberately NOT narrowed to "and nothing is active" (a station busy on one ticket with
+  // more stacked behind it still has real unstarted work). No new server state — this facade
+  // already existed for `worker-system.js#selectCookTask`'s own rule 2.
+  check(
+    'before the owner acts: the ticket is in queuedTicketsAt — the "waiting to cook" state the new indicator lights on',
+    match.kitchen.queuedTicketsAt('p1', ticket.station).some((t) => t.ticketId === ticket.ticketId),
+    `queuedTicketsAt=${JSON.stringify(match.kitchen.queuedTicketsAt('p1', ticket.station).map((t) => t.ticketId))} active=${station.active.length}`,
+  );
 
   standAt(match, 'p1', `station_${ticket.station}`);
   const result = interact(match, 'p1', `station_${ticket.station}`, 'cook');
@@ -335,11 +350,63 @@ function cookProbe(id) {
     `ticket now ${ticket.state}`,
   );
 
-  const secondQueued = restaurant.stations.get(ticket.station).queue.length;
+  const secondQueued = station.queue.length;
   check(
     'the ticket left the queue — this is the real dispatch, not a cosmetic flag',
     secondQueued === 0,
     `queue depth ${secondQueued}`,
+  );
+  check(
+    'after the owner acts: queuedTicketsAt is empty — the indicator would now clear (station.active also picked it up, confirming the real dispatch)',
+    match.kitchen.queuedTicketsAt('p1', ticket.station).length === 0 && station.active.length === 1,
+    `queuedTicketsAt=${match.kitchen.queuedTicketsAt('p1', ticket.station).length} active=${station.active.length}`,
+  );
+}
+
+// =============================================================================================
+// 2b. STORY-041 — a player-started ticket takes its REAL stationSteps duration, not an instant
+// resolve. `resolveCookOrPlate` calls the exact `kitchen.startTicket()` a worker's `tend_station`
+// task calls (`worker-system.js`), which runs the ticket through `startStep`'s
+// `remainingMs = step.durationMs * stationSpeedMultiplier(...)` and only `finishStep`s it once
+// `order-system.js#advanceActiveTickets` has burned that much real simulated time off — the same
+// clock either starter uses. This section proves that clock actually runs for a player start,
+// rather than only proving the ticket left the queue (section 2 above).
+// =============================================================================================
+{
+  const match = cookProbe('m_cook_timing');
+  const restaurant = kitchenRestaurant(match, 'p1');
+  const placed = match.kitchen.placeOrder(request({ customerId: 'party_probe_cook_timing' }));
+  const order = restaurant.orders.get(placed.orderId);
+  const ticket = order.tickets[0];
+  const expectedMs = ticket.dish.stationSteps[0].durationMs; // no events/upgrades in this probe: multiplier is 1
+
+  standAt(match, 'p1', `station_${ticket.station}`);
+  interact(match, 'p1', `station_${ticket.station}`, 'cook');
+  check(
+    'a player-started ticket does not resolve instantly — it carries the real stationSteps duration',
+    ticket.state === 'in_progress' && ticket.remainingMs === expectedMs,
+    `state=${ticket.state} remainingMs=${ticket.remainingMs} expected=${expectedMs}`,
+  );
+
+  // Step to just short of the real duration: still cooking, not ready.
+  const stepIndexAtStart = ticket.stepIndex; // 0: the first stationStep, just started
+  const shortOfDone = Math.floor(expectedMs / TICK_MS) - 1;
+  step(match, shortOfDone);
+  check(
+    'short of the real duration, the ticket is still on its first step — the owner did not skip the clock',
+    ticket.stepIndex === stepIndexAtStart && ticket.remainingMs > 0,
+    `stepIndex=${ticket.stepIndex} remainingMs=${ticket.remainingMs} after ${shortOfDone * TICK_MS}ms`,
+  );
+
+  // And the rest of the way, the first step completes exactly like a worker-started ticket
+  // would — either the ticket is `ready` (a one-step dish) or it has moved on to its NEXT
+  // station step (`stepIndex` advanced) — either way, proof the real clock, not the owner's
+  // instantaneous facade call, is what finished it.
+  step(match, 5);
+  check(
+    'and only completes its first step once the full real duration has actually elapsed',
+    ticket.state === 'ready' || ticket.stepIndex > stepIndexAtStart,
+    `state=${ticket.state} stepIndex=${ticket.stepIndex} (was ${stepIndexAtStart})`,
   );
 }
 
@@ -682,6 +749,15 @@ function cookProbe(id) {
     OWNER_TASK_DURATIONS_MS.cook < OWNER_TASK_DURATIONS_MS.cook + 1 &&
       Object.keys(OWNER_TASK_DURATIONS_MS).every((k) => OWNER_TASK_DURATIONS_MS[k] > 0),
     JSON.stringify(OWNER_TASK_DURATIONS_MS),
+  );
+  check(
+    // STORY-041 AC — `cook`/`plate` get the SAME felt weight a worker's `tend_station` gets, as
+    // a rate (this post-action cooldown), never a second task-completion system: both keys are
+    // literally `WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE`.
+    '`cook` and `plate` cooldowns are the worker\'s own tend_station duration, scaled by the one named advantage — not invented numbers',
+    OWNER_TASK_DURATIONS_MS.cook === Math.round(WORKER_TASK_DURATIONS_MS.tend_station / OWNER_TASK_SPEED_ADVANTAGE) &&
+      OWNER_TASK_DURATIONS_MS.plate === OWNER_TASK_DURATIONS_MS.cook,
+    `cook=${OWNER_TASK_DURATIONS_MS.cook} plate=${OWNER_TASK_DURATIONS_MS.plate} advantage=${OWNER_TASK_SPEED_ADVANTAGE}`,
   );
 
   const match = cookProbe('m_busy');

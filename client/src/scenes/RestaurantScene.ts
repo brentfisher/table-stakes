@@ -148,13 +148,16 @@ const WORKER_TASK_LABELS: Record<string, string> = {
  * that point. */
 const MAX_VISIBLE_QUEUE_BOXES = 4;
 
-/** Local-space offsets for the two station indicators, relative to the station's own mesh.
+/** Local-space offsets for the three station indicators, relative to the station's own mesh.
  * DELIBERATELY DIFFERENT ANCHORS as well as different shapes/colors — PRD §8 "distinct signals
  * for each" bottleneck, applied literally: the queue bar sits front-left and grows as a stack of
  * boxes, the shortage glyph sits back-right as a single fixed circular icon, so the two bottleneck
- * kinds can never be confused even at a glance from the default camera height. */
+ * kinds can never be confused even at a glance from the default camera height. STORY-041's waiting
+ * glyph sits top-center, above both, so it reads as hovering over the whole station rather than
+ * competing with either existing anchor. */
 const STATION_QUEUE_ANCHOR = { x: -0.9, y: 0.7, z: -0.5 } as const;
 const STATION_SHORTAGE_ANCHOR = { x: 0.9, y: 1.1, z: 0.5 } as const;
+const STATION_WAITING_ANCHOR = { x: 0, y: 1.7, z: 0 } as const;
 
 // PRD §14 "Visual state language" — the shared palette. STORY-016 extends this to the full
 // green/yellow/orange/red/blue/purple semantics; Milestone 0 needs only structural colors.
@@ -543,11 +546,12 @@ export class RestaurantScene {
   /** One lazily-built badge sprite per table id — tables themselves are static (built once from
    * `layout.entities`), so only the badge shown above one needs to change per snapshot. */
   private readonly tableBadges = new Map<string, THREE.Sprite>();
-  /** One queue-box stack + one shortage glyph per station — built once in the constructor,
-   * since the station set is fixed (`STATIONS`), unlike tables/customers/workers. */
+  /** One queue-box stack + one shortage glyph + one waiting glyph per station — built once in
+   * the constructor, since the station set is fixed (`STATIONS`), unlike tables/customers/
+   * workers. `waitingIcon` is STORY-041's addition — see `updateStationIndicators`. */
   private readonly stationIndicators = new Map<
     Station,
-    { queueBoxes: THREE.Mesh[]; shortageIcon: THREE.Sprite }
+    { queueBoxes: THREE.Mesh[]; shortageIcon: THREE.Sprite; waitingIcon: THREE.Sprite }
   >();
   /** Authored ingredient props for the active menu, placed on the physical pantry surface. */
   private readonly pantryIngredientProps = new Map<string, THREE.Group>();
@@ -1262,7 +1266,19 @@ export class RestaurantScene {
       shortageIcon.position.set(STATION_SHORTAGE_ANCHOR.x, STATION_SHORTAGE_ANCHOR.y, STATION_SHORTAGE_ANCHOR.z);
       shortageIcon.visible = false;
       stationMesh.add(shortageIcon);
-      this.stationIndicators.set(station, { queueBoxes, shortageIcon });
+
+      // STORY-041. The missing middle state between idle (nothing queued) and actively cooking
+      // (something in `active[]`): a ticket sits in this station's queue but nobody — no worker,
+      // no owner interact — has started it yet. A distinct glyph at a distinct anchor from both
+      // of the above, exactly as `state-color-bands.js`'s own "a shortage is a categorically
+      // different signal" reasoning already argues for the shortage icon; this is a third,
+      // equally distinct signal, not a recolor of either existing one.
+      const waitingIcon = createGlyphSprite('…', STATE_COLORS.attention, 0.5);
+      waitingIcon.position.set(STATION_WAITING_ANCHOR.x, STATION_WAITING_ANCHOR.y, STATION_WAITING_ANCHOR.z);
+      waitingIcon.visible = false;
+      stationMesh.add(waitingIcon);
+
+      this.stationIndicators.set(station, { queueBoxes, shortageIcon, waitingIcon });
     }
   }
 
@@ -1865,6 +1881,22 @@ export class RestaurantScene {
       // dry is always worth stopping for), never colored by the queue band: that would blur the
       // exact "two different bottlenecks" distinction §8 requires back together.
       indicator.shortageIcon.visible = shortageStations.has(station);
+
+      // STORY-041. `queueDepth` above is EXACTLY the same `orders[]`-derived count
+      // `kitchen.queuedTicketsAt(restaurantId, station)` would report server-side (both read the
+      // ticket's `state === 'queued'` at this station; see that facade's own comment) — no new
+      // server state, per this story's AC. The AC's "queued at this station but not yet started"
+      // is a per-TICKET claim, true of every entry `queuedTicketsAt` returns, whether or not this
+      // station also happens to have something else `in_progress` right now — a station cooking
+      // one ticket with three more behind it still has three unstarted tickets nobody has acted
+      // on, which matters most of all in co-op mode with no automated cook (STORY-040) to ever
+      // clear them on its own. So this glyph is driven by queue PRESENCE alone, deliberately not
+      // narrowed to "and the station is otherwise idle" — that would hide exactly the backed-up
+      // case this story exists for. It stays a DISTINCT signal from the queue boxes above (own
+      // glyph, own anchor, fixed color, never recolored by the band) rather than a duplicate of
+      // them, the same "categorically different claim" split `state-color-bands.js` already
+      // draws between a queue-depth color and the shortage glyph.
+      indicator.waitingIcon.visible = queueDepth > 0;
     }
   }
 
