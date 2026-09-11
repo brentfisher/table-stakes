@@ -85,6 +85,24 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
     // comment), never something this effect should re-run over on its own.
   }, [roomId]);
 
+  // STORY-034. Safety net for the "Peek" button's hold: `onPointerUp`/`onPointerLeave` on the
+  // button itself miss the case where the pointer is released or the tab loses focus AFTER
+  // leaving the button (e.g. a drag, or alt-tabbing mid-hold) — left unhandled, `peeking` would
+  // stick `true` with no way to release it short of pressing and re-releasing the button, which
+  // requires seeing the button, which requires the very floor `peeking: true` hides. A blanket
+  // release on any of these window-level events is harmless when already false.
+  useEffect(() => {
+    const release = () => clientRef.current?.setPeeking(false);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      window.removeEventListener('blur', release);
+    };
+  }, []);
+
   // STORY-024. Cosmetic only: once the match leaves `lobby`, reflect that in the address bar
   // as `/game/:roomId` — a bookmark or share of THIS tab now lands back in the match via
   // `App.tsx`'s own `/game/:roomId` handling, rather than a stale `/lobby/:roomId`. Never
@@ -121,6 +139,23 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
         </div>
       ) : null}
       <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
+      {/* STORY-034. Reported: the two restaurants share one camera frame but the rival's floor
+          is only ever a small, distant sliver — hold this to swing the SAME camera over to it
+          (`GameClient#setPeeking`'s own comment on why a hold, not a toggle). Gated to service/
+          final_rush like every other interactive HUD element here: before service there is no
+          rival floor populated yet worth looking at. */}
+      {status && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
+        <button
+          type="button"
+          className={`peek-button${status.peeking ? ' peek-button--active' : ''}`}
+          onPointerDown={() => clientRef.current?.setPeeking(true)}
+          onPointerUp={() => clientRef.current?.setPeeking(false)}
+          onPointerLeave={() => clientRef.current?.setPeeking(false)}
+          onPointerCancel={() => clientRef.current?.setPeeking(false)}
+        >
+          👀 Peek at rival
+        </button>
+      ) : null}
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
           this one is reading `status`, which stops updating the instant the socket drops, so
           nothing here needs its own gating besides the two fields this overlay itself owns. */}
@@ -215,10 +250,23 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       ) : null}
       <div className="help">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint ·{' '}
-        <kbd>E</kbd> interact · <kbd>F</kbd> put down · <kbd>Tab</kbd> overview
+        <kbd>E</kbd> interact
+        {/* `F`/`drop_carry` only does anything while carrying an order (it un-claims it back to
+            the pass, not a delivery shortcut — see `action-validator.js#resolveDropCarry`), so
+            advertising it at all times read as "there's a second key you need for pickup/
+            dropoff" when there isn't: `E` alone drives both `pickup` and `deliver`, already the
+            same key, just two different `InteractionPrompt.action` values depending on whether
+            you're at the pass or at the right table. Only surfacing `F` while it's actually live
+            removes that false impression. */}
+        {status && status.carrying.length > 0 ? <> · <kbd>F</kbd> return dish</> : null} ·{' '}
+        <kbd>Tab</kbd> overview
       </div>
       {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
-          this is it, verbatim — nothing here decides whether pressing E will succeed. */}
+          this is it, verbatim — nothing here decides whether pressing E will succeed. `deliver`
+          gets its own louder styling (`.interact-prompt--deliver`): it's the one prompt that
+          only appears while already carrying something, i.e. the exact "you're standing where
+          it goes, hit E" moment — see `app.css`'s own comment on that class for why it needed
+          to be visually unmistakable rather than identical to every other contextual hint. */}
       {status?.nearPantry && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
         <div className="interact-prompt"><kbd>E</kbd>Manage Pantry</div>
       ) : status?.nearKitchenCommandBoard && (status.matchPhase === 'service' || status.matchPhase === 'final_rush') ? (
@@ -231,9 +279,9 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           Manage Front Door
         </div>
       ) : status?.prompt ? (
-        <div className="interact-prompt">
+        <div className={`interact-prompt${status.prompt.action === 'deliver' ? ' interact-prompt--deliver' : ''}`}>
           <kbd>E</kbd>
-          {status.prompt.label}
+          {status.prompt.action === 'deliver' ? status.prompt.label.toUpperCase() : status.prompt.label}
         </div>
       ) : null}
       {status && (status.carrying.length > 0 || status.currentAction) ? (
