@@ -98,6 +98,16 @@ body {
   border-color: #7db8ea;
   color: #0d1520;
 }
+.peek-button kbd {
+  background: #232b33;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  color: var(--text);
+  font: inherit;
+}
+.peek-button--active kbd { background: #0d1520; border-color: #7db8ea; color: var(--opportunity); }
 
 .help {
   position: absolute;
@@ -656,6 +666,8 @@ body {
 }
 .reconnect-title { margin: 0; font-size: 22px; font-weight: 600; }
 .reconnect-detail { margin: 0; color: var(--muted); max-width: 420px; }
+.reconnect-countdown { font-variant-numeric: tabular-nums; }
+.reconnect-actions { display: flex; gap: 8px; }
 
 /* ------------------------------------------------------------------------------------------
    STORY-023 (PRD's main menu). `/` now renders this instead of the scene — a static page, not

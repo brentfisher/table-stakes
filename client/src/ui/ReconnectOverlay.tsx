@@ -13,9 +13,19 @@
 export function ReconnectOverlay({
   reconnecting,
   disconnectedTerminal,
+  autoMenuSecondsLeft = null,
+  onSkip,
 }: {
   reconnecting: boolean;
   disconnectedTerminal: { reason: string } | null;
+  /** STORY-034. Seconds until `GameView`'s own timer navigates back to the menu, or `null` when
+   * no countdown is running (every other branch of this component). `GameView` owns the timer —
+   * this component only reads and displays it, same "one clock, not two" reasoning as
+   * `GameClientStatus.timeRemainingMs` never being locally extrapolated. */
+  autoMenuSecondsLeft?: number | null;
+  /** Immediate "don't wait" escape hatch — optional only so this component still type-checks
+   * without a handler in a context that never shows the terminal state at all. */
+  onSkip?: () => void;
 }): JSX.Element | null {
   if (disconnectedTerminal) {
     return (
@@ -26,9 +36,21 @@ export function ReconnectOverlay({
             ? 'Could not reach the server again in time.'
             : `The match ended while you were disconnected (${disconnectedTerminal.reason}).`}
         </p>
-        <button type="button" onClick={() => window.location.reload()}>
-          Reload
-        </button>
+        {autoMenuSecondsLeft !== null ? (
+          <p className="reconnect-detail reconnect-countdown">
+            Returning to the menu in {autoMenuSecondsLeft}s…
+          </p>
+        ) : null}
+        <div className="reconnect-actions">
+          <button type="button" onClick={() => window.location.reload()}>
+            Reload
+          </button>
+          {onSkip ? (
+            <button type="button" onClick={onSkip}>
+              Skip to menu
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }

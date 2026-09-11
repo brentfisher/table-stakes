@@ -37,6 +37,11 @@ import { KitchenCommandBoard } from '../ui/KitchenCommandBoard';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
 
+/** STORY-034. Long enough to read "Connection lost" and why, short enough that sitting on a
+ * dead-end screen doesn't feel stuck. `ReconnectOverlay`'s own Skip button bypasses this for
+ * anyone who doesn't want to wait either way. */
+const RECONNECT_TERMINAL_AUTO_MENU_SECONDS = 5;
+
 export interface GameViewProps {
   roomId?: string;
   /** STORY-024. Required for a FRESH join against a private-invite room — see
@@ -103,6 +108,30 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
     };
   }, []);
 
+  // STORY-034. `disconnectedTerminal` (ReconnectOverlay's own doc comment above) is a dead end —
+  // this client's own socket is already closed and nothing further will arrive on it — so
+  // sitting on it forever with only a manual "Reload" was a dead click for anyone who didn't
+  // notice it. Auto-return to the menu a few seconds later, long enough to actually read why,
+  // with a Skip button (rendered by ReconnectOverlay) for anyone who doesn't want to wait.
+  const [autoMenuSecondsLeft, setAutoMenuSecondsLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!status?.disconnectedTerminal) {
+      setAutoMenuSecondsLeft(null);
+      return undefined;
+    }
+    setAutoMenuSecondsLeft(RECONNECT_TERMINAL_AUTO_MENU_SECONDS);
+    const interval = window.setInterval(() => {
+      setAutoMenuSecondsLeft((seconds) => {
+        if (seconds === null || seconds <= 1) {
+          navigate('/');
+          return 0;
+        }
+        return seconds - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [status?.disconnectedTerminal]);
+
   // STORY-024. Cosmetic only: once the match leaves `lobby`, reflect that in the address bar
   // as `/game/:roomId` — a bookmark or share of THIS tab now lands back in the match via
   // `App.tsx`'s own `/game/:roomId` handling, rather than a stale `/lobby/:roomId`. Never
@@ -153,7 +182,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           onPointerLeave={() => clientRef.current?.setPeeking(false)}
           onPointerCancel={() => clientRef.current?.setPeeking(false)}
         >
-          👀 Peek at rival
+          👀 Peek at rival <kbd>Q</kbd>
         </button>
       ) : null}
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
@@ -162,6 +191,8 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
       <ReconnectOverlay
         reconnecting={Boolean(status?.reconnecting)}
         disconnectedTerminal={status?.disconnectedTerminal ?? null}
+        autoMenuSecondsLeft={autoMenuSecondsLeft}
+        onSkip={() => navigate('/')}
       />
       {/*
         STORY-024. Full-bleed overlay, same pattern as `SetupScreen` just below — mounted only
@@ -259,7 +290,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
             you're at the pass or at the right table. Only surfacing `F` while it's actually live
             removes that false impression. */}
         {status && status.carrying.length > 0 ? <> · <kbd>F</kbd> return dish</> : null} ·{' '}
-        <kbd>Tab</kbd> overview
+        <kbd>Tab</kbd> overview · <kbd>Q</kbd> peek
       </div>
       {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
           this is it, verbatim — nothing here decides whether pressing E will succeed. `deliver`
