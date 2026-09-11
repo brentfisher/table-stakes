@@ -1,7 +1,7 @@
 ---
 id: STORY-043
 title: Kitchen order queue board, with real dish models
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
 branch: story/043-coop-kitchen-order-queue-board
 worktree_path: /Users/brent/table-stakes-story-043

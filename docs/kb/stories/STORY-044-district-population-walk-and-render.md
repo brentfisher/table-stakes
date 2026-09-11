@@ -1,16 +1,52 @@
 ---
 id: STORY-044
 title: Animate the district's full customer population walking to their chosen restaurant, or neither
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/044-district-population-walk-and-render
+worktree_path: /Users/brent/table-stakes-story-044
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: true
+approach_summary: >
+  Two real gaps, confirmed by direct inspection, matching the story's own two-part framing.
+  MOVEMENT: `customer-system.js` sets `party.position` by direct assignment at exactly five call
+  sites — `spawnParty` (~line 541, the party's birth position, correctly instant, leave as-is),
+  `collectPayment` (~line 388, jump to `state.entryPosition` on LEAVING), `sendToRestaurant`
+  (~line 955, jump to queue position on a restaurant decision), `tryToSeat` (~line 1068, jump to
+  table position), and one more exit jump in the `~1220`/`~1386` region (re-verify exact line at
+  implementation time — story's own note says these drift). Add a `party.destinationPosition`
+  field set at each of those decision points INSTEAD of `party.position` directly, and integrate
+  `party.position` toward it every tick inside `advanceParty` (~line 1263, called from the
+  registered `customerSystem.update(match, dtMs)`, ~line 1551) using a generalized version of
+  `worker-system.js`'s existing `stepToward(worker, target, dtMs)` (~line 740) — that function
+  only reads `.position`, so promote/export it (same justified-promotion move as STORY-043's
+  `compareTickets`) rather than reimplementing the integration math a second time. A new
+  `CUSTOMER_MOVE_SPEED` tunable in `shared/constants/tuning.js` (no existing customer speed
+  constant — `WORKER_MOVE_SPEED`/`OWNER_MOVE_SPEED` are the only precedents), with its own
+  arrival epsilon mirroring `WORKER_ARRIVAL_EPSILON`. Movement is purely cosmetic and must not
+  gate any state-timer transition (`msInState` thresholds stay authoritative, exactly like a
+  worker's task assignment is instant while only the walk animation takes time) — decisions
+  (queue occupancy, table assignment, money) remain immediate at the moment they're decided, only
+  the rendered position catches up over subsequent ticks. RENDERING: `GameClient.ts`'s
+  `handleFrame` (~line 827) filters `customers` to `c.restaurantId === restaurantId` BEFORE
+  reconciling through `EntityViewRegistry` — confirmed this is why "they just show up": a party
+  in `ENTER_DISTRICT`/`EVALUATE_RESTAURANTS` (restaurantId not yet assigned) or `CHOOSE_RIVAL`
+  (assigned to the OTHER restaurant) never reaches `upsertCustomer` at all today. Loosen this
+  filter to also include district-transit states regardless of `restaurantId` (own decision:
+  render them relative to the VIEWER's own restaurant's local space using the shared district
+  `entryPosition`/queue landmark both restaurants' layouts already share, not the rival's
+  internal table coordinates — table id collision is exactly why the existing filter exists, per
+  that code's own comment, so this must add a state-based OR, not remove the restaurantId
+  equality check outright). `RestaurantScene.ts#upsertCustomer`/`CustomerRenderState` needs no
+  new fields — same real character model, just fed a wider set of customers with real per-tick
+  positions instead of a narrower, jump-cut set. `is_architectural: true`: this changes
+  customer-system.js's internal position-mutation contract (a cross-cutting behavior change to
+  the core district simulation, not just a new snapshot field) and the client's reconciliation
+  filter contract — worth an OpenSpec decision trail given how central this system is, even
+  though no new wire field is added.
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Animate the district's full customer population walking to their chosen restaurant, or neither
