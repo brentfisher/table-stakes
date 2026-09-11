@@ -77,6 +77,10 @@ export declare const CUSTOMER_STATES: Readonly<Record<CustomerState, CustomerSta
 export declare const CUSTOMER_EXIT_STATES: readonly CustomerExitState[];
 export declare const CUSTOMER_STATE_LIST: readonly CustomerState[];
 export declare function isExitState(state: string): boolean;
+/** STORY-044. See game-state.js's own comment: the states that occupy restaurant-specific floor
+ * space (a queue slot or a table), as opposed to genuinely shared district space. */
+export declare const CUSTOMER_FLOOR_BOUND_STATES: readonly CustomerState[];
+export declare function isFloorBoundState(state: string): boolean;
 export declare const ORDER_STATES: readonly OrderState[];
 export declare const DECISION_REASONS: readonly DecisionReason[];
 export declare const WORKER_ROLES: readonly WorkerRole[];

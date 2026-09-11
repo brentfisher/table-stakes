@@ -54,6 +54,33 @@ export function isExitState(state) {
   return CUSTOMER_EXIT_STATES.includes(state);
 }
 
+/**
+ * STORY-044. States in which a party occupies restaurant-SPECIFIC floor space — a queue slot
+ * inside ONE restaurant's own layout, or one of its own tables. Both restaurants in a match share
+ * one `restaurant-layout.json` (`customer-system.js#buildRestaurantView`'s own comment: "they
+ * share table ids and coordinates"), so a party in one of these states can only be rendered
+ * meaningfully on the floor of the restaurant it is actually AT — anywhere else its position
+ * would land on top of that viewer's own furniture, the exact collision
+ * `shared/game-logic/district-population.js#shouldRenderCustomerForViewer` exists to avoid.
+ * Every OTHER state — including a party that has chosen a restaurant but not yet arrived, and
+ * one that has already left any restaurant behind — walks through genuinely shared,
+ * restaurant-agnostic district space (`customer-system.js`'s own `entryPosition`/`exitPosition`
+ * landmarks, identical in both restaurants' local layouts) and is safe to render for any viewer
+ * regardless of `restaurantId`.
+ */
+export const CUSTOMER_FLOOR_BOUND_STATES = Object.freeze([
+  CUSTOMER_STATES.APPROACH_OR_QUEUE,
+  CUSTOMER_STATES.SEATED,
+  CUSTOMER_STATES.ORDERING,
+  CUSTOMER_STATES.WAITING_FOR_FOOD,
+  CUSTOMER_STATES.EATING,
+  CUSTOMER_STATES.PAYING,
+]);
+
+export function isFloorBoundState(state) {
+  return CUSTOMER_FLOOR_BOUND_STATES.includes(state);
+}
+
 /** PRD §17 "Order system". A ticket walks its dish's stationSteps in order. */
 export const ORDER_STATES = Object.freeze([
   'placed',

@@ -55,6 +55,13 @@ import { STATIONS } from '../../../../shared/schemas/messages.js';
 // already takes `neutralEventEffects` from here for the same reason. A field name that moves
 // then breaks a build instead of silently zeroing event affinity.
 import { dishDemandMultiplier } from './event-system.js';
+// STORY-044. `stepToward` is worker-system.js's own per-tick travel integration
+// (`advanceWorker`'s "walk, then work" split — see that file's header), promoted to a real
+// top-level export the same way STORY-043 promoted `compareTickets`: it is a pure function over
+// `{ position }`-shaped objects (reads/writes only `.position.x`/`.position.z`), closes over
+// nothing worker-specific, so reusing it here for customer parties changes nothing about its
+// behavior. See that export's own comment for the promotion justification.
+import { stepToward } from './worker-system.js';
 import {
   CUSTOMER_RNG_STREAM,
   CUSTOMER_ENTER_DISTRICT_MS,
@@ -66,6 +73,9 @@ import {
   CUSTOMER_PAYING_MS,
   CUSTOMER_LEAVING_MS,
   CUSTOMER_EXIT_LINGER_MS,
+  CUSTOMER_MOVE_SPEED,
+  CUSTOMER_ARRIVAL_EPSILON,
+  CUSTOMER_EXIT_OFFSET,
   CUSTOMER_MAX_SPAWNS_PER_TICK,
   CUSTOMER_PROFILE_JITTER,
   CUSTOMER_WAIT_TOLERANCE_SHARE,
@@ -238,6 +248,27 @@ function buildRestaurantView(playerId) {
 function ensureState(match) {
   if (!match._customerSimState) {
     const queueEntity = layout.entities.find((e) => e.type === 'queue');
+    const entryPos = layout.spawn.customerEntry;
+    const queuePos = queueEntity?.position ?? entryPos;
+    // STORY-044. Where a party walks to once it's done with the floor — LEAVING (paid, walking
+    // out) and every exit state (LEAVE_DISTRICT/ABANDON_QUEUE/CANCEL_ORDER/LEAVE_ANGRY) all
+    // converge here, rather than back onto the exact spawn point: a party that spawned,
+    // evaluated, and left without ever having moved would otherwise have a destination equal to
+    // its own current position — zero delta, which is indistinguishable from the instant-
+    // despawn bug this story exists to fix. Derived from the layout's own two existing landmarks
+    // rather than a third hand-placed coordinate: continue past the entrance along the line from
+    // the queue THROUGH it, `CUSTOMER_EXIT_OFFSET` world units further — the direction a party
+    // arrived FROM is the direction the street continues in. Guarded against a degenerate layout
+    // where the queue and entry coincide (division by zero) by falling back to "due south".
+    const dx = entryPos[0] - queuePos[0];
+    const dz = entryPos[2] - queuePos[2];
+    const dirMag = Math.hypot(dx, dz);
+    const [dirX, dirZ] = dirMag > 0 ? [dx / dirMag, dz / dirMag] : [0, 1];
+    const exitPos = [
+      entryPos[0] + dirX * CUSTOMER_EXIT_OFFSET,
+      entryPos[1],
+      entryPos[2] + dirZ * CUSTOMER_EXIT_OFFSET,
+    ];
     const restaurants = new Map();
     // STORY-039. `match.restaurantIdFor` collapses a co-op match's two players onto the SAME
     // restaurant id — `Map#set` on a repeated key is a no-op past the first, so this naturally
@@ -263,8 +294,10 @@ function ensureState(match) {
       nextId: 1,
       msUntilNextArrival: null,
       restaurants,
-      queuePosition: queueEntity?.position ?? layout.spawn.customerEntry,
-      entryPosition: layout.spawn.customerEntry,
+      queuePosition: queuePos,
+      entryPosition: entryPos,
+      // STORY-044. See the comment above computing it.
+      exitPosition: exitPos,
       /** Every restaurant choice this match made, in order — PRD §17 step 6, "Record decision
        * reason for analytics and post-match explanation". Published on `match.districtDecisions`
        * (server-side only; it never enters a snapshot) and NOT cleared at `results`, because
@@ -384,8 +417,9 @@ function createFloorFacade(match, state) {
       const party = findParty(customerId);
       if (!party || party.state !== CUSTOMER_STATES.PAYING) return { ok: false, reason: 'not_paying' };
       freeTable(match, state, party);
-      const [ex, ey, ez] = state.entryPosition;
-      party.position = { x: ex, y: ey, z: ez };
+      // STORY-044. No position jump here any more — `computeDestination`'s default branch
+      // (bottom of this file) sends every LEAVING/terminal party toward `state.exitPosition`
+      // the instant its state lands there, and `advanceParty`'s per-tick integration walks it.
       transitionTo(match, party, CUSTOMER_STATES.LEAVING);
       return { ok: true };
     },
@@ -539,6 +573,14 @@ function spawnParty(match, state, effects) {
     state: CUSTOMER_STATES.ENTER_DISTRICT,
     restaurantId: null,
     position: { x, y, z },
+    // STORY-044. The ONLY instant position assignment left in this file — a party's birth is
+    // genuinely instant (it does not walk INTO existing before it exists). Every subsequent
+    // change of intent sets this instead of `position` directly; `advanceParty`'s own per-tick
+    // integration (bottom of that function) is what actually moves `position` toward it, using
+    // `worker-system.js`'s promoted `stepToward`. Recomputed fresh every tick by
+    // `computeDestination` for as long as the party lives, not just set once here — see that
+    // function's own header for why a "set once at the decision" design was not enough.
+    destinationPosition: { x, y, z },
     tableId: null,
     orderId: null,
     decisionReason: null,
@@ -951,8 +993,9 @@ function recordDecision(match, state, party, scored, chosen, reason) {
 function sendToRestaurant(match, state, party, chosen, reason) {
   party.restaurantId = chosen.restaurantId;
   party.decisionReason = reason;
-  const [qx, qy, qz] = state.queuePosition;
-  party.position = { x: qx, y: qy, z: qz };
+  // STORY-044. No position jump here — `computeDestination` sends an APPROACH_OR_QUEUE party
+  // to its live queue slot (`queueDisplayPosition`) every tick, and the party WALKS there from
+  // wherever it currently is (its entry-area loiter spot), whichever restaurant it just chose.
   transitionTo(match, party, CUSTOMER_STATES.APPROACH_OR_QUEUE);
 }
 
@@ -1065,7 +1108,9 @@ function tryToSeat(match, state, party) {
 
   table.occupiedBy = party.customerId;
   party.tableId = table.id;
-  party.position = { x: table.position[0], y: table.position[1], z: table.position[2] };
+  // STORY-044. No position jump here — `computeDestination` walks a SEATED..PAYING party
+  // toward its own `tableId`'s real position every tick, so seating now visibly crosses the
+  // dining room instead of teleporting into the chair.
   party.patienceAtSeatedFrac = patienceFraction(party);
   // STORY-013 (PRD §11 "Average wait time"). Arrival-to-seated is the standard restaurant
   // meaning of "wait" — not arrival-to-food, which would fold in ordering/kitchen time that
@@ -1218,8 +1263,10 @@ function exitParty(match, state, party, exitState, decisionReason) {
       applyReview(view, party.satisfaction);
     }
   }
-  const [ex, ey, ez] = state.entryPosition;
-  party.position = { x: ex, y: ey, z: ez };
+  // STORY-044. No position jump here — every exit state falls into `computeDestination`'s
+  // default branch (walk to `state.exitPosition`, spread among whoever else is leaving right
+  // now), and `advanceParty`'s per-tick integration keeps walking it there for as long as this
+  // party lingers in the snapshot (`CUSTOMER_EXIT_LINGER_MS`), not just for one tick.
 }
 
 function finishEating(match, state, party) {
@@ -1258,6 +1305,100 @@ function orderRequest(party) {
     budget: party.budget,
     patienceMs: party.patienceSeconds * 1000,
   };
+}
+
+/**
+ * STORY-044. Shared grid-spread math: given a "cluster" of parties that should all currently be
+ * standing near the same landmark (everyone still loitering near the entrance, everyone queueing
+ * at the same restaurant, everyone currently walking out) and that landmark's `anchor`, returns
+ * a de-collided slot for `party` — four across, then one row back (the same formation
+ * `queueDisplayPosition` already used for the queue alone, generalized here to the other two
+ * clusters `computeDestination` needs it for). Sorted by `stateEnteredAtMs` then `customerId` —
+ * a tiebreak, not a random draw, so ordering is reproducible and never touches
+ * `state.rng`/`state.districtRng` (Decision 18's streams stay exactly what STORY-004/010 left
+ * them; rendering must not perturb arrival timing or the choice draw).
+ */
+function spreadAcrossCandidates(candidates, party, anchor) {
+  const sorted = [...candidates].sort(
+    (a, b) => a.stateEnteredAtMs - b.stateEnteredAtMs || a.customerId.localeCompare(b.customerId),
+  );
+  const index = Math.max(0, sorted.findIndex((candidate) => candidate.customerId === party.customerId));
+  const column = index % 4;
+  const row = Math.floor(index / 4);
+  const [x, y, z] = anchor;
+  return { x: x - column * 1.05, y, z: z - row * 1.1 };
+}
+
+/**
+ * STORY-044. Where `party` SHOULD currently be walking toward, recomputed fresh from
+ * `party.state` every tick rather than assigned once at the four §17 decision points
+ * (`sendToRestaurant`/`tryToSeat`/`collectPayment`/`exitParty`) that used to jump `position`
+ * directly. A "set once at the decision" design was tried first and rejected for two real
+ * reasons found while implementing this story:
+ *
+ *   1. `queueDisplayPosition`'s existing queue-slot formation (four across, one row back) can
+ *      RESHUFFLE while a party sits in `APPROACH_OR_QUEUE` — the party ahead gets seated, and
+ *      everyone behind should visibly shuffle forward, not stay parked at a slot that no longer
+ *      exists. Only a per-tick recompute keeps that true.
+ *   2. A party that spawns, evaluates, and leaves via `LEAVE_DISTRICT` never sets `restaurantId`
+ *      and never has a table — under a "set once at the decision" design its ONLY destination
+ *      write would have been its own birth position, i.e. zero delta, which is the exact
+ *      instant-despawn bug this story exists to fix. Recomputing from `party.state` means
+ *      `LEAVE_DISTRICT` (and every other exit state, and `LEAVING`) always resolves to
+ *      `state.exitPosition` — genuinely elsewhere — the instant that state is entered.
+ *
+ * The five §17 decision points no longer touch `position`/`destinationPosition` at all; this is
+ * now the ONLY function that decides where any party is walking, which is what keeps the
+ * decision logic above (state transitions, money, table occupancy) fully separate from the
+ * cosmetic walk layered on top of it — exactly the split `worker-system.js`'s own `decide()` vs
+ * `stepToward()` keeps for workers.
+ */
+function computeDestination(match, state, party) {
+  switch (party.state) {
+    case CUSTOMER_STATES.ENTER_DISTRICT:
+    case CUSTOMER_STATES.EVALUATE_RESTAURANTS: {
+      // Still deciding — loiters near the district entrance, spread out so a burst of
+      // simultaneous arrivals doesn't stack on the exact spawn point.
+      const loitering = [...state.parties.values()].filter(
+        (candidate) =>
+          candidate.state === CUSTOMER_STATES.ENTER_DISTRICT ||
+          candidate.state === CUSTOMER_STATES.EVALUATE_RESTAURANTS,
+      );
+      return spreadAcrossCandidates(loitering, party, state.entryPosition);
+    }
+
+    case CUSTOMER_STATES.APPROACH_OR_QUEUE:
+      // The live queue-slot formation — already recomputed every tick for the snapshot before
+      // this story, now doubling as the movement target too (see this function's own header).
+      return queueDisplayPosition(state, party);
+
+    case CUSTOMER_STATES.SEATED:
+    case CUSTOMER_STATES.ORDERING:
+    case CUSTOMER_STATES.WAITING_FOR_FOOD:
+    case CUSTOMER_STATES.EATING:
+    case CUSTOMER_STATES.PAYING: {
+      // §17's table-bound states: `tryToSeat` guarantees `tableId` is set in this SAME tick
+      // before `state` ever reads SEATED, so this table lookup cannot miss.
+      const table = party.tableId ? viewOf(state, party)?.tables.get(party.tableId) : null;
+      return table
+        ? { x: table.position[0], y: table.position[1], z: table.position[2] }
+        : party.destinationPosition; // defensive only — see comment above; should be unreachable
+    }
+
+    default: {
+      // LEAVING, REVIEW, and the five exit states: done with the floor (or never got one),
+      // walking out — spread among everyone else currently leaving so a wave of exits doesn't
+      // stack either. District-wide, not per-restaurant: `state.exitPosition` is one shared
+      // street landmark, exactly like `state.entryPosition` already is.
+      const leaving = [...state.parties.values()].filter(
+        (candidate) =>
+          candidate.state === CUSTOMER_STATES.LEAVING ||
+          candidate.state === CUSTOMER_STATES.REVIEW ||
+          isExitState(candidate.state),
+      );
+      return spreadAcrossCandidates(leaving, party, state.exitPosition);
+    }
+  }
 }
 
 function advanceParty(match, state, party, dtMs) {
@@ -1382,8 +1523,8 @@ function advanceParty(match, state, party, dtMs) {
       if (match.brigade?.ownsPayment(party.restaurantId)) break;
       if (msInState >= CUSTOMER_PAYING_MS) {
         freeTable(match, state, party);
-        const [ex, ey, ez] = state.entryPosition;
-        party.position = { x: ex, y: ey, z: ez };
+        // STORY-044. Same as `floor.collectPayment()` above — no position jump; see that
+        // function's own comment.
         transitionTo(match, party, CUSTOMER_STATES.LEAVING);
       }
       break;
@@ -1418,6 +1559,22 @@ function advanceParty(match, state, party, dtMs) {
       // (removal after CUSTOMER_EXIT_LINGER_MS) happens in the caller.
       break;
   }
+
+  // STORY-044. Movement is a cosmetic layer over the state machine above, not a second one —
+  // exactly like a worker's task assignment is instant while only `stepToward()`'s walk takes
+  // real time (`worker-system.js`'s own `decide()`/`advanceWorker()` split). Runs UNCONDITIONALLY,
+  // after the switch, for every party on every tick regardless of which branch (or none) just
+  // ran: a party can be mid-walk across many ticks that are otherwise no-ops for its state
+  // machine (most of `APPROACH_OR_QUEUE`'s multi-second wait, or the whole of its
+  // `CUSTOMER_EXIT_LINGER_MS` lingering after `LEAVING` finishes), and it must keep closing the
+  // distance on every one of them, not just the tick its state changed.
+  party.destinationPosition = computeDestination(match, state, party);
+  stepToward(party, party.destinationPosition, dtMs, CUSTOMER_MOVE_SPEED, CUSTOMER_ARRIVAL_EPSILON);
+  // `stepToward` only integrates x/z (the walking plane); every landmark in this layout sits at
+  // y=0 today, same as the worker/owner positions it was written for, but `position.y` is set
+  // here explicitly (instant, never walked) so a future non-flat landmark doesn't silently stop
+  // converging — see that export's own comment.
+  party.position.y = party.destinationPosition.y;
 }
 
 function cleanupExitedParties(match, state) {
@@ -1438,24 +1595,28 @@ function cleanupExitedParties(match, state) {
  * shared/schemas/game-state.d.ts, which this must keep matching field-for-field.
  */
 function queueDisplayPosition(state, party) {
-  const queued = [...state.parties.values()]
-    .filter((candidate) =>
-      candidate.restaurantId === party.restaurantId && candidate.state === CUSTOMER_STATES.APPROACH_OR_QUEUE,
-    )
-    .sort((a, b) => a.stateEnteredAtMs - b.stateEnteredAtMs || a.customerId.localeCompare(b.customerId));
-  const index = Math.max(0, queued.findIndex((candidate) => candidate.customerId === party.customerId));
   // Four parties across, then one row farther from the host stand. Every party remains in the
-  // street/entry zone instead of stacking at `queue_line`'s single coordinate.
-  const column = index % 4;
-  const row = Math.floor(index / 4);
-  const [x, y, z] = state.queuePosition;
-  return { x: x - column * 1.05, y, z: z - row * 1.1 };
+  // street/entry zone instead of stacking at `queue_line`'s single coordinate. STORY-044:
+  // the grid math itself moved to `spreadAcrossCandidates` (shared with the entry-loiter and
+  // exit clusters); this just supplies the queue's own candidate set and anchor, exactly as
+  // before.
+  const queued = [...state.parties.values()].filter(
+    (candidate) =>
+      candidate.restaurantId === party.restaurantId && candidate.state === CUSTOMER_STATES.APPROACH_OR_QUEUE,
+  );
+  return spreadAcrossCandidates(queued, party, state.queuePosition);
 }
 
 function toPublicCustomerSnapshot(state, party, elapsedMs, match = null) {
   const inQueue = party.state === CUSTOMER_STATES.APPROACH_OR_QUEUE;
   const queueWaitMs = inQueue ? Math.max(0, elapsedMs - party.stateEnteredAtMs) : 0;
-  const position = inQueue ? queueDisplayPosition(state, party) : party.position;
+  // STORY-044. Used to substitute `queueDisplayPosition` here for a queued party, bypassing
+  // whatever `party.position` actually held — pre-this-story, `position` only ever held a stale
+  // jump-target anyway, so the substitution was silently doing the walking `advanceParty` didn't.
+  // `party.position` is now the real, per-tick-integrated value for every state including
+  // APPROACH_OR_QUEUE (`computeDestination`'s own queue branch already points AT
+  // `queueDisplayPosition`, every tick), so it is always correct to publish directly.
+  const position = party.position;
   return {
     customerId: party.customerId,
     segmentId: party.segmentId,
@@ -1656,4 +1817,8 @@ export const _internal = {
   createFloorFacade,
   freeTable,
   bestFitTable,
+  // STORY-044.
+  computeDestination,
+  spreadAcrossCandidates,
+  queueDisplayPosition,
 };

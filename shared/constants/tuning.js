@@ -191,6 +191,43 @@ export const CUSTOMER_LEAVING_MS = 1_500;
  * HUD (and this story's own checks) can observe the outcome rather than it vanishing same-tick. */
 export const CUSTOMER_EXIT_LINGER_MS = 2_000;
 
+/**
+ * STORY-044. World units/second a district party walks at — the missing precedent
+ * `WORKER_MOVE_SPEED`/`OWNER_MOVE_SPEED` were for staff; nothing here named a customer's pace
+ * before this story, because nothing before it moved a party incrementally at all. Not derived
+ * from either of those (a customer is not doing a §17 job, so the owner/worker "speed vs. task
+ * time" differential they're tuned against does not apply) — picked instead against this
+ * layout's own worst-case exit walk, the one distance this system actually has a deadline for:
+ * a party leaving the FARTHEST table (`table_1`/`table_4`, ~13.45 units from
+ * `spawn.customerEntry` in `restaurant-layout.json`) must clear that distance inside
+ * `CUSTOMER_LEAVING_MS + CUSTOMER_EXIT_LINGER_MS` (1.5s + 2s = 3.5s) or `cleanupExitedParties`
+ * removes it from the snapshot mid-stride — walking, not despawning, is the whole point of this
+ * story. 13.45 / 4.0 ≈ 3.36s, inside the 3.5s budget with a real (if not huge) margin; every
+ * shorter walk this system draws (the queue approach, most tables, most of a match's exits)
+ * clears with much more room to spare. Comparable to `WORKER_MOVE_SPEED` (3.36) and just under
+ * `OWNER_MOVE_SPEED` (4.2) — a customer crossing the same floor a server or the owner does reads
+ * at roughly the same brisk-but-unhurried pace, not conspicuously faster or slower without a
+ * reason to be.
+ */
+export const CUSTOMER_MOVE_SPEED = 4.0;
+
+/** Mirrors `WORKER_ARRIVAL_EPSILON`'s own reasoning at the same magnitude: small enough that a
+ * party's walk across the room is real, large enough that it never jitters in place once it's
+ * effectively there. */
+export const CUSTOMER_ARRIVAL_EPSILON = 0.35;
+
+/**
+ * STORY-044. World units a leaving/exited party continues PAST `spawn.customerEntry` before
+ * stopping, so its walk-out destination is genuinely elsewhere rather than equal to its own
+ * spawn point (see `customer-system.js#ensureState`'s own comment on why "walk back to
+ * `entryPosition`" was indistinguishable from the instant-despawn bug this story fixes for a
+ * party that never moved at all, e.g. one that left via `LEAVE_DISTRICT`). 4 world units is
+ * roughly one more table-width past the doorway (this layout's own tables sit ~3-4 units apart —
+ * see `restaurant-layout.json`) — far enough to read as leaving the building, not so far it
+ * wanders past where the camera frames the district entrance.
+ */
+export const CUSTOMER_EXIT_OFFSET = 4;
+
 /** Safety bound on spawns processed in one tick, in case a very large dtMs (a paused tab, a
  * fast-forwarding script) would otherwise let the Poisson catch-up loop run unbounded. */
 export const CUSTOMER_MAX_SPAWNS_PER_TICK = 200;
