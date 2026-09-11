@@ -182,7 +182,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           onPointerLeave={() => clientRef.current?.setPeeking(false)}
           onPointerCancel={() => clientRef.current?.setPeeking(false)}
         >
-          👀 Peek at rival
+          👀 Peek at rival <kbd>Q</kbd>
         </button>
       ) : null}
       {/* STORY-022. Highest z-index in the sheet (see app.css) — every panel above and below
@@ -290,7 +290,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
             you're at the pass or at the right table. Only surfacing `F` while it's actually live
             removes that false impression. */}
         {status && status.carrying.length > 0 ? <> · <kbd>F</kbd> return dish</> : null} ·{' '}
-        <kbd>Tab</kbd> overview
+        <kbd>Tab</kbd> overview · <kbd>Q</kbd> peek
       </div>
       {/* PRD §8 "contextual prompt": InteractionController resolved a target within range and
           this is it, verbatim — nothing here decides whether pressing E will succeed. `deliver`

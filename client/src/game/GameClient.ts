@@ -446,6 +446,11 @@ export class GameClient {
           facing: state.facing,
           sprinting: state.sprinting,
           isSelf: state.playerId === this.status.playerId,
+          // See `RestaurantScene#upsertOwner`'s own comment: the opponent's position is their
+          // OWN restaurant's local coordinates, same bounds as the player's own — remapped into
+          // the decorative rival floor's footprint instead of rendered raw (which put them on
+          // this restaurant's own floor, indistinguishable from the real owner).
+          remapToRivalFloor: state.playerId !== this.status.playerId,
         }),
       remove: (id) => this.scene.restaurant.removeOwner(id),
       ids: () => this.scene.restaurant.ownerIds(),
@@ -529,6 +534,11 @@ export class GameClient {
     this.input.onToggleOverview = () => {
       this.patchStatus({ showTacticalOverview: !this.status.showTacticalOverview });
     };
+    // STORY-034. `Q`, held — the keyboard equivalent of the HUD's own Peek button
+    // (`setPeeking`'s own comment). Both drive the exact same status field, so holding the
+    // button and holding Q compose correctly (releasing one while still holding the other keeps
+    // peeking true) without any extra state here.
+    this.input.onPeek = (peeking) => this.setPeeking(peeking);
   }
 
   /**
@@ -1020,11 +1030,12 @@ export class GameClient {
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (this.status.peeking) {
-      // `buildCompetitor` (RestaurantScene.ts) centers the rival's table cluster/sign around
-      // x=0, z=-20..-26 — this target is that cluster's rough middle, reusing the SAME camera
-      // offset/angle the owner's own floor uses (CameraController has exactly one setting for
-      // both), not a dedicated "rival cam" framing.
-      this.scene.cameraController.setTarget(0, -20);
+      // The rival's decorative table cluster/sign AND its now-actually-rendered-there avatar
+      // (`RestaurantScene#rivalWorldPosition`'s own comment) both sit around x=0, z=-20..-29 —
+      // this target is that whole area's rough middle, reusing the SAME camera offset/angle the
+      // owner's own floor uses (CameraController has exactly one setting for both), not a
+      // dedicated "rival cam" framing.
+      this.scene.cameraController.setTarget(0, -23);
     } else if (self) {
       this.scene.cameraController.setTarget(
         Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),

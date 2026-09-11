@@ -38,6 +38,11 @@ export class InputController {
   onInteract: (() => void) | null = null;
   onSecondary: (() => void) | null = null;
   onToggleOverview: (() => void) | null = null;
+  /** STORY-034. `Q`, held — the keyboard equivalent of the HUD's "Peek at rival" button, same
+   * hold-not-toggle reasoning (`GameClient#setPeeking`'s own comment). Two args (not a single
+   * `onPeek(): void` callback like the others above) because, unlike a single tap-triggered
+   * action, a hold needs both edges. */
+  onPeek: ((peeking: boolean) => void) | null = null;
 
   constructor(private readonly element: HTMLElement | Window = window) {
     this.element.addEventListener('keydown', this.handleKeyDown as EventListener);
@@ -55,6 +60,7 @@ export class InputController {
     this.pressed.add(event.code);
     if (event.code === 'KeyE') this.onInteract?.();
     if (event.code === 'KeyF') this.onSecondary?.();
+    if (event.code === 'KeyQ') this.onPeek?.(true);
     if (event.code === 'Tab' && this.tacticalOverviewEnabled) {
       event.preventDefault();
       this.onToggleOverview?.();
@@ -63,10 +69,15 @@ export class InputController {
 
   private handleKeyUp = (event: KeyboardEvent): void => {
     this.pressed.delete(event.code);
+    if (event.code === 'KeyQ') this.onPeek?.(false);
   };
 
-  /** Releasing every key on blur prevents an avatar walking forever after tab-out. */
+  /** Releasing every key on blur prevents an avatar walking forever after tab-out — and, same
+   * reasoning as the HUD Peek button's own window-level pointerup/pointercancel safety net
+   * (`GameView.tsx`), releases a Q-held peek too, so alt-tabbing mid-hold can't strand the
+   * camera on the rival's floor with no visible way back. */
   private handleBlur = (): void => {
+    if (this.pressed.has('KeyQ')) this.onPeek?.(false);
     this.pressed.clear();
   };
 

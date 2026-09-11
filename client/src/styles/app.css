@@ -98,6 +98,16 @@ body {
   border-color: #7db8ea;
   color: #0d1520;
 }
+.peek-button kbd {
+  background: #232b33;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  color: var(--text);
+  font: inherit;
+}
+.peek-button--active kbd { background: #0d1520; border-color: #7db8ea; color: var(--opportunity); }
 
 .help {
   position: absolute;

@@ -42,6 +42,12 @@ export interface OwnerRenderState {
   facing: number;
   sprinting?: boolean;
   isSelf?: boolean;
+  /** STORY-034. Opt-in, defaulting false — see `upsertOwner`'s own comment for what this does
+   * and why it is a separate flag from `isSelf` rather than inferred from it: harness previews
+   * (`asset-showcase-harness.ts` places a mock rival right next to the self avatar on purpose,
+   * for a side-by-side comparison) construct `isSelf: false` avatars that must NOT be moved.
+   * Only `GameClient.ts`'s real call site sets this. */
+  remapToRivalFloor?: boolean;
 }
 
 /** STORY-016. `EntityViewRegistry`'s two new spawn/despawn kinds — customers and workers —
@@ -978,6 +984,26 @@ export class RestaurantScene {
     return group;
   }
 
+  /**
+   * STORY-034. Reported: "both players are still in the same restaurant." They were — the
+   * opponent's raw `position` (their own restaurant's LOCAL coordinates, the same
+   * x∈[-9,9]/z∈[-12,12] bounds `action-validator.js` clamps every owner to, self or rival alike)
+   * was rendered with no offset at all, so their avatar walked around this restaurant's own
+   * floor/tables indistinguishably from the real owner, instead of anywhere near
+   * `buildCompetitor`'s decorative shell — which made that shell (and this story's own Peek
+   * camera) point at an empty, avatar-less set while the real rival activity overlapped the
+   * player's own floor the whole time. A linear remap into the shell's own footprint (its 6
+   * "table" boxes span roughly x∈[-6,3]/z∈[-24,-20.5] — see `buildCompetitor`) is not a claim
+   * that the rival's table layout matches this restaurant's; it is exactly the same "coarse
+   * activity indicator, not a synced second floor" abstraction `updateRivalActivity`'s own
+   * lit-box count already uses for occupancy, just extended to the one moving body.
+   */
+  private static readonly RIVAL_FLOOR = { halfX: 8, halfZ: 4.5, centerZ: -24.5 };
+  private rivalWorldPosition(local: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
+    const { halfX, halfZ, centerZ } = RestaurantScene.RIVAL_FLOOR;
+    return { x: (local.x / 9) * halfX, y: local.y, z: centerZ + (local.z / 12) * halfZ };
+  }
+
   /** Create or update one owner avatar. Position always comes from server state. */
   upsertOwner(state: OwnerRenderState): void {
     let group = this.owners.get(state.playerId);
@@ -1031,7 +1057,8 @@ export class RestaurantScene {
     // every owner avatar frozen at its spawn point while the camera (which reads the same
     // interpolated position straight from `players[]`, not from this mesh) kept following
     // correctly — the exact bug this replaces.
-    group.position.set(state.position.x, state.position.y, state.position.z);
+    const worldPosition = state.remapToRivalFloor ? this.rivalWorldPosition(state.position) : state.position;
+    group.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
     group.rotation.y = state.facing;
   }
 
