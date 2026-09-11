@@ -1,16 +1,43 @@
 ---
 id: STORY-045
 title: Extend Peek to read district-wide conversion at a glance
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/045-district-peek-strategy-signal
+worktree_path: /Users/brent/table-stakes-story-045
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  Pure client-side extension — no new snapshot field needed, both pieces of data already exist.
+  CAMERA: `GameClient.ts#handleFrame` (~line 1184) currently sets `this.scene.cameraController
+  .setTarget(0, -23)` while `status.peeking`, framing only the rival's decorative floor
+  (`RestaurantScene.ts`'s `RIVAL_FLOOR = { halfX: 8, halfZ: 4.5, centerZ: -24.5 }`, ~line 1158,
+  i.e. world z∈[-29,-20]). The shared district street where STORY-044's population now walks and
+  decides sits BETWEEN the owner's own floor (queue/entry at z≈-10/-11,
+  `restaurant-layout.json`'s `queue_line`/`spawn.customerEntry`) and the rival floor — roughly
+  z∈[-11,-20], currently entirely outside Peek's frame. `CameraController`'s `settings` (height/
+  distance/angle/fov, ~line 19) are fixed constants, not per-call — this story either widens them
+  specifically for peek (a second settings profile, e.g. `PEEK_CAMERA_SETTINGS` with a larger
+  `distance`/`fov` to fit the whole span) or simply retargets `setTarget` to a z that's a wider
+  compromise (implementer's call, AC1 explicitly allows either "broadened" framing or "a second
+  peek state" — do not remove the existing rival-floor-only behavior, extend it). DATA READOUT:
+  `you.managerLedger` (STORY-037, `manager-ledger-system.js`) is ALREADY published live every
+  snapshot (`match.js` ~line 651, viewer-scoped, not phase-gated to results), and its
+  `demand_conversion` constraint already carries a plain-English district-conversion
+  `evidence` string sourced from `match.districtSummary` (`customer-system.js#districtSummary`,
+  ~line 1688) — e.g. "0 of 0 evaluated parties chose elsewhere; 0 left the district." No new
+  computation, no new wire field: surface the existing `status.managerLedger.constraints.find(c
+  => c.id === 'demand_conversion')` (or the raw `districtSummary`-shaped numbers it's built
+  from, implementer's call on which reads more like a HUD stat vs. a sentence) in a small new
+  overlay shown ONLY while `status.peeking` is true — `TacticalOverviewPanel.tsx` (~line 169)
+  already renders this exact constraint list elsewhere as a precedent for the display format, but
+  this story's overlay must be its own small peek-specific readout, not a reuse of that whole
+  panel (Peek is a full-screen camera mode with its own minimal HUD, not the tactical overview).
+  `is_architectural: false` — no snapshot/data-model change, no new interact/action, purely
+  camera framing + an existing-data readout gated on an existing client-only boolean.
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Extend Peek to read district-wide conversion at a glance

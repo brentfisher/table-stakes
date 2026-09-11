@@ -1,7 +1,7 @@
 ---
 id: STORY-044
 title: Animate the district's full customer population walking to their chosen restaurant, or neither
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
 branch: story/044-district-population-walk-and-render
 worktree_path: /Users/brent/table-stakes-story-044
