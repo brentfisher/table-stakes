@@ -25,11 +25,20 @@
 //   4. `setup-validator.js`'s `worker_unassigned` rejection does not fire for a co-op submission
 //      with an empty roster to assign, and REGRESSION: a non-coop submission with the same empty
 //      `staffAssignments` is still rejected — this story changed nothing about every other mode.
+//   5. A co-op restaurant with `workers: []` (a state combination that did not exist before this
+//      story — the pre-existing "unstaffed" case was `workerSystem` never being REGISTERED at
+//      all, so `onPhaseChange` never ran for it) survives the FULL production system set,
+//      including `service -> results`: `workerSystem.onPhaseChange`'s own teardown/balance-log
+//      loop reads `routineWorkShare(staff.work)` and formats `posts=[...]` off an empty
+//      `workers[]`, and `scoring-system.js`/`manager-ledger-system.js`/`telemetry-system.js` all
+//      read this same restaurant. Registered via `systems/index.js#registerAllSystems` — the
+//      real production registration, not this script's own hand-picked subset above it.
 //
 // Run: node scripts/check-coop-no-staff.mjs
 
 import { Match } from '../server/src/game/match.js';
 import { registerSystem, clearSystems, stepMatch } from '../server/src/game/simulation-loop.js';
+import { registerAllSystems } from '../server/src/game/systems/index.js';
 import { movementSystem } from '../server/src/game/systems/movement-system.js';
 import { setupSystem } from '../server/src/game/systems/setup-system.js';
 import { customerSystem } from '../server/src/game/systems/customer-system.js';
@@ -452,6 +461,67 @@ const sharedId = match.restaurantIdFor('guest');
       competitive.brigade.ownsSeating('solo') === true &&
       competitive.brigade.ownsRestocking('solo') === true,
     `workers=${staff.workers.length}`,
+  );
+}
+
+// =============================================================================================
+// 5. THE FULL PRODUCTION SYSTEM SET, service -> results: `workers: []` co-existing with a
+//    REGISTERED `workerSystem` is a state combination that did not exist before this story (the
+//    old "unstaffed" case was the system never being registered, so `onPhaseChange` never ran
+//    for it at all). Registered via `systems/index.js#registerAllSystems` — the real production
+//    order, not this script's own hand-picked subset above — so `workerSystem.onPhaseChange`'s
+//    own teardown/balance-log loop, and every system downstream of it (scoring, manager-ledger,
+//    telemetry), actually run against an empty roster.
+// =============================================================================================
+{
+  clearSystems();
+  registerAllSystems();
+
+  const full = new Match({
+    id: 'coop-no-staff-full-lifecycle',
+    seed: 'coop-no-staff-full-lifecycle',
+    phasePreset: 'prototype',
+    requiredPlayers: 2,
+    sharedRestaurant: true,
+  });
+  full.join({ fallbackPlayerId: 'host' });
+  full.join({ fallbackPlayerId: 'guest' });
+  full.setReady('host', true);
+  full.setReady('guest', true);
+  full.players.get('host').setup = coopSubmission();
+  full.players.get('guest').setup = coopSubmission({ cashRemaining: 500 });
+
+  let threw = null;
+  let reachedResults = false;
+  quiet(() => {
+    try {
+      for (let i = 0; i < 20_000 && full.phase !== 'results' && !full.ended; i += 1) {
+        stepMatch(full, TICK_MS);
+      }
+      reachedResults = full.phase === 'results';
+      // One more tick INSIDE `results` — the phase every teardown (`workerSystem`'s own
+      // balance-log loop included) runs on the transition INTO, per `onPhaseChange`'s contract.
+      if (reachedResults) stepMatch(full, TICK_MS);
+    } catch (err) {
+      threw = err;
+    }
+  });
+
+  check(
+    'FULL LIFECYCLE: a co-op match with the entire production system set (registerAllSystems) reaches results with no throw',
+    reachedResults && threw === null,
+    threw ? `threw: ${threw.stack ?? threw}` : `phase=${full.phase}`,
+  );
+
+  // `match.restaurants` itself is torn down to `[]` by `customer-system.js`'s own `results`
+  // teardown, for every match, coop or not — nothing to assert about it here that section 2
+  // above (during `service`) didn't already cover.
+  const fullSharedId = full.restaurantIdFor('guest');
+  check(
+    'FULL LIFECYCLE: scoring-system produced a real (non-throwing) result for the one shared restaurant both seats read',
+    Object.keys(full.finalResults?.results ?? {}).length === 1 &&
+      Boolean(full.finalResults?.results?.[fullSharedId]),
+    JSON.stringify(full.finalResults?.results ? Object.keys(full.finalResults.results) : full.finalResults),
   );
 }
 

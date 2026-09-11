@@ -132,6 +132,47 @@ server re-derives every rule") governs rules that keep a match LEGAL; nothing ab
 player choosing to buy a upgrade with no effect makes the match illegal, so there is no matching
 server-side rejection to add.
 
+**Confirmed not bypassable through a second read site.** `maitre_d_radio_1` also appears in
+`GameClient.ts`'s `FRONT_DOOR_UPGRADE_IDS` list — checked, because a second UI surface offering
+the same purchase would make the terminal's lock cosmetic. That list is read in exactly two
+places, `HudPanel.tsx` and `TacticalOverviewPanel.tsx`, both filtering `status.purchasedUpgradeIds`
+to render an "owned" badge — display of upgrades ALREADY bought, never a purchase affordance.
+`FrontDoorBoard.tsx` itself has no upgrade-purchase code at all. `UpgradeTerminal.tsx` is the
+only place `onBuy`/`buyUpgrade` is wired to an upgrade id, so it is also the only place that
+needs the lock.
+
+**Future-proofing note for whoever wires `server_radio_1`.** Its `serverTargetingQuality` effect
+("the server picks better targets and wastes fewer trips") is, by its own description, exactly as
+staff-only as `maitre_d_radio_1` — but it is not in `KNOWN_EFFECT_KEYS` yet, so it is invisible to
+`UpgradeTerminal` today (`WIRED_UPGRADE_IDS` excludes it) and this audit has nothing to lock. The
+story that wires it should add its id to `STAFF_ONLY_UPGRADE_IDS` in the same change, not treat
+that as a separate follow-up — `GameClient.ts`'s own comment beside the constant says so.
+
+### Decision 66 — "Clear Table" becomes a dead verb for a co-op player, and that is the correct
+### consequence of preserving the existing fallback, not a gap in this change
+
+This story's own framing is that co-op players "personally seat parties, take orders, deliver
+food, clear tables, and cook" — but `customer-system.js#freeTable` only sets `table.dirty` (and
+thus gives `action-validator.js#resolveClearTable` anything to act on) when
+`match.brigade?.ownsTableClearing(...)` is true. For a co-op restaurant that is never true
+(Decision 63), so a table is never dirtied in the first place: it auto-resolves straight back
+into rotation the instant a party leaves, exactly like an unstaffed restaurant in ANY mode
+already does today (`scripts/check-coop-no-staff.mjs`'s "AUTO TABLE CLEARING" check proves this).
+The practical consequence is that a co-op player's own manual "Clear Table" interact
+(`action-validator.js#resolveClearTable`) has nothing to ever find dirty and clear — the verb
+exists on the controller but never fires in co-op.
+
+This is the correct behavior under this story's own AC ("co-op without a human doing a given job
+should behave exactly like an unstaffed restaurant already does today, not silently freeze") —
+freezing would be a table that STAYS dirty with nobody to clear it; auto-resolving is the
+documented fallback every other unstaffed duty gets. It is recorded here explicitly, rather than
+left for a future reader to discover, because it is the one place where the story's own
+"personally... clear tables" framing and the actual shipped behavior diverge: co-op players
+personally seat, order-take, deliver, and cook, but never clear a table, because tables never
+need it. Fixing that (making a co-op restaurant's tables get dirty and giving the players
+something to clear) would be a real gameplay change belonging to a future story, not a bug this
+one introduced.
+
 ## Data Flow
 
 ```mermaid

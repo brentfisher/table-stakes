@@ -115,6 +115,13 @@ export const FRONT_DOOR_UPGRADE_IDS = [
  * customer- or player-triggered, not worker-gated; `restockTravelTimeMultiplier` scales the same
  * pantry trip the owner's own manual restock takes, per `inventory-system.js#restockDurationMs`'s
  * own comment), so none of them are locked here.
+ *
+ * FUTURE-PROOFING: `server_radio_1`'s `serverTargetingQuality` ("the server picks better targets
+ * and wastes fewer trips") is, by its own description, exactly as staff-only as
+ * `maitre_d_radio_1` — but it has no live read site yet (`upgrade-system.js#KNOWN_EFFECT_KEYS`
+ * does not name its effect key), so `WIRED_UPGRADE_IDS` already excludes it from the terminal
+ * and there is nothing for this list to lock. Whoever wires that effect should add its id here
+ * in the SAME change, not leave it as a follow-up.
  */
 export const STAFF_ONLY_UPGRADE_IDS = ['maitre_d_radio_1'];
 
