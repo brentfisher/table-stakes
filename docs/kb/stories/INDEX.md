@@ -47,5 +47,5 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-042 | [Station "what to cook" menu, suggested from pending orders](STORY-042-coop-what-to-cook-menu.md) | merged |
 | STORY-043 | [Kitchen order queue board, with real dish models](STORY-043-coop-kitchen-order-queue-board.md) | merged |
 | STORY-044 | [Animate the district's full customer population walking to their chosen restaurant, or neither](STORY-044-district-population-walk-and-render.md) | merged |
-| STORY-045 | [Extend Peek to read district-wide conversion at a glance](STORY-045-district-peek-strategy-signal.md) | in-progress |
+| STORY-045 | [Extend Peek to read district-wide conversion at a glance](STORY-045-district-peek-strategy-signal.md) | pr-opened |
 | STORY-046 | [Tune visible non-conversion crowd volume against the real district decision rate](STORY-046-district-crowd-density-tuning.md) | pending |
