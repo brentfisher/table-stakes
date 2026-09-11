@@ -1,16 +1,44 @@
 ---
 id: STORY-046
 title: Tune visible non-conversion crowd volume against the real district decision rate
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/046-district-crowd-density-tuning
+worktree_path: /Users/brent/table-stakes-story-046
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  A measure-then-tune balance pass, per `docs/kb/conventions.md`'s own testing rule 3 ("measure,
+  don't assert" — a figure that misses target is reported as a finding, not tuned away). HARD
+  BOUNDARY, must not be crossed: `customer-system.js#tickArrivals`'s Poisson arrival rate
+  (`market.baseFootTrafficPerMinute`, from `shared/game-data/markets.json`) and the choice model
+  itself (`scoreRestaurant`/`softmaxPick`) are OFF LIMITS — this story tunes how long an
+  ALREADY-DECIDED party is visible/how it paces, never how many parties arrive or what they
+  decide. The five in-bounds knobs, all in `shared/constants/tuning.js` already:
+  `CUSTOMER_ENTER_DISTRICT_MS` (400) + `CUSTOMER_EVALUATE_RESTAURANTS_MS` (600) = 1000ms total
+  visible "deciding" time before every party resolves; `CUSTOMER_EXIT_LINGER_MS` (2000ms, how
+  long a party stays in the snapshot after reaching a terminal state); `CUSTOMER_MOVE_SPEED`
+  (4.0, STORY-044) and `CUSTOMER_EXIT_OFFSET` (4, STORY-044) which together determine how long a
+  non-converting party's exit walk is actually visible on screen. Work: (1) measure, from a real
+  `Match` run (the `check-district-choice.mjs`/`check-district-population.mjs` direct-state-
+  injection technique, or a fresh script if neither fits), the real non-conversion rate
+  (`CHOOSE_RIVAL` + `LEAVE_DISTRICT` as a fraction of total district arrivals,
+  `match.districtDecisions`/`customer-system.js#districtSummary`) and how long a non-converting
+  party is actually currently visible end-to-end (loiter + exit-walk duration) at today's
+  constants; (2) if the crowd reads as sparse RELATIVE TO that measured rate (not relative to a
+  vibe), tune the pacing knobs above so visible duration honestly reflects the measured
+  conversion math — e.g. a longer loiter or slower/longer exit walk for non-converting parties
+  specifically, if that's achievable without touching arrival rate or decision probabilities;
+  (3) if the measurement instead shows the district's total foot traffic itself is the bottleneck
+  (this repo's own known, cited gap: `docs/kb/conventions.md`'s "Open Balance Gaps" — "a real 1v1
+  serves 16-36 parties per restaurant against PRD §24's 40-90... foot traffic was not scaled"),
+  STATE THAT FINDING EXPLICITLY in the story file as a balance recommendation for the user to
+  decide on, and do NOT unilaterally raise `baseFootTrafficPerMinute` to compensate — per the
+  story's own AC2, this is a decision to flag back, not make. `is_architectural: false` — tuning
+  constants plus a measurement check, no new module/API/data model.
 created: 2026-09-10
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 # Tune visible non-conversion crowd volume against the real district decision rate

@@ -1,7 +1,7 @@
 ---
 id: STORY-045
 title: Extend Peek to read district-wide conversion at a glance
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
 branch: story/045-district-peek-strategy-signal
 worktree_path: /Users/brent/table-stakes-story-045
