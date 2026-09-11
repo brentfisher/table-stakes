@@ -112,8 +112,10 @@ function RestaurantColumn({
 }
 
 export function TacticalOverviewPanel({ status }: { status: GameClientStatus }): JSX.Element {
-  const self = status.restaurants.find((r) => r.restaurantId === status.playerId) ?? null;
-  const rival = status.restaurants.find((r) => r.restaurantId !== status.playerId) ?? null;
+  // STORY-039. `status.restaurantId`, not `status.playerId` — see `HudPanel`'s identical fix
+  // and `GameClientStatus.restaurantId`'s own comment.
+  const self = status.restaurants.find((r) => r.restaurantId === status.restaurantId) ?? null;
+  const rival = status.restaurants.find((r) => r.restaurantId !== status.restaurantId) ?? null;
   // STORY-025. Same label-only treatment as `HudPanel`'s scoreboard header — see that file's
   // own comment.
   const rivalBot = status.bots.find((bot) => bot.playerId === rival?.restaurantId) ?? null;

@@ -239,8 +239,14 @@ function ensureState(match) {
   if (!match._customerSimState) {
     const queueEntity = layout.entities.find((e) => e.type === 'queue');
     const restaurants = new Map();
+    // STORY-039. `match.restaurantIdFor` collapses a co-op match's two players onto the SAME
+    // restaurant id — `Map#set` on a repeated key is a no-op past the first, so this naturally
+    // produces exactly one entry for co-op and one-per-player for every pre-existing mode,
+    // without this loop needing to know which case it is in. See `AC3`/the story's own
+    // "Implementation notes" for why the district otherwise behaves identically either way.
     for (const playerId of match.players.keys()) {
-      restaurants.set(playerId, buildRestaurantView(playerId));
+      const restaurantId = match.restaurantIdFor(playerId);
+      if (!restaurants.has(restaurantId)) restaurants.set(restaurantId, buildRestaurantView(restaurantId));
     }
     match._customerSimState = {
       rng: match.createRngStream(CUSTOMER_RNG_STREAM),
@@ -1544,9 +1550,11 @@ export const customerSystem = {
 
   update(match, dtMs) {
     const state = ensureState(match);
-    // A seat that filled after service began (a dev match, a late join) still gets a restaurant.
+    // A seat that filled after service began (a dev match, a late join) still gets a
+    // restaurant. Same collapse-through-the-resolver reasoning as `ensureState` above.
     for (const playerId of match.players.keys()) {
-      if (!state.restaurants.has(playerId)) state.restaurants.set(playerId, buildRestaurantView(playerId));
+      const restaurantId = match.restaurantIdFor(playerId);
+      if (!state.restaurants.has(restaurantId)) state.restaurants.set(restaurantId, buildRestaurantView(restaurantId));
     }
 
     tickArrivals(match, state, dtMs);

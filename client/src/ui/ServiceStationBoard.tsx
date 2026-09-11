@@ -2,15 +2,17 @@ import data from '../../../shared/game-data/service-station.json';
 import type { GameClientStatus } from '../game/GameClient';
 
 export function ServiceStationBoard({ status, onCommand }: { status: GameClientStatus; onCommand: (command: string) => void }): JSX.Element {
-  const own = status.restaurants.find((restaurant) => restaurant.restaurantId === status.playerId);
-  const service = status.serviceStation[status.playerId ?? ''];
+  // STORY-039. `status.restaurantId`, not `status.playerId` — see `GameClientStatus
+  // .restaurantId`'s own comment.
+  const own = status.restaurants.find((restaurant) => restaurant.restaurantId === status.restaurantId);
+  const service = status.serviceStation[status.restaurantId ?? ''];
   if (!own || !service) return <></>;
   const occupied = own.tables.filter((table) => table.occupiedBy).length;
   const dirty = own.tables.filter((table) => table.dirty).length;
-  const ready = status.orders.filter((order) => order.restaurantId === status.playerId && order.state === 'ready').length;
+  const ready = status.orders.filter((order) => order.restaurantId === status.restaurantId && order.state === 'ready').length;
   const workers = own.workers ?? [];
   const busy = workers.filter((worker) => worker.busy).length;
-  const risk = status.customers.filter((customer) => customer.restaurantId === status.playerId && customer.unhappy).length;
+  const risk = status.customers.filter((customer) => customer.restaurantId === status.restaurantId && customer.unhappy).length;
   const activePriority = data.priorities.find((priority) => priority.id === service.priorityId);
   return <aside className="service-station-board" aria-label="Dining Room board">
     <strong>DINING ROOM BOARD</strong>

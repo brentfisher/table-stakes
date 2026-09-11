@@ -109,14 +109,19 @@ export function MainMenu(): JSX.Element {
   // cached (`cacheInvite`) under the room's id so `App.tsx`'s `'lobby'` route — the very next
   // thing `navigate` mounts — can read it back without a second round trip. See
   // `invite-lobby-types.ts`'s own header for why this is sessionStorage rather than route state.
-  const inviteOpponent = async () => {
+  //
+  // STORY-039. `inviteCoop` below is the SAME flow with `mode: 'coop'` instead of
+  // `'private_human'` — the whole point of the co-op mode reusing `private_human`'s invite
+  // plumbing server-side (`routes.js`/`match-manager.js`) rather than a second invite system.
+  // One shared implementation, parameterized by mode, rather than two copies to keep in sync.
+  const createInviteRoom = async (mode: 'private_human' | 'coop') => {
     setInviting(true);
     setInviteError(null);
     try {
       const res = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: 'private_human' }),
+        body: JSON.stringify({ mode }),
       });
       const body = (await res.json()) as CreatedRoom & { error?: string };
       if (!res.ok || !body.id) {
@@ -128,6 +133,7 @@ export function MainMenu(): JSX.Element {
         joinUrl: body.joinUrl,
         hostDisplayName: body.hostDisplayName,
         expiresAt: body.inviteExpiresAt,
+        mode: body.mode ?? mode,
       });
       navigate(`/lobby/${body.id}`);
     } catch {
@@ -136,6 +142,8 @@ export function MainMenu(): JSX.Element {
       setInviting(false);
     }
   };
+  const inviteOpponent = () => createInviteRoom('private_human');
+  const inviteCoopPartner = () => createInviteRoom('coop');
 
   return (
     <div className="app main-menu">
@@ -209,6 +217,24 @@ export function MainMenu(): JSX.Element {
                 <small>Your next shift starts here</small>
               </span>
               <span className="mode-arrow">→</span>
+            </button>
+
+            {/* STORY-039. Same invite/lobby UX as "Invite Opponent" above — `App.tsx`'s
+                `'lobby'` route and `JoinInvitePage` are mode-agnostic, so the co-op partner
+                joins through the exact same "Join private match" code field/link. */}
+            <button
+              type="button"
+              className="mode"
+              disabled={inviting}
+              aria-disabled={inviting}
+              onClick={inviteCoopPartner}
+            >
+              <span className="mode-icon">⚭</span>
+              <span>
+                <b>{inviting ? 'Creating…' : 'Invite Co-op Partner'}</b>
+                <small>Run one kitchen together</small>
+              </span>
+              <span className="mode-arrow">↗</span>
             </button>
           </nav>
           {inviteError ? <p className="menu-invite-error">{inviteError}</p> : null}

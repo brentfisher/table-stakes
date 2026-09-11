@@ -14,6 +14,10 @@ export interface InviteInfo {
   hostDisplayName: string | null;
   /** `Date.now()`-comparable ms, straight off the room's `inviteExpiresAt`. */
   expiresAt: number;
+  /** STORY-039. The room's `mode` — `'coop'` reads "co-op partner" below instead of
+   * "opponent"; anything else (including `undefined`, every pre-existing caller) keeps the
+   * original `private_human` wording, unchanged. */
+  mode?: string;
 }
 
 function formatExpiry(expiresAt: number): string {
@@ -43,8 +47,9 @@ export function InvitePanel({ invite }: { invite: InviteInfo }): JSX.Element {
   // Feature-detected, not user-agent-sniffed — `navigator.share` simply does not exist on most
   // desktop browsers, and calling it there throws rather than silently no-op-ing.
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const isCoop = invite.mode === 'coop';
   const shareLink = () => {
-    navigator.share({ title: 'Join my restaurant', url: invite.joinUrl }).catch(() => {
+    navigator.share({ title: isCoop ? 'Join my kitchen' : 'Join my restaurant', url: invite.joinUrl }).catch(() => {
       // A user-canceled share rejects the promise; that is not an error worth surfacing.
     });
   };
@@ -52,8 +57,9 @@ export function InvitePanel({ invite }: { invite: InviteInfo }): JSX.Element {
   return (
     <div className="invite-panel">
       <p className="invite-lead">
-        Share this link with your opponent — {invite.hostDisplayName ?? 'you'} will not start
-        until they join.
+        {isCoop
+          ? <>Share this link with your co-op partner — {invite.hostDisplayName ?? 'you'} will not start until they join.</>
+          : <>Share this link with your opponent — {invite.hostDisplayName ?? 'you'} will not start until they join.</>}
       </p>
       <div className="invite-link-row">
         <input className="invite-link" type="text" readOnly value={invite.joinUrl} onFocus={(e) => e.currentTarget.select()} />

@@ -560,7 +560,12 @@ registerSystem(setupSystem);
     'carrying', 'currentAction',
     // STORY-012: how many orders this owner may carry — already inferable from `carrying`
     // reaching 2 or 3, and WHICH upgrade produced it stays private under `you` instead.
-    'carryCapacity'];
+    'carryCapacity',
+    // STORY-039: which restaurant this player belongs to — `playerId` itself for a competitive
+    // match (this script's own fixture), the shared co-op restaurant id for either co-op seat.
+    // Public for the same reason `playerId` is: it names WHICH restaurant, never any of that
+    // restaurant's private setup/pricing.
+    'restaurantId'];
   const opponentEntry = match.toSnapshot('p2').players.find((p) => p.playerId === 'p1');
   check(
     'the opponent entry carries exactly the public field allowlist, readiness included',

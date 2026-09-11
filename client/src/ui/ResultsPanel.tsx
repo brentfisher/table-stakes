@@ -94,11 +94,21 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   const complete = status.matchComplete;
   if (!complete) return null;
 
-  const selfId = status.playerId;
+  // STORY-039. `status.restaurantId`, not `status.playerId` — `complete.results` is keyed by
+  // restaurant id (`scoring-system.js`), and a co-op guest's own `playerId` is never one of
+  // those keys (see `GameClientStatus.restaurantId`'s own comment). Falls back to `playerId`
+  // only for the theoretical case of a stale cached build predating that field.
+  const selfId = status.restaurantId ?? status.playerId;
   const restaurantIds = Object.keys(complete.results);
-  const rivalId = restaurantIds.find((id) => id !== selfId) ?? restaurantIds[0] ?? null;
+  // STORY-039. No `?? restaurantIds[0]` fallback: a match with only ONE restaurant id (a co-op
+  // match, or the pre-existing solo `/dev/match` case) has no rival to find, and the honest
+  // answer is null — falling back to `restaurantIds[0]` would resolve to `selfId` ITSELF
+  // (there is nothing else in the array), which would render your own restaurant a second time
+  // labeled "Rival" showing your own score back at you.
+  const rivalId = restaurantIds.find((id) => id !== selfId) ?? null;
   const selfResult = selfId ? complete.results[selfId] : undefined;
   const rivalResult = rivalId ? complete.results[rivalId] : undefined;
+  const hasRival = rivalId !== null;
   // STORY-025 AC: "identifies the bot opponent by name/profile rather than showing generic
   // 'Player 2'". `status.bots` is empty for a human-vs-human match, so `rivalBot` is null and
   // `rivalTitle` below is exactly the pre-STORY-025 "Rival" — this only changes anything for an
@@ -141,15 +151,22 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
         </div>
       </div>
 
-      {!selfResult || !isScored(selfResult) || !rivalResult || !isScored(rivalResult) ? (
+      {!selfResult || !isScored(selfResult) || (hasRival && (!rivalResult || !isScored(rivalResult))) ? (
         <div className="results-region results-empty">
           No score was recorded for this match — it ended before scoring ran.
         </div>
       ) : (
         <>
+          {/* STORY-039. `hasRival` is false for a co-op match (one shared restaurant, no rival
+              to compare against — scoring/win-condition for co-op is explicitly out of this
+              story's scope, see its own "Implementation notes"): the rival column, and every
+              narrative line below that depends on a rival's result, simply do not render rather
+              than showing a duplicate of the player's own restaurant mislabeled "Rival". */}
           <div className="results-region results-stats">
             <StatColumn title="You" result={selfResult} />
-            <StatColumn title={rivalTitle} result={rivalResult} />
+            {hasRival && rivalResult && isScored(rivalResult) ? (
+              <StatColumn title={rivalTitle} result={rivalResult} />
+            ) : null}
           </div>
 
           <div className="results-region results-narrative">
@@ -170,7 +187,7 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                   orders.
                 </li>
               ) : null}
-              {rivalResult.largestLossCause ? (
+              {hasRival && rivalResult && isScored(rivalResult) && rivalResult.largestLossCause ? (
                 <li>
                   Your rival's biggest loss was {rivalResult.largestLossCause.count} parties choosing you for{' '}
                   {reasonLabel(rivalResult.largestLossCause.reason)}
@@ -186,7 +203,9 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                   won the tie-break on {TIE_BREAK_LABELS[complete.tieBreakDecided.criterion] ?? complete.tieBreakDecided.criterion}.
                 </li>
               ) : null}
-              {!complete.decidingSegment && !selfResult.bestDish && !rivalResult.largestLossCause ? (
+              {!complete.decidingSegment &&
+              !selfResult.bestDish &&
+              !(hasRival && rivalResult && isScored(rivalResult) && rivalResult.largestLossCause) ? (
                 <li>Not enough happened this match to point to a single deciding factor.</li>
               ) : null}
             </ul>

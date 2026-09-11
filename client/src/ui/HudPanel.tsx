@@ -140,8 +140,12 @@ export function HudPanel({
   const canReady = phase === 'lobby' || phase === 'setup';
   const inService = phase === 'service' || phase === 'final_rush';
 
-  const self = status?.restaurants.find((r) => r.restaurantId === status.playerId) ?? null;
-  const rival = status?.restaurants.find((r) => r.restaurantId !== status.playerId) ?? null;
+  // STORY-039. `status.restaurantId`, not `status.playerId` — identical in every pre-existing
+  // mode, but a co-op guest's `playerId` is never a key into `restaurants[]` (see
+  // `GameClientStatus.restaurantId`'s own comment). `rival` correctly comes back null for BOTH
+  // co-op seats: `restaurants[]` has exactly one entry for a co-op match, and it IS `self`.
+  const self = status?.restaurants.find((r) => r.restaurantId === status.restaurantId) ?? null;
+  const rival = status?.restaurants.find((r) => r.restaurantId !== status.restaurantId) ?? null;
   // STORY-025. "The bot is represented ... using the existing rival summary/HUD surfaces" —
   // `rival` above is already that surface (the bot occupies a normal restaurant slot); this is
   // only the label, so the scoreboard header reads "Bot (Premium)" instead of a plain "Rival"

@@ -257,6 +257,13 @@ export interface PublicMarket {
  */
 export interface SnapshotViewer {
   playerId: string;
+  /**
+   * STORY-039. Which restaurant THIS viewer acts on — identical to `playerId` for a
+   * competitive match, the shared co-op restaurant id for either co-op seat. The client reads
+   * THIS, not `playerId`, to find its own entry in `restaurants[]`/`frontDoor`/
+   * `serviceStation` — see `match.js#toSnapshot`'s own comment.
+   */
+  restaurantId: string | null;
   ready: boolean;
   /**
    * STORY-009. The viewer's own accepted setup submission, or null before they submit. This

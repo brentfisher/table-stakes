@@ -42,14 +42,20 @@ function normalizeHostDisplayName(value) {
  * @param {string} [options.seed]
  * @param {string} [options.phasePreset]
  * @param {number} [options.requiredPlayers]
- * @param {'dev'|'private_human'} [options.mode] STORY-024. `'dev'` (the default) is the
- *   pre-existing bare room — `POST /dev/match`, the bot flow, every `scripts/check-*.mjs`
- *   caller, and `check-match-lifecycle.mjs`'s own "lobby drop frees the seat" assertion all
- *   construct one of these and must keep behaving exactly as before. `'private_human'` is
- *   PRD §12's actual invite flow: it additionally gets a non-guessable `inviteToken`, an
- *   expiry, and `holdLobbySeatsDuringGrace` on its `Match` (see match.js's own comment on
- *   why a lobby drop is NOT simply "somebody else can take that seat" here).
- * @param {string} [options.hostDisplayName] STORY-024. `'private_human'` only.
+ * @param {'dev'|'private_human'|'solo_bot'|'coop'} [options.mode] STORY-024. `'dev'` (the
+ *   default) is the pre-existing bare room — `POST /dev/match`, the bot flow, every
+ *   `scripts/check-*.mjs` caller, and `check-match-lifecycle.mjs`'s own "lobby drop frees the
+ *   seat" assertion all construct one of these and must keep behaving exactly as before.
+ *   `'private_human'` is PRD §12's actual invite flow: it additionally gets a non-guessable
+ *   `inviteToken`, an expiry, and `holdLobbySeatsDuringGrace` on its `Match` (see match.js's
+ *   own comment on why a lobby drop is NOT simply "somebody else can take that seat" here).
+ *   `'coop'` (STORY-039) reuses that EXACT same invite plumbing — a co-op room is gated by an
+ *   `inviteToken`/`joinUrl` exactly like `private_human`, for the same reason (a specific
+ *   invited partner should hold their seat through a disconnect, not lose it to a stranger who
+ *   loads the link in that window) — but ALSO sets `sharedRestaurant: true` on the underlying
+ *   `Match`, so both seats resolve to the SAME restaurant (`Match#restaurantIdFor`) instead of
+ *   one each.
+ * @param {string} [options.hostDisplayName] STORY-024. `'private_human'`/`'coop'` only.
  * @param {string} [options.marketId] STORY-025. Forwarded to `Match` verbatim — see that
  *   constructor's own comment on the fallback-to-drawn-market behavior for an unknown id.
  */
@@ -62,7 +68,12 @@ export function createRoom({
   marketId,
 } = {}) {
   const id = nextRoomId();
-  const isPrivateInvite = mode === 'private_human';
+  // STORY-039. A co-op room is invite-gated exactly like a private_human one (see this
+  // function's own `mode` doc comment above) — `isInviteFlow` is deliberately the ONE predicate
+  // both `inviteToken` minting below AND `holdLobbySeatsDuringGrace` read, so the two can never
+  // drift apart the way they would if a future mode forgot to update one but not the other.
+  const isInviteFlow = mode === 'private_human' || mode === 'coop';
+  const isCoop = mode === 'coop';
   // One `Date.now()` read, reused for both `createdAt` and `inviteExpiresAt` — two separate
   // reads a statement apart can differ by a millisecond, which would make "expires exactly
   // INVITE_TOKEN_EXPIRY_MS after creation" a lie by a rounding error nobody could reproduce.
@@ -72,8 +83,11 @@ export function createRoom({
     seed,
     phasePreset,
     requiredPlayers,
-    holdLobbySeatsDuringGrace: isPrivateInvite,
+    holdLobbySeatsDuringGrace: isInviteFlow,
     marketId,
+    // STORY-039. The whole point of `'coop'`: both seats fold onto ONE restaurant instead of
+    // getting one each. See `Match#restaurantIdFor`'s own comment for the full reasoning.
+    sharedRestaurant: isCoop,
   });
   const room = {
     id,
@@ -82,12 +96,14 @@ export function createRoom({
     match,
     sockets: new Set(),
     mode,
-    hostDisplayName: isPrivateInvite ? normalizeHostDisplayName(hostDisplayName) : null,
+    // STORY-039. A co-op room's host also gets a display name on the invite screen — same
+    // reasoning as `private_human`'s, just a different partner reading it.
+    hostDisplayName: isInviteFlow ? normalizeHostDisplayName(hostDisplayName) : null,
     // `randomUUID()`, NOT `rng.js#randomSeed` — the seed stream is deliberately reproducible
     // from a short string (Decision 6/18's whole point); an invite token is deliberately the
     // opposite of that. Cryptographically strong, `node:crypto`, no new dependency.
-    inviteToken: isPrivateInvite ? randomUUID() : null,
-    inviteExpiresAt: isPrivateInvite ? now + INVITE_TOKEN_EXPIRY_MS : null,
+    inviteToken: isInviteFlow ? randomUUID() : null,
+    inviteExpiresAt: isInviteFlow ? now + INVITE_TOKEN_EXPIRY_MS : null,
     // Set by `cancelRoom` below. A canceled room is left in the store (no SQLite yet to persist
     // "this used to exist", and PRD names no room-GC story) so a stale join attempt gets a
     // legible `invite_canceled` rather than `room_not_found`.

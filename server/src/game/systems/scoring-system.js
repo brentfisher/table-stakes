@@ -297,7 +297,12 @@ export const scoringSystem = {
     // derive here, retroactively, rather than sampled live.
     const eventWindows = toEventWindows(match.eventTimeline?.entries, match.eventTimeline?.anchorMs);
 
-    const restaurantIds = [...match.players.keys()];
+    // STORY-039. De-duplicated through the same resolver every other per-restaurant bucket
+    // uses now — a co-op match's two players collapse to the ONE restaurant id they share, so
+    // this stays a length-1 list instead of manufacturing a phantom second, all-zero score row
+    // for a "restaurant" `districtByRestaurant`/`orderByRestaurant`/`upgradeByRestaurant` never
+    // actually populated an entry for.
+    const restaurantIds = [...new Set([...match.players.keys()].map((id) => match.restaurantIdFor(id)))];
     const perRestaurant = new Map();
     for (const restaurantId of restaurantIds) {
       perRestaurant.set(

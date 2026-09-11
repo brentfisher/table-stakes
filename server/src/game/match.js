@@ -76,6 +76,12 @@ export class Match {
    *   entry, that market is used INSTEAD of the drawn one; a missing/unknown id falls back to
    *   the drawn market exactly as if this option had never been passed, so a typo or a stale id
    *   degrades to the pre-existing behavior rather than throwing.
+   * @param {boolean} [options.sharedRestaurant] STORY-039. Every system in this codebase keys
+   *   its own "one restaurant" bucket by `playerId` directly — see `restaurantIdFor`'s own
+   *   comment just below for the full reasoning. Defaults false so every existing caller (dev,
+   *   `private_human`, `solo_bot`) keeps `restaurantId === playerId` exactly as before. A co-op
+   *   room passes `true`: every player in this match is folded onto ONE restaurant instead of
+   *   getting their own.
    */
   constructor({
     id,
@@ -84,6 +90,7 @@ export class Match {
     requiredPlayers = PLAYERS_PER_MATCH,
     holdLobbySeatsDuringGrace = false,
     marketId = null,
+    sharedRestaurant = false,
   }) {
     if (!PHASE_DURATIONS_MS[phasePreset]) {
       throw new Error(
@@ -96,6 +103,7 @@ export class Match {
     this.phasePreset = phasePreset;
     this.requiredPlayers = requiredPlayers;
     this.holdLobbySeatsDuringGrace = holdLobbySeatsDuringGrace;
+    this.sharedRestaurant = sharedRestaurant;
     this.durations = PHASE_DURATIONS_MS[phasePreset];
     this.createdAt = Date.now();
 
@@ -172,6 +180,54 @@ export class Match {
       throw new Error('createRngStream(name) requires a non-empty stream name');
     }
     return createRng(`${this.seed}:${name}`);
+  }
+
+  /**
+   * STORY-039. `restaurantId === playerId` is baked into essentially every gameplay system
+   * (customer-system.js's district, order/inventory/worker-system's per-restaurant state,
+   * action-validator.js's `restaurantId = playerId`, this class's own `toSnapshot`) — a
+   * restaurant is, everywhere else in this codebase, simply "the thing this player owns". A
+   * co-op match breaks that 1:1 assumption on purpose (two players, one restaurant), and rather
+   * than teach a dozen files a new per-match player->restaurant mapping, this ONE method is the
+   * single seam: every site that used to read `playerId` as a restaurant id now asks this
+   * instead. For every EXISTING mode it returns `playerId` unchanged (`sharedRestaurant` is
+   * false), so nothing about a dev/private_human/solo_bot match's behaviour moves by a single
+   * byte. For a co-op match it returns the FIRST player ever seated (`this.players`' insertion
+   * order — see `#seat`) for every player id asked about, so both seats resolve to the exact
+   * same restaurant bucket everywhere this is called, without either seat needing to know who
+   * "hosts" it.
+   *
+   * The one documented consequence: `menuOf` (customer-system.js) reads a restaurant's menu off
+   * `match.players.get(view.playerId)?.setup` — the FIRST-seated co-op player's own setup
+   * submission becomes the shared restaurant's menu; the second player's `setup_submit` is
+   * still accepted and stored (nothing rejects it) but never read by anything customer-facing.
+   * A real collaborative single-menu flow is explicitly STORY-040+'s job (see that story's own
+   * "no-staff kitchen rework"), not this foundation story's.
+   *
+   * DELIBERATELY RE-DERIVED FROM `this.players` ON EVERY CALL, NOT CACHED/PINNED. `this.players`
+   * can only ever lose an entry during `lobby` (a drop past `RECONNECT_GRACE_MS` with
+   * `holdLobbySeatsDuringGrace` — `#releaseLobbySeatsPastGrace` — or, without that flag, an
+   * instant lobby-drop release; see `removePlayer`), which means the FIRST-seated player CAN
+   * change while a co-op room is still waiting in its lobby (the original host drops, grace
+   * expires, a fresh join fills the freed seat first). That is fine, not a bug: every OTHER
+   * restaurant-keyed system in this codebase (`order-system.js`, `inventory-system.js`,
+   * `worker-system.js`, `upgrade-system.js`, ...) also builds its own bucket map by enumerating
+   * `match.players.values()` FRESH, lazily, the first time it ticks during `service` —
+   * i.e. from whichever roster is actually seated once the match leaves `lobby`, which is frozen
+   * from that point on (`this.players` is never deleted from again post-lobby — see the two call
+   * sites of `.delete(` in this file). Re-deriving here keeps `restaurantIdFor` looking at THE
+   * SAME roster those systems build their real buckets from. Pinning the id at first-seat time
+   * would instead risk the opposite failure: if that pinned player's seat was later reclaimed by
+   * someone else before service began, every other system's bucket map would have no entry for
+   * the stale pinned id at all (it enumerates the CURRENT roster), and every action would resolve
+   * to a restaurant that was never built. Verified empirically in
+   * `scripts/check-coop-mode.mjs` ("a co-op seat freed and refilled during lobby still reaches
+   * service with one consistent shared restaurant").
+   */
+  restaurantIdFor(playerId) {
+    if (!this.sharedRestaurant) return playerId;
+    const [firstSeatedId] = this.players.keys();
+    return firstSeatedId ?? playerId;
   }
 
   // --- players ------------------------------------------------------------------------
@@ -501,7 +557,9 @@ export class Match {
       winnerPlayerId: this.finalResults?.winnerPlayerId ?? null,
       results:
         this.finalResults?.results ??
-        Object.fromEntries([...this.players.keys()].map((playerId) => [playerId, {}])),
+        Object.fromEntries(
+          [...new Set([...this.players.keys()].map((id) => this.restaurantIdFor(id)))].map((id) => [id, {}]),
+        ),
       reason: this.endReason ?? 'completed',
       ...(this.endedPlayerId ? { disconnectedPlayerId: this.endedPlayerId } : {}),
       // STORY-014 (PRD §11 results-screen narrative layer). Match-wide, not per-player, so they
@@ -534,6 +592,17 @@ export class Match {
    */
   toSnapshot(viewerPlayerId = null) {
     const viewer = viewerPlayerId ? this.players.get(viewerPlayerId) : null;
+    // STORY-039. The restaurant bucket THIS viewer's private facades (`cash`, `pantry`, ...)
+    // and THIS viewer's `frontDoor`/`serviceStation` entries below are read from — `playerId`
+    // for every pre-existing mode, the shared co-op restaurant id for both co-op seats. See
+    // `restaurantIdFor`'s own comment for why this is the one seam instead of a dozen edits.
+    const viewerRestaurantId = viewer ? this.restaurantIdFor(viewer.playerId) : null;
+    // De-duplicated restaurant ids for the two per-viewer maps below: a co-op match's two
+    // players both resolve to the SAME restaurant id, so this is a one-entry set for them
+    // (`frontDoor`/`serviceStation` would otherwise carry a second, always-default entry keyed
+    // by the second player's raw id — one that nothing writes to and the guest's own client
+    // would never look up, since it looks up by `you.restaurantId`, not `you.playerId`).
+    const restaurantIds = [...new Set([...this.players.keys()].map((id) => this.restaurantIdFor(id)))];
     return {
       type: 'match_snapshot',
       serverTime: Math.round(this.elapsedMs),
@@ -545,13 +614,18 @@ export class Match {
       you: viewer
         ? {
             playerId: viewer.playerId,
+            // STORY-039. The restaurant THIS viewer acts on — `playerId` itself for every
+            // pre-existing mode. A co-op guest's `playerId` is never a key into `restaurants[]`/
+            // `frontDoor`/`serviceStation`; the client must read THIS field to find its own
+            // restaurant rather than assuming `restaurantId === playerId`.
+            restaurantId: viewerRestaurantId,
             ready: viewer.ready,
             setup: viewer.setup ?? null,
             // STORY-012. Private for the same reason `setup` is — both are derived from this
             // player's own menu/pricing choices. `match.upgrades` does not exist before
             // `service` (`upgrade-system.js` attaches it on the setup->service transition).
-            cash: this.upgrades?.cashAvailable(viewer.playerId) ?? null,
-            purchasedUpgradeIds: this.upgrades?.ownedUpgrades(viewer.playerId) ?? [],
+            cash: this.upgrades?.cashAvailable(viewerRestaurantId) ?? null,
+            purchasedUpgradeIds: this.upgrades?.ownedUpgrades(viewerRestaurantId) ?? [],
             // STORY-015. PRD §18 "Revenue and available cash" needs BOTH numbers, and `cash`
             // above only ever carried the second one — `restaurants[].revenue` stays
             // deliberately unpublished (`customer-system.js#toPublicRestaurantSnapshot`'s own
@@ -562,14 +636,14 @@ export class Match {
             // reason: it is derived from this player's own menu and pricing. Same source and
             // same null-before-`service` guard as `cash` (`match.kitchen` does not exist before
             // `order-system.js`'s own `onPhaseChange('service')`, and is torn down at `results`).
-            revenue: this.kitchen?.revenueFor(viewer.playerId) ?? null,
-            pantry: this.pantry?.publicFor(viewer.playerId) ?? null,
+            revenue: this.kitchen?.revenueFor(viewerRestaurantId) ?? null,
+            pantry: this.pantry?.publicFor(viewerRestaurantId) ?? null,
             // STORY-036. Private because it includes the viewer's exact live menu availability.
-            kitchenCommand: this.kitchenCommand?.privateFor(viewer.playerId) ?? null,
+            kitchenCommand: this.kitchenCommand?.privateFor(viewerRestaurantId) ?? null,
             // STORY-037. The combined management diagnosis includes private pantry/menu facts,
             // payroll and this restaurant's conversion history, so it follows those sources
             // under `you` rather than leaking through the public restaurant array.
-            managerLedger: this.managerLedger?.privateFor(viewer.playerId) ?? null,
+            managerLedger: this.managerLedger?.privateFor(viewerRestaurantId) ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already
@@ -583,10 +657,14 @@ export class Match {
       restaurants: this.restaurants ?? [],
       customers: this.customers ?? [],
       orders: this.orders ?? [],
-      frontDoor: Object.fromEntries([...this.players.keys()].map((id) => [id, this.frontDoor?.publicFor(id) ?? { activeSpecialId: null, featuredDishId: null, activeForMs: 0, cooldownForMs: 0, eligibleSpecialIds: [] }])),
-      serviceStation: Object.fromEntries([...this.players.keys()].map((id) => [id, this.serviceStation?.publicFor(id) ?? { priorityId: 'balanced', priorityCooldownForMs: 0, payrollBurn: 0, laborExpenses: 0, contracts: [] }])),
+      frontDoor: Object.fromEntries(restaurantIds.map((id) => [id, this.frontDoor?.publicFor(id) ?? { activeSpecialId: null, featuredDishId: null, activeForMs: 0, cooldownForMs: 0, eligibleSpecialIds: [] }])),
+      serviceStation: Object.fromEntries(restaurantIds.map((id) => [id, this.serviceStation?.publicFor(id) ?? { priorityId: 'balanced', priorityCooldownForMs: 0, payrollBurn: 0, laborExpenses: 0, contracts: [] }])),
       players: [...this.players.values()].map((p) => ({
         playerId: p.playerId,
+        // STORY-039. See `you.restaurantId` above — the client's `remapToRivalFloor` decision
+        // (rendering another player as a decorative rival, or as a real teammate on this same
+        // floor) reads THIS, not `playerId`, for exactly the same reason.
+        restaurantId: this.restaurantIdFor(p.playerId),
         position: { x: p.position.x, y: p.position.y, z: p.position.z },
         facing: p.facing,
         sprinting: p.sprinting,
@@ -608,7 +686,7 @@ export class Match {
         // STORY-012. Public: already inferable by watching `carrying` reach 2 or 3, and the
         // client's own InteractionController needs its OWN capacity to know when to stop
         // offering `pickup`. WHICH upgrade produced it stays private — see `you` above.
-        carryCapacity: this.upgrades?.ownerCarryCapacity(p.playerId) ?? OWNER_CARRY_CAPACITY,
+        carryCapacity: this.upgrades?.ownerCarryCapacity(this.restaurantIdFor(p.playerId)) ?? OWNER_CARRY_CAPACITY,
       })),
     };
   }

@@ -102,13 +102,27 @@ export function apiRouter() {
    * `includeInvite: true` is passed for every mode, same as before STORY-025 — a `solo_bot`
    * room never mints an `inviteToken` (only `mode === 'private_human'` does, in `createRoom`),
    * so the flag is simply a no-op for it, not a second branch to keep in sync.
+   *
+   * STORY-039 `{mode: 'coop', hostDisplayName}` is the co-op menu entry's room-creation path.
+   * It reuses the EXACT `private_human` invite plumbing above — `inviteToken`/`joinUrl`
+   * generation, `hostDisplayName`, `holdLobbySeatsDuringGrace` — rather than a second invite
+   * system (this story's own AC), plus `requiredPlayers: 2` explicit like `solo_bot`'s. The one
+   * new thing `createRoom` does for it is `sharedRestaurant: true` on the `Match`, which folds
+   * both seats onto ONE restaurant instead of one each — see `Match#restaurantIdFor`'s own
+   * comment for the single seam that makes that true everywhere a restaurant id is read.
    */
   router.post('/rooms', (req, res) => {
     const seed = typeof req.body?.seed === 'string' ? req.body.seed : undefined;
     const phasePreset = matchManager.normalizePhasePreset(req.body?.phasePreset);
     const requestedMode = req.body?.mode;
     const mode =
-      requestedMode === 'private_human' ? 'private_human' : requestedMode === 'solo_bot' ? 'solo_bot' : 'dev';
+      requestedMode === 'private_human'
+        ? 'private_human'
+        : requestedMode === 'solo_bot'
+          ? 'solo_bot'
+          : requestedMode === 'coop'
+            ? 'coop'
+            : 'dev';
     // PRD §12 step 4's own market data — reused here as the validity check for an explicit
     // player-chosen scenario (the STORY-025 menu's "market scenario" field): a real catalogue
     // id passes through, anything else (omitted, mistyped, an id from a different catalogue
@@ -123,8 +137,14 @@ export function apiRouter() {
       ...(seed ? { seed } : {}),
       phasePreset,
       mode,
-      ...(mode === 'private_human' ? { hostDisplayName: req.body?.hostDisplayName } : {}),
+      // STORY-039. Same field, same reasoning as `private_human`'s — a co-op room's host also
+      // gets a display name the invited partner sees before joining.
+      ...(mode === 'private_human' || mode === 'coop' ? { hostDisplayName: req.body?.hostDisplayName } : {}),
       ...(mode === 'solo_bot' ? { requiredPlayers: 2, marketId } : {}),
+      // STORY-039. Explicit, like `solo_bot`'s — a co-op room always seats exactly two players
+      // into the ONE restaurant they share (`Match#restaurantIdFor`), never relying on
+      // `createRoom`'s own default.
+      ...(mode === 'coop' ? { requiredPlayers: 2 } : {}),
     });
     let botDifficulty = null;
     if (mode === 'solo_bot') {

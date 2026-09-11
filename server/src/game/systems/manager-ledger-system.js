@@ -31,11 +31,27 @@ function initialTracking() {
   }]));
 }
 
+/** STORY-039. `match.restaurantIdFor`, feature-detected — `scripts/check-manager-ledger.mjs`
+ * exercises this system against a hand-built fixture object, not a real `Match`, so a fixture
+ * with no `restaurantIdFor` keeps its pre-existing `restaurantId === playerId` behavior exactly
+ * as before this story (same fallback `action-validator.js` uses for its own fixtures). */
+function restaurantIdOf(match, playerId) {
+  return typeof match.restaurantIdFor === 'function' ? match.restaurantIdFor(playerId) : playerId;
+}
+
 function ensure(match) {
   if (match._managerLedgerState) return match._managerLedgerState;
+  // STORY-039. De-duplicated through `restaurantIdFor` — a co-op match's two players collapse
+  // to the one restaurant id they share, same reasoning as every other per-restaurant bucket
+  // in this codebase now follows (see `Match#restaurantIdFor`'s own comment).
   const state = {
     lastSampleMs: -Infinity,
-    restaurants: new Map([...match.players.keys()].map((id) => [id, { tracking: initialTracking() }])),
+    restaurants: new Map(
+      [...new Set([...match.players.keys()].map((id) => restaurantIdOf(match, id)))].map((id) => [
+        id,
+        { tracking: initialTracking() },
+      ]),
+    ),
   };
   match._managerLedgerState = state;
   match.managerLedger = {
@@ -253,7 +269,7 @@ export const managerLedgerSystem = {
       state.lastSampleMs = match.elapsedMs;
       shouldSample = true;
     }
-    for (const restaurantId of match.players.keys()) {
+    for (const restaurantId of new Set([...match.players.keys()].map((id) => restaurantIdOf(match, id)))) {
       if (!state.restaurants.has(restaurantId)) state.restaurants.set(restaurantId, { tracking: initialTracking() });
       const ledger = buildLiveLedger(match, restaurantId);
       const restaurantState = state.restaurants.get(restaurantId);
