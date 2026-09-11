@@ -109,6 +109,40 @@ body {
 }
 .peek-button--active kbd { background: #0d1520; border-color: #7db8ea; color: var(--opportunity); }
 
+/* STORY-045. Peek's own small HUD (`PeekReadout.tsx`), shown only while `status.peeking` is
+   true — top-center, clear of the `peek-button` it sits above (bottom-right) and of `.hud`
+   (top-left) and `EventBanner`/`ArcadeToast` (top-center but above this, and rare/transient
+   next to Peek's own held-duration visibility). Deliberately small: this is a quick-glance
+   overlay, not a second panel to read carefully, matching `TacticalOverviewPanel`'s own
+   distinction between a full-attention Tab view and a peripheral HUD element. */
+.peek-readout {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 360px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  text-align: center;
+  pointer-events: none;
+}
+.peek-readout h3 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.peek-readout-status { margin: 0 0 4px; font-weight: 700; }
+.peek-readout-status--limiting { color: var(--bad); }
+.peek-readout-status--watch { color: var(--warn); }
+.peek-readout-status--clear { color: var(--ok); }
+.peek-readout-evidence { margin: 0; color: var(--text); font-size: 12px; line-height: 1.4; }
+.peek-readout-nudge { margin: 6px 0 0; color: var(--opportunity); font-size: 12px; line-height: 1.4; }
+
 .help {
   position: absolute;
   left: 12px;

@@ -3,6 +3,7 @@
 // readability — a free camera looks impressive and makes restaurant state hard to read.
 
 import * as THREE from 'three';
+import { PEEK_CAMERA_DISTANCE } from '../../../shared/constants/tuning';
 
 export interface CameraSettings {
   height: number;
@@ -19,6 +20,23 @@ export const DEFAULT_CAMERA: CameraSettings = {
   distance: 17,
   angle: Math.PI - 0.28,
   fov: 40,
+};
+
+/**
+ * STORY-045. A second, peek-only profile — same `height`/`angle`/`fov` as `DEFAULT_CAMERA`
+ * (Peek still swings the SAME camera, not a different rig, and `fov` is deliberately left
+ * unchanged — see `PEEK_CAMERA_DISTANCE`'s own comment, `shared/constants/tuning.js`, for why a
+ * wider fov was tried and rejected: it shrinks the grazing angle at the frame's far edge enough
+ * to make a walking party unreadably small there). Only `distance` differs, a modest pull-back
+ * so more of the district street (STORY-044's population) sits inside a legibly-framed band of
+ * the shot once `GameClient#handleFrame` retargets toward it (`PEEK_CAMERA_TARGET_Z`), rather
+ * than the close, narrow shot tuned for the owner's own dining room. `GameClient#setPeeking`
+ * swaps the controller onto this profile for as long as Peek is held, and back to
+ * `DEFAULT_CAMERA` the instant it releases.
+ */
+export const PEEK_CAMERA: CameraSettings = {
+  ...DEFAULT_CAMERA,
+  distance: PEEK_CAMERA_DISTANCE,
 };
 
 export class CameraController {

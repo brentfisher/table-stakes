@@ -1187,3 +1187,50 @@ export const BOT_ARRIVAL_EPSILON = 0.35;
  * balance one. `match-manager.js#validateInvite`/`resolveInvite` are the only readers.
  */
 export const INVITE_TOKEN_EXPIRY_MS = 15 * 60_000;
+
+// ============================================================================================
+// STORY-045: district Peek strategy signal
+// ============================================================================================
+// Peek (STORY-034, `GameClient#setPeeking`) originally re-aimed the SAME fixed camera profile
+// at the rival's decorative floor (`RestaurantScene.RIVAL_FLOOR`, centre z=-24.5) with no
+// framing change of its own — `CameraController`'s `distance`/`fov` never moved, only the
+// `setTarget` call did. STORY-044 put the district's whole population on a shared street
+// between the owner's own floor (`restaurant-layout.json`'s `spawn.customerEntry`, z=-11, and
+// `queue_line`, z=-10) and that rival floor (z in [-20,-29]). Retargeting toward the street
+// (`PEEK_CAMERA_TARGET_Z` below) is what actually brings it into a well-framed band of the
+// shot — see that constant's own comment for the frustum-angle reasoning. These two constants
+// build a second, peek-only `CameraSettings` profile (`CameraController.ts#PEEK_CAMERA`) that
+// also pulls the camera back a modest amount, without touching `DEFAULT_CAMERA` (still used,
+// unchanged, for every non-peek frame) and, deliberately, WITHOUT widening `fov` — see
+// `PEEK_CAMERA_DISTANCE`'s own comment for why a wider fov was tried and rejected.
+
+/**
+ * Peek-only camera pull-back, world units, replacing `DEFAULT_CAMERA.distance` (17) while
+ * peeking. `fov` is deliberately left at `DEFAULT_CAMERA.fov` (40), not widened: a wider fov
+ * combined with this camera's fixed `angle`/`height` shrinks the grazing angle at the frame's
+ * far edge (`atan(height/distance) - fov/2`) toward the horizon, where perspective compression
+ * makes a walking party unreadably small — worked through with the vertical-FOV frustum math
+ * (`applySettings`'s own `height`/`distance`/`angle` combination), not eyeballed. A first pass
+ * at `distance: 26, fov: 52` computed out to a grazing angle of ~10°, which pushes the frame's
+ * far edge to roughly z=+60 — mostly empty ground well past the owner's own floor, not more of
+ * the crowd. This value instead keeps the grazing angle above ~23° (matching this file's own
+ * un-widened default profile's ~28° margin closely enough that legibility does not visibly
+ * suffer) while still meaningfully enlarging the framed ground footprint versus 17. See this
+ * story's Implementation notes for the worked frustum-angle numbers this was checked against.
+ */
+export const PEEK_CAMERA_DISTANCE = 20;
+
+/**
+ * Peek's camera target while held, world z (`GameClient#handleFrame`'s peeking branch) —
+ * replaces the pre-045 `-23` (the rival floor's own rough centre). This constant, not the fov
+ * widening rejected above, is what actually does the framing work AC1 asks for: it sits inside
+ * the district street's own span (the customer entry/exit cluster, z ~ -11/-12,
+ * `restaurant-layout.json`'s `spawn.customerEntry` and `customer-system.js#ensureState`'s
+ * derived `exitPosition`, versus the street's far edge at the rival floor's near wall, z=-20),
+ * so the street reads in the well-framed middle band of the shot rather than the far,
+ * foreshortened edge a rival-floor-centred target put it in. The rival floor (z=-24.5 centre,
+ * `RestaurantScene.RIVAL_FLOOR`) stays in frame on the near side of this target, at a still
+ * comfortable frustum angle — worked out alongside `PEEK_CAMERA_DISTANCE` above, not centred on
+ * by this target directly the way it was before this story.
+ */
+export const PEEK_CAMERA_TARGET_Z = -17;

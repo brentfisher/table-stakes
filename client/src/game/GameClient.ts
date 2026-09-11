@@ -7,6 +7,8 @@ import { StateInterpolator, type PlayerState } from './StateInterpolator';
 import { EntityViewRegistry } from './EntityViewRegistry';
 import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
+import { DEFAULT_CAMERA, PEEK_CAMERA } from './CameraController';
+import { PEEK_CAMERA_TARGET_Z } from '../../../shared/constants/tuning';
 import type {
   BotSnapshotEntry,
   CustomerSnapshot,
@@ -264,8 +266,11 @@ export interface GameClientStatus {
    * already share one camera frame (PRD's "rival activity visible" requirement), but the
    * camera's normal narrow pan range (`handleFrame`'s own `setTarget` call) stays centered on
    * the owner, so the rival's floor is only ever a small, distant sliver of the shot. `setPeeking`
-   * swings the SAME camera to the rival's floor instead while held — see that method's own
-   * comment on why this is a hold, not a toggle. */
+   * swings the SAME camera to the shared district instead while held — see that method's own
+   * comment on why this is a hold, not a toggle. STORY-045 widened what "held" actually shows
+   * (a second, pulled-back `CameraSettings` profile plus a retargeted `setTarget`, both in
+   * `setPeeking`/`handleFrame`) so the district street STORY-044 populates is visible too, not
+   * only the rival floor. */
   peeking: boolean;
   kitchenCommand: {
     activeFocusId: string;
@@ -1108,12 +1113,24 @@ export class GameClient {
   /**
    * STORY-034. Client-only camera state, never sent to the server — "peeking" doesn't move the
    * owner or affect anything authoritative, it only re-aims `handleFrame`'s camera target at the
-   * rival's floor instead of the owner's. A HOLD (the HUD button's pointerdown/pointerup), not a
-   * toggle: while peeking, the owner's own floor is off-screen, so leaving it engaged would be a
-   * trap a player has to remember to cancel rather than a quick glance.
+   * shared district instead of the owner's own floor. A HOLD (the HUD button's
+   * pointerdown/pointerup), not a toggle: while peeking, the owner's own floor is off-screen, so
+   * leaving it engaged would be a trap a player has to remember to cancel rather than a quick
+   * glance.
+   *
+   * STORY-045. Also swaps `CameraController`'s whole settings profile, not just the target.
+   * The RETARGET below (`handleFrame`'s `PEEK_CAMERA_TARGET_Z`) is what does most of the work
+   * of bringing the district street into a legibly-framed band of the shot; `PEEK_CAMERA` adds
+   * a modest additional pull-back on top of that (see its own comment, `CameraController.ts`,
+   * for why its `fov` is deliberately left unchanged rather than also widened).
+   * `PEEK_CAMERA`/`DEFAULT_CAMERA` (both full `CameraSettings` objects) are swapped wholesale
+   * here, on the true/false edges of the hold, rather than patched per-frame in `handleFrame`
+   * below — cheaper (this only runs on state change, not every render frame) and it means
+   * `applySettings` is never asked to blend a stale leftover field from the other profile.
    */
   setPeeking(peeking: boolean): void {
     this.patchStatus({ peeking });
+    this.scene.cameraController.setSettings(peeking ? PEEK_CAMERA : DEFAULT_CAMERA);
   }
 
   /**
@@ -1182,12 +1199,17 @@ export class GameClient {
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (this.status.peeking) {
-      // The rival's decorative table cluster/sign AND its now-actually-rendered-there avatar
-      // (`RestaurantScene#rivalWorldPosition`'s own comment) both sit around x=0, z=-20..-29 —
-      // this target is that whole area's rough middle, reusing the SAME camera offset/angle the
-      // owner's own floor uses (CameraController has exactly one setting for both), not a
-      // dedicated "rival cam" framing.
-      this.scene.cameraController.setTarget(0, -23);
+      // STORY-045. `PEEK_CAMERA_TARGET_Z` (`shared/constants/tuning.js`, own comment there,
+      // worked frustum-angle reasoning included) sits inside the district street STORY-044's
+      // population now walks/decides on — the owner's own floor's entry/exit cluster, z ~
+      // -11/-12, out to the rival floor's near wall, z=-20 — so the street reads in a legibly
+      // framed band rather than the far, foreshortened edge the pre-045 rival-floor-centred
+      // target put it in. The rival's decorative table cluster/sign AND its
+      // now-actually-rendered avatar (`RestaurantScene#rivalWorldPosition`'s own comment), which
+      // sit around x=0, z=-20..-29, stay in frame on the near side of this target. `setPeeking`
+      // already swapped `CameraController` onto the pulled-back `PEEK_CAMERA` profile (own
+      // comment there) — this call only ever needs to move the target, not the framing.
+      this.scene.cameraController.setTarget(0, PEEK_CAMERA_TARGET_Z);
     } else if (self) {
       this.scene.cameraController.setTarget(
         Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
