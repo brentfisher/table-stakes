@@ -1,7 +1,7 @@
 ---
 id: STORY-047
 title: Recap shell and opening highlights
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/047-recap-shell-and-highlights
 worktree_path: /Users/brent/table-stakes-story-047

@@ -1,16 +1,39 @@
 ---
 id: STORY-048
 title: Menu stars — 3D dish showcase
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/048-recap-menu-stars-showcase
+worktree_path: /Users/brent/table-stakes-story-048
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  CORRECTION to this story's own Notes section (found by direct inspection, not assumed): the
+  right reuse target is NOT a raw `buildArcadeFoodProxy` call — it's the already-complete
+  `client/src/ui/FoodModelPreview.tsx` component plus `client/src/scenes/food-preview-renderer.ts`,
+  which `SetupScreen.tsx`'s menu showroom already uses for exactly this need (many simultaneous
+  small rotating 3D dish previews in a React panel). `food-preview-renderer.ts`'s own header
+  documents a real incident this fixed: each preview used to own its own `THREE.WebGLRenderer`,
+  and a screen with several simultaneous previews could exhaust the browser's WebGL context cap
+  and silently evict the MAIN GAME's own context. The fix already shipped: one shared renderer,
+  round-robin-rendered into an offscreen canvas and blitted to each preview's own plain 2D
+  `<canvas>` (`register`/`unregister`, turntable rotation, `prefers-reduced-motion` respected,
+  graceful `data-failed` fallback if WebGL is unavailable at all). `<FoodModelPreview
+  assetId={...} label={...} compact={true|false} />` is a complete, drop-in component — this
+  story's "Menu stars" section is almost entirely: React state for which dish is currently
+  featured, one large `<FoodModelPreview compact={false}>` for it, and a `.map` over the rest of
+  `result.bestSellingDishes` rendering `<FoodModelPreview compact>` with an onClick to change the
+  featured selection. No new Three.js scene, camera, or renderer code should be written — reusing
+  this exact component IS the point (it already solves the multi-simultaneous-preview safety
+  problem this story would otherwise reintroduce from scratch). Tie-detection: reuse
+  `shared/game-logic/recap-highlights.js#bestSellerSpotlight` (STORY-047, already extracted and
+  exported for this — do not reimplement `.count`-equality grouping a second time). Fastest
+  fulfillment (`result.bestDish`) and highest margin (`result.highestMarginDishes[0]`) are plain
+  data reads, no computation. `is_architectural: false` — no new snapshot field, reuses existing
+  client infrastructure end to end.
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
 # Menu stars — 3D dish showcase
