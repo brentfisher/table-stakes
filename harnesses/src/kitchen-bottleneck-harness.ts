@@ -645,6 +645,14 @@ function createKitchenBottleneckHarness(): SceneHarness {
       tableId: t.tableId,
       readyAgeMs: Math.max(0, simClockMs - (t.readyAtMs ?? simClockMs)),
       isOldest: t.ticketId === oldest?.ticketId,
+      // STORY-053. Always `false`/`0` here, not a stub: `MockTicket.ticketId` doubles as its own
+      // `orderId` in this harness's simplified model (see `OwnerMock.carryingTicketIds`'s own
+      // comment above) — every ticket IS its own single-ticket order, so `kitchenStaging` could
+      // never find a sibling to report regardless of how this harness fed it. The asset-showcase
+      // harness is where the staged visual itself is exhibited (it can fabricate a multi-ticket
+      // order on demand); this one stays a truthful reflection of its own 1:1 ticket/order model.
+      staged: false,
+      waitingOnCount: 0,
     }));
   }
 

@@ -74,6 +74,9 @@ import dishesData from '../../shared/game-data/dishes.json';
 import segmentsData from '../../shared/game-data/customer-segments.json';
 import { STATIONS, type Station } from '../../shared/schemas/messages';
 import { ADDON_CATEGORIES } from '../../shared/schemas/setup-rules';
+// STORY-053. The 'pass_ready_staged' variant below runs a real two-ticket order through the
+// actual production function, not a hand-typed `staged: true` — see that variant's own comment.
+import { kitchenStaging } from '../../shared/game-logic/kitchen-staging';
 import type {
   CustomerState,
   RestaurantSnapshot,
@@ -208,6 +211,7 @@ const DISH_VARIANT_DEFS: { id: string; label: string }[] = [
   { id: 'table_dirty', label: 'On table — dirty (cleanup)' },
   { id: 'pass_ready_fresh', label: 'At the pass — ready, fresh' },
   { id: 'pass_ready_stale', label: 'At the pass — ready, stale' },
+  { id: 'pass_ready_staged', label: 'At the pass — staged (order not fully off the line)' },
   { id: 'kitchen_queued_low', label: 'In kitchen — queued (1 ticket)' },
   { id: 'kitchen_queued_high', label: 'In kitchen — queued (4 tickets)' },
   { id: 'state_placed', label: "Order state 'placed' (no visual)" },
@@ -222,6 +226,7 @@ const PASS_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'fresh', label: 'Ready — fresh' },
   { value: 'stale', label: 'Ready — stale' },
+  { value: 'staged', label: 'Staged — order not fully off the line' },
 ];
 
 const RESTAURANT_VARIANT_DEFS: { id: string; label: string }[] = [
@@ -626,6 +631,11 @@ function createAssetShowcaseHarness(): SceneHarness {
             tableId: layoutTableIds()[0] ?? null,
             readyAgeMs: stale ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
             isOldest: true,
+            // STORY-053. A single-ticket order (`mockOrder`/this harness's own direct literal both
+            // give it no sibling) can never be staged — `false`/`0` here is the true output of
+            // `kitchenStaging` for this shape, not a stub standing in for it.
+            staged: false,
+            waitingOnCount: 0,
           });
           spawnedReadyDishIds = [ticketId];
           target = scene.scene.getObjectByName('service_pass') ?? null;
@@ -638,6 +648,39 @@ function createAssetShowcaseHarness(): SceneHarness {
               "'ready' (PRD §5.2/§10.1) — geometry is chosen by `dishId`, not by state; freshness " +
               'is carried by the ring color and the READY/GOING COLD chip, never by recoloring ' +
               'the food itself.',
+          ];
+        } else if (id === 'pass_ready_staged') {
+          // STORY-053. A real two-ticket order — one ticket `ready` (this one, at the pass), one
+          // still `in_progress` on the grill — run through the actual `kitchenStaging` function
+          // rather than a hand-typed `staged: true`, so this showcase entry provably exercises
+          // the production predicate, not a drifted approximation of it.
+          applyFloorState({});
+          clearShowcaseReadyDishes();
+          const orderId = 'showcase_staged_order';
+          const readyTicketId = `${orderId}_ready`;
+          const cookingTicketId = `${orderId}_cooking`;
+          const orders: OrderSnapshot[] = [
+            mockOrder(orderId, DISHES[0].id, { ticketId: readyTicketId, state: 'ready', tableId: layoutTableIds()[0] ?? null }),
+            mockOrder(orderId, DISHES[1]?.id ?? DISHES[0].id, { ticketId: cookingTicketId, state: 'in_progress', station: 'grill' }),
+          ];
+          const staging = kitchenStaging(orders).find((s) => s.ticketId === readyTicketId);
+          scene.upsertReadyDish({
+            ticketId: readyTicketId,
+            dishId: DISHES[0].id,
+            tableId: layoutTableIds()[0] ?? null,
+            readyAgeMs: ORDER_FRESHNESS_GRACE_MS + 1000, // proves staleness pressure is suspended
+            isOldest: true,
+            staged: staging?.staged ?? false,
+            waitingOnCount: staging?.waitingOnCount ?? 0,
+          });
+          spawnedReadyDishIds = [readyTicketId];
+          target = scene.scene.getObjectByName('service_pass') ?? null;
+          diagnostics = [
+            'STORY-053: this dish finished cooking, but a sibling dish on the SAME order (same ' +
+              "table, same party) is still on the grill — `order-system.js#allTicketsOffTheLine` " +
+              'blocks pickup/delivery for the whole order until it finishes too, so this ticket ' +
+              'renders STAGED instead of READY/GOING COLD even at a readyAgeMs well past the ' +
+              'freshness grace period.',
           ];
         } else if (id === 'kitchen_queued_low' || id === 'kitchen_queued_high') {
           const depth = id === 'kitchen_queued_low' ? 1 : 4;
@@ -974,12 +1017,24 @@ function createAssetShowcaseHarness(): SceneHarness {
           clearShowcaseReadyDishes();
           if (v === 'none' || !scene) return;
           const ticketId = 'showcase_pass_order_ticket';
+          // STORY-053. 'staged' runs a real two-ticket order (one ready, one still on the grill)
+          // through the actual `kitchenStaging` function — same reasoning as the
+          // 'pass_ready_staged' Dish Model variant above: this control should exercise the
+          // production predicate, not a hand-typed `staged: true`.
+          const staging = v === 'staged'
+            ? kitchenStaging([
+                mockOrder('showcase_pass_order', DISHES[0].id, { ticketId, state: 'ready', tableId: layoutTableIds()[0] ?? null }),
+                mockOrder('showcase_pass_order', DISHES[1]?.id ?? DISHES[0].id, { ticketId: 'showcase_pass_order_sibling', state: 'in_progress', station: 'grill' }),
+              ]).find((s) => s.ticketId === ticketId)
+            : null;
           scene.upsertReadyDish({
             ticketId,
             dishId: DISHES[0].id,
             tableId: layoutTableIds()[0] ?? null,
-            readyAgeMs: v === 'stale' ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
+            readyAgeMs: v === 'stale' || v === 'staged' ? ORDER_FRESHNESS_GRACE_MS + 1000 : 0,
             isOldest: true,
+            staged: staging?.staged ?? false,
+            waitingOnCount: staging?.waitingOnCount ?? 0,
           });
           spawnedReadyDishIds = [ticketId];
         },

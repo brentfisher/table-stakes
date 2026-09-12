@@ -20,6 +20,9 @@ import { setupSystem } from '../server/src/game/systems/setup-system.js';
 import { CUSTOMER_STATES, ORDER_STATES } from '../shared/schemas/game-state.js';
 import { STATIONS } from '../shared/schemas/messages.js';
 import { catalogue } from '../server/src/game/catalogue.js';
+// STORY-053. Dual-imported by `GameClient.ts`/`InteractionController.ts` (client TypeScript) and
+// here — see that file's own header for why it lives under shared/game-logic at all.
+import { kitchenStaging } from '../shared/game-logic/kitchen-staging.js';
 import {
   STATION_CONCURRENCY,
   STATION_DEFAULT_CONCURRENCY,
@@ -961,6 +964,143 @@ registerAll();
     'every match produces server-side revenue and no match produces negative or NaN revenue',
     rows.every((r) => Number.isFinite(r.ledger.revenue) && r.ledger.revenue > 0),
     `$${Math.min(...rows.map((r) => r.ledger.revenue)).toFixed(0)}-$${Math.max(...rows.map((r) => r.ledger.revenue)).toFixed(0)}`,
+  );
+}
+
+// --- 13. STORY-053: kitchen-staging — the pass display's "is this order really deliverable"
+// grouping, checked against hand-built fixtures AND against a REAL match's real server state ----
+{
+  // 13a. Hand-built fixtures, matching `order-system.js#allTicketsOffTheLine`'s own predicate
+  // (`order.tickets.every((t) => t.state === 'ready' || t.state === 'cancelled')`) inverted, one
+  // case per state combination that predicate has to get right.
+  const orders = [
+    // order_a: the exact bug scenario — one ticket done, one sibling still cooking.
+    { ticketId: 't1', orderId: 'order_a', state: 'ready' },
+    { ticketId: 't2', orderId: 'order_a', state: 'queued' },
+    // order_b: a cancelled sibling does NOT count as outstanding (it's off the line, same as
+    // allTicketsOffTheLine treats it) — but an in_progress one still does.
+    { ticketId: 't3', orderId: 'order_b', state: 'ready' },
+    { ticketId: 't4', orderId: 'order_b', state: 'in_progress' },
+    { ticketId: 't5', orderId: 'order_b', state: 'cancelled' },
+    // order_c: a single-ticket order can never be staged — there is no sibling to wait on.
+    { ticketId: 't6', orderId: 'order_c', state: 'ready' },
+    // order_d: two tickets, BOTH ready — the whole order is off the line, so neither is staged.
+    { ticketId: 't7', orderId: 'order_d', state: 'ready' },
+    { ticketId: 't8', orderId: 'order_d', state: 'ready' },
+    // order_e: no ticket on this order has reached 'ready' yet — it gets NO entry at all
+    // (kitchenStaging only emits one per 'ready' ticket), not a `staged: true` placeholder.
+    { ticketId: 't9', orderId: 'order_e', state: 'queued' },
+  ];
+  const entries = kitchenStaging(orders);
+  const byTicket = Object.fromEntries(entries.map((e) => [e.ticketId, e]));
+
+  check(
+    'a ready ticket with one queued sibling is staged, waitingOnCount 1',
+    byTicket.t1?.staged === true && byTicket.t1?.waitingOnCount === 1,
+    JSON.stringify(byTicket.t1),
+  );
+  check(
+    'a cancelled sibling does not count as outstanding; an in_progress one still does',
+    byTicket.t3?.staged === true && byTicket.t3?.waitingOnCount === 1,
+    JSON.stringify(byTicket.t3),
+  );
+  check(
+    'a lone ready ticket with no siblings at all is never staged',
+    byTicket.t6?.staged === false && byTicket.t6?.waitingOnCount === 0,
+    JSON.stringify(byTicket.t6),
+  );
+  check(
+    'two ready tickets on the same order (the whole order is off the line) are BOTH not staged',
+    byTicket.t7?.staged === false && byTicket.t8?.staged === false,
+    JSON.stringify({ t7: byTicket.t7, t8: byTicket.t8 }),
+  );
+  check(
+    'a ticket that never reached ready gets no entry at all — 5 ready tickets in, 5 entries out',
+    byTicket.t9 === undefined && entries.length === 5,
+    `entries: ${entries.map((e) => e.ticketId).join(', ')}`,
+  );
+
+  // 13b. THE TRANSITION (AC5): the last sibling finishing flips `staged` false on the SAME
+  // ticket entry, on the very next snapshot — no despawn/respawn, which is exactly the shape
+  // `GameClient.ts`/`RestaurantScene.ts#upsertReadyDish` rely on for "the whole group
+  // transitions together" (they never special-case this; it falls out of `staged` being just
+  // another field on the same per-snapshot upsert).
+  const beforeFinish = kitchenStaging([
+    { ticketId: 'tx1', orderId: 'order_x', state: 'ready' },
+    { ticketId: 'tx2', orderId: 'order_x', state: 'in_progress' },
+  ]).find((e) => e.ticketId === 'tx1');
+  const afterFinish = kitchenStaging([
+    { ticketId: 'tx1', orderId: 'order_x', state: 'ready' },
+    { ticketId: 'tx2', orderId: 'order_x', state: 'ready' }, // the last sibling just finished
+  ]).find((e) => e.ticketId === 'tx1');
+  check(
+    'the last sibling finishing flips staged false on the SAME ticket (tx1) on the next snapshot',
+    beforeFinish?.staged === true &&
+      beforeFinish?.waitingOnCount === 1 &&
+      afterFinish?.staged === false &&
+      afterFinish?.waitingOnCount === 0,
+    `before=${JSON.stringify(beforeFinish)} after=${JSON.stringify(afterFinish)}`,
+  );
+
+  // 13c. THE IDENTITY CHECK — against a REAL match, not just hand fixtures. For every order with
+  // at least one ready ticket, `kitchenStaging(snapshot.orders)` must report `staged === false`
+  // for those ready tickets EXACTLY when the server's own `order.state` has actually reached
+  // 'ready' (`order-system.js#resolveReadyOrders`/`allTicketsOffTheLine`) — the one thing this
+  // whole module exists to never let drift. `snapshot.orders` is the real public projection
+  // (`toPublicOrderSnapshot`, `match.toSnapshot`); `restaurant.orders` is the real internal order
+  // map, read via `_internal.ensureState` the same way section 10 above already does. (A 'ready'
+  // ticket can only exist while `order.state` is 'in_progress' or 'ready' — both `deliverOrder`
+  // and `cancelOrder` strip every ticket off 'ready' the same tick they finish the order, per
+  // their own comments, so `order.state !== 'ready'` is a safe stand-in for "not yet off the
+  // line" here without also needing to special-case 'delivered'/'cancelled'.)
+  const match = makeMatch({
+    id: 'm_staging_identity',
+    seed: 'staging-identity',
+    menu: {
+      mains: [{ dishId: 'steak_frites', price: 34 }, { dishId: 'smash_burger', price: 14 }, { dishId: 'caesar_salad', price: 12 }],
+      addons: [{ dishId: 'cheesecake', price: 10 }],
+    },
+  });
+  runUntilPhase(match, 'service');
+  const state = _internal.ensureState(match);
+  const restaurant = state.restaurants.get('p1');
+  // Multi-dish parties so a mixed-readiness order (one dish plated, another still cooking) is
+  // actually likely to occur, not just theoretically possible.
+  for (let i = 0; i < 12; i += 1) {
+    match.kitchen.placeOrder(request({ customerId: `party_stage_${i}`, tableId: `table_${(i % 6) + 1}`, partySize: 3 }));
+  }
+  let sawMixedOrder = false;
+  const mismatches = [];
+  quiet(() => {
+    for (let i = 0; i < 4000 && restaurant.orders.size > 0; i += 1) {
+      orderSystem.update(match, TICK_MS);
+      match.elapsedMs += TICK_MS;
+      const snapshot = match.toSnapshot('p1');
+      const stagedByTicket = new Map(kitchenStaging(snapshot.orders).map((s) => [s.ticketId, s.staged]));
+      for (const order of restaurant.orders.values()) {
+        const readyTickets = order.tickets.filter((t) => t.state === 'ready');
+        if (readyTickets.length === 0) continue;
+        if (order.tickets.length > 1 && order.state !== 'ready') sawMixedOrder = true;
+        const expectedStaged = order.state !== 'ready';
+        for (const ticket of readyTickets) {
+          const actualStaged = stagedByTicket.get(ticket.ticketId);
+          if (actualStaged !== expectedStaged) {
+            mismatches.push(
+              `${ticket.ticketId}: real order.state=${order.state} (expected staged=${expectedStaged}) but kitchenStaging said staged=${actualStaged}`,
+            );
+          }
+        }
+      }
+    }
+  });
+  check(
+    'a mixed-readiness order (more than one ticket, not yet fully off the line) was actually observed — the exact scenario this story exists for',
+    sawMixedOrder,
+  );
+  check(
+    'kitchenStaging(snapshot.orders) agrees with the REAL server order.state on every ready ticket, every tick observed',
+    mismatches.length === 0,
+    mismatches.length === 0 ? 'no mismatches' : `${mismatches.length} mismatches, e.g. ${mismatches.slice(0, 3).join('; ')}`,
   );
 }
 
