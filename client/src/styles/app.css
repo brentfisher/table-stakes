@@ -577,6 +577,9 @@ body {
 
 .recap-content { flex: 1 1 auto; }
 
+.recap-placeholder { padding: 30px 6px; color: var(--recap-muted); }
+.recap-placeholder h2 { margin: 0 0 6px; color: var(--recap-ink); font-size: 16px; }
+
 /* --- Opening highlights (AC2) — RecapHighlights.tsx ---------------------------------------- */
 .recap-highlights { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
 @media (max-width: 760px) { .recap-highlights { grid-template-columns: 1fr; } }
@@ -783,6 +786,10 @@ body {
    `RecapHighlights.tsx`, since this IS the same "move that matters" content, just made browsable
    and selectable) above a plain row list for the rest, plus an export action. */
 .recap-next-shift { display: flex; flex-direction: column; gap: 14px; }
+/* AC1's honest empty state (`RecapHighlights.tsx`'s own empty-string case) — same
+   `.recap-menu-stars--empty` treatment: padding so the message doesn't sit flush against the
+   category nav above it. */
+.recap-next-shift--empty { padding: 30px 6px; }
 
 .recap-next-shift-prominent-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .recap-next-shift-arrows { display: flex; gap: 6px; }
@@ -852,6 +859,18 @@ body {
   cursor: pointer;
 }
 .recap-next-shift-row-topic { font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--recap-muted); }
+.recap-next-shift-row-evidence {
+  flex: 0 0 auto;
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--recap-accent);
+  color: var(--recap-ink);
+  font: inherit;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
 .recap-next-shift-row-observation { font-size: 13px; }
 .recap-next-shift-row-toggle {
   flex: 0 0 auto;

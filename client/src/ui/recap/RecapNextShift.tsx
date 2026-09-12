@@ -18,18 +18,29 @@
 // text re-parsed, and never an invented number. `manager-ledger-system.js` is untouched by this
 // story: this file only reads its already-published output.
 //
-// STATE SCOPE (AC5): `prominentIndex`/`gamePlan`/`evidenceIndex` are all plain `useState` in this
-// component tree, mounted fresh every time `ResultsPanel.tsx` shows this category. No
-// persistence, no server round-trip, no new wire field — refreshing or navigating away resets
-// everything, which is the correct behavior per the AC, not a gap to fix later.
+// STATE SCOPE (AC5): `prominentIndex`/`gamePlan` are lifted into `ResultsPanel.tsx` (a plain
+// `useState` pair there, passed down as props) rather than owned here, because `ResultsPanel`
+// stays mounted for the whole results screen while THIS component only mounts while 'next-shift'
+// is the active category — owning them locally would silently wipe a curated game plan on every
+// tab switch, which is neither "refreshing" nor "leaving the results screen" (the two reset
+// triggers the AC actually names). `evidenceIndex` (which dialog is open, transient view state
+// with nothing worth preserving across a tab switch) stays a local `useState` below. Either way,
+// nothing here is written anywhere but React state: no persistence, no server round-trip, no new
+// wire field — leaving the results screen entirely (`ResultsPanel` itself remounting) resets all
+// of it, which is the correct behavior per the AC, not a gap to fix later.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import type { MatchResult } from '../../../../shared/schemas/messages';
 import { constraintLabel, specialName } from './catalogue';
 import { formatMoney, formatMs, formatPoints, formatPercent } from './format';
 
 export interface RecapNextShiftProps {
   result: MatchResult;
+  /** Owned by `ResultsPanel.tsx` — see this file's own header for why. */
+  prominentIndex: number;
+  onProminentIndexChange: (index: number) => void;
+  gamePlan: Set<number>;
+  onGamePlanChange: Dispatch<SetStateAction<Set<number>>>;
 }
 
 type Insight = MatchResult['managerLedger']['insights'][number];
@@ -43,7 +54,7 @@ function topicLabel(category: Insight['category']): string {
   return category === 'specials' || category === 'labor' ? NON_CONSTRAINT_LABELS[category] : constraintLabel(category);
 }
 
-export function RecapNextShift({ result }: RecapNextShiftProps): JSX.Element {
+export function RecapNextShift({ result, prominentIndex, onProminentIndexChange, gamePlan, onGamePlanChange }: RecapNextShiftProps): JSX.Element {
   const insights = result.managerLedger.insights;
 
   // AC1's honest empty state — the exact string `RecapHighlights.tsx` already uses for
@@ -59,29 +70,49 @@ export function RecapNextShift({ result }: RecapNextShiftProps): JSX.Element {
     );
   }
 
-  return <RecapNextShiftContent result={result} insights={insights} />;
+  return (
+    <RecapNextShiftContent
+      result={result}
+      insights={insights}
+      prominentIndex={prominentIndex}
+      onProminentIndexChange={onProminentIndexChange}
+      gamePlan={gamePlan}
+      onGamePlanChange={onGamePlanChange}
+    />
+  );
 }
 
-// Split out so this component's hooks only ever mount once `insights` is known non-empty — same
-// reasoning as `RecapMenuStars.tsx`'s own `RecapMenuStarsContent` split: `useState(0)` below is a
-// plain, always-valid index into a non-empty array, not a defensive fallback for a case that can
-// no longer occur once we're here.
-function RecapNextShiftContent({ result, insights }: { result: MatchResult; insights: Insight[] }): JSX.Element {
-  const [prominentIndex, setProminentIndex] = useState(0);
-  // AC2: a session-only SET of array indices, not a copy of the insight objects — toggling is an
-  // index membership flip, and the prominent card / list row both derive their "saved" look from
-  // membership in this same set, so the two views can never disagree about what's selected.
-  const [gamePlan, setGamePlan] = useState<Set<number>>(() => new Set());
-  // AC3: which insight's evidence dialog is open, by index — `null` means closed. An index
-  // (rather than a boolean + relying on `prominentIndex`) so the dialog can be opened from a
-  // LIST row without first having to make that row prominent.
+// Split out so this component only ever renders once `insights` is known non-empty — same
+// reasoning as `RecapMenuStars.tsx`'s own `RecapMenuStarsContent` split: `insights[prominentIndex]`
+// below is a plain, always-valid array read, not a defensive fallback for a case that can no
+// longer occur once we're here.
+function RecapNextShiftContent({
+  result,
+  insights,
+  prominentIndex,
+  onProminentIndexChange,
+  gamePlan,
+  onGamePlanChange,
+}: {
+  result: MatchResult;
+  insights: Insight[];
+} & Pick<RecapNextShiftProps, 'prominentIndex' | 'onProminentIndexChange' | 'gamePlan' | 'onGamePlanChange'>): JSX.Element {
+  // AC3: which insight's evidence dialog is open, by index — `null` means closed. Local (not
+  // lifted like `prominentIndex`/`gamePlan`): which dialog is open is transient view state with
+  // nothing worth preserving across a tab switch, unlike a curated game plan. An index (rather
+  // than a boolean + relying on `prominentIndex`) so the dialog can be opened from a LIST row's
+  // own "Evidence" button without first having to make that row prominent.
   const [evidenceIndex, setEvidenceIndex] = useState<number | null>(null);
 
   const canCycle = insights.length > 1;
   const prominent = insights[prominentIndex];
 
   const toggleGamePlan = (index: number) => {
-    setGamePlan((previous) => {
+    // AC2: a session-only SET of array indices, not a copy of the insight objects — toggling is
+    // an index membership flip, and the prominent card / list row both derive their "saved" look
+    // from membership in this same set (owned by `ResultsPanel.tsx`, see this file's own
+    // header), so the two views can never disagree about what's selected.
+    onGamePlanChange((previous) => {
       const next = new Set(previous);
       if (next.has(index)) next.delete(index);
       else next.add(index);
@@ -90,7 +121,7 @@ function RecapNextShiftContent({ result, insights }: { result: MatchResult; insi
   };
 
   const cycle = (direction: 1 | -1) => {
-    setProminentIndex((current) => (current + direction + insights.length) % insights.length);
+    onProminentIndexChange((prominentIndex + direction + insights.length) % insights.length);
   };
 
   // AC4: a plain client-side text file from only the SELECTED insights' real text — no network
@@ -110,15 +141,19 @@ function RecapNextShiftContent({ result, insights }: { result: MatchResult; insi
     const blob = new Blob([lines.join('\n').trimEnd() + '\n'], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     // A temporary, never-mounted-in-the-tree anchor — the standard `<a download>` trigger
-    // pattern for a same-origin blob URL. Removed and revoked immediately after the synchronous
-    // `click()`; nothing here persists past this function call.
+    // pattern for a same-origin blob URL. Removed synchronously after `click()`, but the object
+    // URL revoke is DEFERRED a tick (`setTimeout(..., 0)`) rather than called immediately after:
+    // some browsers (Safari in particular) start the actual download asynchronously off the
+    // click, and revoking the URL before that read happens can silently kill the download. This
+    // is exactly the AC4 path this story's own PR notes flag as needing a real manual browser
+    // check rather than trusting an automated pass.
     const link = document.createElement('a');
     link.href = url;
     link.download = 'next-shift-game-plan.txt';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const otherInsights = insights
@@ -173,23 +208,22 @@ function RecapNextShiftContent({ result, insights }: { result: MatchResult; insi
               key={index}
               className={`recap-next-shift-row${gamePlan.has(index) ? ' recap-next-shift-row--selected' : ''}`}
             >
-              <button type="button" className="recap-next-shift-row-main" onClick={() => setProminentIndex(index)}>
+              <button type="button" className="recap-next-shift-row-main" onClick={() => onProminentIndexChange(index)}>
                 <span className="recap-next-shift-row-topic">{topicLabel(insight.category)}</span>
                 <span className="recap-next-shift-row-observation">{insight.observation}</span>
+              </button>
+              {/* AC3: evidence must be reachable from "a takeaway", not just the currently
+                  prominent one — this lets a row's evidence open directly, without first
+                  spending a click promoting it to prominent. */}
+              <button type="button" className="recap-next-shift-row-evidence" onClick={() => setEvidenceIndex(index)}>
+                Evidence
               </button>
               <button
                 type="button"
                 className="recap-next-shift-row-toggle"
                 aria-pressed={gamePlan.has(index)}
                 aria-label={gamePlan.has(index) ? 'Remove from game plan' : 'Add to game plan'}
-                onClick={(event) => {
-                  // Toggling the row's game-plan membership must not also re-fire the sibling
-                  // "make prominent" button beneath it — both are real `<button>`s stacked in one
-                  // row, not a nested-interactive-element hack, so `stopPropagation` here is only
-                  // guarding against a future wrapping click handler, not undoing bad markup.
-                  event.stopPropagation();
-                  toggleGamePlan(index);
-                }}
+                onClick={() => toggleGamePlan(index)}
               >
                 {gamePlan.has(index) ? '✓' : '+'}
               </button>

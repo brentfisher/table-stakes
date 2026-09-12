@@ -33,11 +33,11 @@
 // STORY-047 CATEGORY SHELL: this file now owns ONLY the always-visible "hero" (Game Over kicker,
 // outcome heading, disconnect reason, the mascot, the score-comparison card, the countdown/
 // rematch controls) plus the category nav and content router. Section CONTENT for each category
-// lives in `client/src/ui/recap/*` — `RecapHighlights.tsx` ('highlights'), `RecapMenuStars.tsx`
-// ('menu-stars', STORY-048), `RecapNumbers.tsx` ('numbers', STORY-049), and `RecapNextShift.tsx`
-// ('next-shift', STORY-050). STORY-047's own `RecapPlaceholder.tsx` "coming soon" stand-in for
-// the latter three was removed once STORY-050 (the last of them) shipped real content — nothing
-// in `RecapCategory`'s four-member union reaches it anymore.
+// lives in `client/src/ui/recap/*` — `RecapHighlights.tsx` for 'highlights', `RecapMenuStars.tsx`
+// for 'menu-stars' (STORY-048), `RecapNumbers.tsx` for 'numbers' (STORY-049), and
+// `RecapNextShift.tsx` for 'next-shift' (STORY-050, this one). `RecapPlaceholder.tsx` is kept
+// (not deleted, even though every current category now has real content) as the defensive
+// default below — see its own header and the final ternary branch's comment for why.
 
 import { useState } from 'react';
 import type { GameClientStatus } from '../game/GameClient';
@@ -50,6 +50,7 @@ import { RecapHighlights } from './recap/RecapHighlights';
 import { RecapMenuStars } from './recap/RecapMenuStars';
 import { RecapNextShift } from './recap/RecapNextShift';
 import { RecapNumbers } from './recap/RecapNumbers';
+import { RecapPlaceholder } from './recap/RecapPlaceholder';
 import { useRecapMotion } from './recap/useRecapMotion';
 import type { RecapCategory, RecapOutcome } from './recap/recap-types';
 
@@ -66,6 +67,16 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // toggle control ships here; STORY-052 owns that) but is returned now so wiring one in later
   // is a one-line change, not a retrofit of this hook's shape.
   const [motionEnabled] = useRecapMotion();
+  // STORY-050. `RecapNextShift.tsx`'s "which takeaway is prominent" / "game plan selection"
+  // state, OWNED HERE rather than inside that component — `ResultsPanel` stays mounted for the
+  // whole results screen, while `RecapNextShift` only mounts while `category === 'next-shift'`.
+  // If these lived as `useState` inside `RecapNextShift` itself, switching to another category
+  // and back would remount it and silently wipe a curated game plan — neither "refreshing" nor
+  // "leaving the results screen" per AC5's own two reset triggers. See `RecapNextShift.tsx`'s
+  // own header for the fuller reasoning; this is still plain component state either way, reset
+  // whenever `ResultsPanel` itself remounts (a genuine "leave the results screen").
+  const [nextShiftProminentIndex, setNextShiftProminentIndex] = useState(0);
+  const [nextShiftGamePlan, setNextShiftGamePlan] = useState<Set<number>>(() => new Set());
 
   if (!complete) return null;
 
@@ -179,12 +190,14 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
               // comment gives: management takeaways are this restaurant's own coaching notes,
               // not a rival-comparison view — there is no rival-shaped data anywhere in
               // `managerLedger.insights`.
-              <RecapNextShift result={selfResult} />
-            ) : (
-              // STORY-050 note: `category` here is statically narrowed to `'numbers'` — every
-              // other `RecapCategory` member has its own branch above. `RecapPlaceholder.tsx`
-              // (STORY-047's "coming soon" stand-in) is now unused by any live category and was
-              // removed rather than kept as dead code; see this story's KB Implementation notes.
+              <RecapNextShift
+                result={selfResult}
+                prominentIndex={nextShiftProminentIndex}
+                onProminentIndexChange={setNextShiftProminentIndex}
+                gamePlan={nextShiftGamePlan}
+                onGamePlanChange={setNextShiftGamePlan}
+              />
+            ) : category === 'numbers' ? (
               <RecapNumbers
                 result={selfResult}
                 rivalResult={hasRival && rivalResult && isScored(rivalResult) ? rivalResult : null}
@@ -200,6 +213,13 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                 // ever broken by a future change.
                 selfId={selfId as string}
               />
+            ) : (
+              // Every `RecapCategory` member has an explicit branch above as of STORY-050 — this
+              // default is provably dead for the CURRENT union, kept anyway as the honest
+              // "coming soon" a future fifth category should get if a later story adds one here
+              // without also adding its own branch, rather than silently falling through to
+              // whichever branch happens to be last (see `RecapPlaceholder.tsx`'s own header).
+              <RecapPlaceholder category={category} />
             )}
           </div>
         </>
