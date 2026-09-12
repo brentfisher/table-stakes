@@ -49,7 +49,7 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-044 | [Animate the district's full customer population walking to their chosen restaurant, or neither](STORY-044-district-population-walk-and-render.md) | merged |
 | STORY-045 | [Extend Peek to read district-wide conversion at a glance](STORY-045-district-peek-strategy-signal.md) | merged |
 | STORY-046 | [Tune visible non-conversion crowd volume against the real district decision rate](STORY-046-district-crowd-density-tuning.md) | merged |
-| STORY-047 | [Recap shell and opening highlights](STORY-047-recap-shell-and-highlights.md) | in-progress |
+| STORY-047 | [Recap shell and opening highlights](STORY-047-recap-shell-and-highlights.md) | pr-opened |
 | STORY-048 | [Menu stars — 3D dish showcase](STORY-048-recap-menu-stars-showcase.md) | pending |
 | STORY-049 | [The numbers — financial/service summary and detailed scorecard](STORY-049-recap-numbers-and-scorecard.md) | pending |
 | STORY-050 | [Next shift — coaching game plan](STORY-050-recap-next-shift-game-plan.md) | pending |
