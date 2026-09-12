@@ -1,7 +1,7 @@
 ---
 id: STORY-049
 title: The numbers — financial/service summary and detailed scorecard
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/049-recap-numbers-and-scorecard
 worktree_path: /Users/brent/table-stakes-story-049

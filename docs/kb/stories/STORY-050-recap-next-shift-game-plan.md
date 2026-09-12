@@ -7,8 +7,36 @@ branch: null
 worktree_path: null
 base_branch: null
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  CORRECTION to this story's own Notes: `ResultsPanel.tsx`'s "What to change next match" section
+  no longer exists there — STORY-047 already moved lead-insight rendering into
+  `client/src/ui/recap/RecapHighlights.tsx` (`result.managerLedger.insights[0]`, with the exact
+  "No tracked management decision produced enough evidence..." empty-state string this story must
+  reuse verbatim). Build `client/src/ui/recap/RecapNextShift.tsx`, wired into `ResultsPanel.tsx`'s
+  `category === 'next-shift'` branch (currently falls to `RecapPlaceholder`, alongside STORY-049's
+  still-unmerged 'numbers' branch — no real conflict, just an ordinary two-branch merge later).
+  Insights array comes from `result.managerLedger.insights` (`category: ManagerConstraintId |
+  'specials' | 'labor'`); one item is "prominent" (session `useState` index, arrow-cycled,
+  disabled/hidden at length<=1 per AC); a session-only `Set<number>` (index into the array) is the
+  "game plan" selection, toggled per row/card. Evidence dialog follows `HowToPlay.tsx`'s existing
+  modal convention (`role="dialog"`, `aria-modal`, Escape + backdrop-click close, already reused
+  by STORY-049's now-branch-only `RecapScorecard.tsx`) and maps `insight.category` to REAL
+  structured data already on `manager-ledger-system.js`'s output: the four `ManagerConstraintId`
+  values (`demand_conversion`/`seating_service`/`production`/`inventory`/`prioritization`) look up
+  their own entry in `managerLedger.constraints[]` by `.id`; `'specials'` maps to
+  `managerLedger.specials[]`; `'labor'` maps to `managerLedger.labor` (`laborExpenses`/
+  `hireFees`/`wagesPaid`/`taskCompletions`/`taskCompletionsByKind` — exactly what the AC names).
+  Every category has real structured evidence today, so the "fall back to the insight's own
+  observation text" branch in the AC is a defensive default, not the common path — don't skip
+  implementing it anyway. Export/download is a NEW pattern for this codebase (no existing
+  `Blob`/`createObjectURL`/`<a download>` precedent) — plain client-side text-file construction
+  from only the selected insights' real `observation`/`recommendation` strings, no network call;
+  flag in the PR that this needs a real manual browser check (this environment's automated
+  browser sandbox is known not to reliably exercise `<a download>` triggers) rather than trusting
+  `npm run check` alone for that one AC. No new shared/server module, no wire-schema change, no
+  persistent storage — plain client-only React state consuming an already-published field
+  verbatim, hence `is_architectural: false`.
 created: 2026-09-11
 updated: 2026-09-11
 ---
