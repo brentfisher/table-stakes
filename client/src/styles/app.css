@@ -2247,3 +2247,104 @@ button.service-card-action { cursor:pointer; }
   .service-card-action { padding:12px; font-size:13px; }
   .service-card p { margin-top:12px; font-size:10px; }
 }
+
+/* Arcade wrap-up: a live score display on a warm illustrated kitchen stage. */
+.recap.recap-arcade-shell { padding: 0; gap: 0; background: #faf6ed; color: #142b3f; overflow-y: auto; }
+.recap-arcade-header { display:flex; align-items:center; gap:36px; min-height:78px; padding:0 4.5%; border-bottom:1px solid #18324822; background:#fffcf6e8; color:#193148; }
+.recap-arcade-header > strong { display:flex; align-items:center; gap:14px; font-size:42px; font-style:italic; letter-spacing:-4px; }
+.recap-arcade-header strong span { font-size:10px; font-style:normal; letter-spacing:2px; line-height:1.3; }
+.recap-arcade-header > span { font-size:10px; font-weight:700; letter-spacing:2px; }
+.recap-arcade-header button { margin-left:auto; }
+.recap-arcade-shell > .recap-utility-bar { position:absolute; right:3%; top:23px; z-index:5; gap:7px; }
+.recap-arcade-shell .recap-utility-bar button { font-size:10px; padding:7px 10px; }
+.recap-arcade { position:relative; isolation:isolate; flex:1; min-height:730px; width:100%; display:flex; align-items:center; flex-direction:column; padding:58px 0 28px; background:url('/assets/recap/arcade-stage.png') center center / cover no-repeat; overflow:hidden; }
+.recap-arcade-board { position:relative; width:46%; min-width:580px; text-align:center; border:2px solid #e8aa42; border-radius:30px 30px 12px 12px; padding:33px 30px 24px; background:linear-gradient(125deg,#fffcf5f5,#fffcf2e8 55%,#fff7e4ed); box-shadow:0 0 0 4px #fff9ecbb,inset 0 0 0 3px #fff,0 18px 45px #b7883722,0 0 55px #ffdf8188; animation:recap-board-arrive .75s cubic-bezier(.15,.8,.2,1) both; z-index:2; }
+.recap-arcade-crown { position:absolute; top:-45px; left:calc(50% - 40px); width:80px; font-size:64px; line-height:1; color:#d99a2a; text-shadow:0 2px 0 #87501a,0 -2px 0 #ffeda6; }
+.recap-arcade-overline { font-size:9px; letter-spacing:2px; color:#74808a; margin:0 0 15px; }
+.recap-arcade-board h1 { font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(35px,3.8vw,70px); letter-spacing:-1.5px; line-height:1.05; margin:0 0 17px; color:#172d3f; text-wrap:balance; }
+.recap-arcade-label { display:block; color:#6d7a85; font-size:14px; letter-spacing:5px; font-weight:700; margin:0; }
+.recap-arcade-number { font-family:Impact,'Arial Narrow',sans-serif; font-style:italic; font-size:clamp(100px,12vw,215px); font-weight:900; line-height:1.12; letter-spacing:-5px; font-variant-numeric:tabular-nums; color:#162c3e; -webkit-text-stroke:1.5px #efb645; text-shadow:0 4px 0 #fff,0 0 30px #ffd867; }
+.recap-arcade-track { height:4px; margin:20px 0 0; background:#d9cfb944; border-radius:5px; overflow:hidden; }
+.recap-arcade-track i { height:100%; display:block; background:linear-gradient(90deg,#5fb99c,#f5c258); box-shadow:0 0 10px #ffba32; }
+.recap-arcade-matchup { display:flex; justify-content:space-evenly; align-items:center; gap:18px; min-height:110px; padding-top:14px; }
+.recap-arcade-matchup > div { display:flex; flex:1; flex-direction:column; gap:7px; transition:opacity .4s, transform .4s; }
+.recap-arcade-matchup span { font-size:11px; text-transform:uppercase; letter-spacing:2px; }
+.recap-arcade-matchup strong { font-family:Impact,'Arial Narrow',sans-serif; font-size:clamp(26px,3vw,49px); font-style:italic; }
+.recap-arcade-vs { border:2px solid #d6a348; border-radius:100%; padding:13px; font-family:Impact,sans-serif; font-size:27px; color:#965710; box-shadow:inset 0 0 0 3px #fff; }
+.recap-arcade-motto { min-height:15px; font-size:10px; letter-spacing:1.5px; color:#77828c; text-transform:uppercase; margin:14px 0 0; }
+.recap-fact-pending { opacity:0; transform:translateY(10px); }
+.recap-stage-chef { position:absolute; top:73%; width:13%; z-index:3; text-align:center; }
+.recap-stage-chef--you { left:12%; }.recap-stage-chef--rival { right:12%; }
+.recap-stage-chef .recap-mascot { display:none; }
+.recap-stage-chef > span { display:block; border:1px solid #a6742d; border-radius:4px; padding:9px 4px; color:#583817; font-size:18px; font-weight:800; letter-spacing:2px; background:linear-gradient(120deg,#d5ab6d,#ffe0a1,#ca9552); box-shadow:0 2px 8px #5a38182b,inset 0 0 0 3px #ffedb955; }
+.recap-arcade-next { z-index:3; width:70%; max-width:1160px; display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:25px; align-items:center; padding:22px 34px; border:1px solid #fff; border-radius:17px; background:#fffdf4ed; box-shadow:0 10px 28px #3f30192c; margin-top:38px; }
+.recap-arcade-next > div:first-child { display:flex; flex-direction:column; gap:4px; }
+.recap-arcade-next span { font-size:11px; font-weight:800; letter-spacing:1px; }
+.recap-arcade-next strong { font-family:Impact,'Arial Narrow',sans-serif; font-size:32px; font-style:italic; }
+.recap-arcade-next p { color:#70808b; font-size:13px; line-height:1.7; border-left:1px solid #d4cebf; padding-left:25px; }
+.recap-arcade-next button { width:100%; border:0; padding:17px 10px; border-radius:5px; font-weight:800; font-size:12px; letter-spacing:1px; color:white; background:#163749; cursor:pointer; box-shadow:0 3px 0 #091f2b; }
+.recap-arcade-next button:hover:not(:disabled) { background:#275b68; transform:translateY(-2px); }
+.recap-arcade-next button:disabled { background:#d9dadb; color:#969fa8; cursor:wait; box-shadow:none; }
+.recap-arcade-next small { display:block; text-align:center; font-size:8px; letter-spacing:2px; color:#77818d; margin-top:10px; }
+.recap-arcade-confetti { position:absolute; inset:0; pointer-events:none; z-index:4; }
+.recap-arcade-confetti i { position:absolute; top:-30px; left:var(--x); width:12px; height:25px; border-radius:1px 6px; background:linear-gradient(90deg,#e39a18,#ffe184); animation:recap-ribbon 7s linear both; animation-delay:calc(var(--i) * -.21s); }
+.recap-arcade-confetti i:nth-child(even) { background:linear-gradient(90deg,#348967,#92d6ac); width:17px; height:12px; }
+.recap-arcade--ready .recap-arcade-number { animation:recap-score-land .55s ease-out both; }
+@keyframes recap-ribbon { 0% { transform:translateY(-20px) rotate(var(--turn)); opacity:0; } 10%,80% { opacity:.9; } 100% { transform:translate(65px,850px) rotate(700deg); opacity:0; } }
+@keyframes recap-board-arrive { from { opacity:0; transform:translateY(25px) scale(.96); } to { opacity:1; transform:none; } }
+@keyframes recap-score-land { 0%,100% { transform:scale(1); } 40% { transform:scale(1.055); } }
+@media (min-width:1700px) { .recap-arcade { min-height:850px; padding-top:70px; }.recap-arcade-board { padding-top:45px; padding-bottom:32px; } }
+@media (max-width:1050px) { .recap-arcade-header > span { display:none; }.recap-arcade-board { min-width:0; width:62%; }.recap-arcade { background-size:auto 100%; }.recap-stage-chef--you { left:3%; }.recap-stage-chef--rival { right:3%; }.recap-stage-chef { width:15%; }.recap-arcade-next { width:88%; }.recap-arcade-next p { font-size:11px; } }
+@media (max-width:650px) { .recap-arcade-header { min-height:72px; padding:0 15px; }.recap-arcade-header > strong { font-size:30px; }.recap-arcade-header strong span { font-size:8px; }.recap-arcade-shell > .recap-utility-bar { position:static; padding:10px; justify-content:center; flex-wrap:wrap; background:#fffcf6; }.recap-arcade { min-height:740px; padding:50px 0 22px; }.recap-arcade-board { width:90%; padding:30px 17px 20px; }.recap-arcade-board h1 { font-size:37px; }.recap-arcade-number { font-size:112px; }.recap-arcade-label { font-size:10px; letter-spacing:3px; }.recap-arcade-matchup { gap:10px; }.recap-arcade-matchup span { font-size:8px; letter-spacing:1px; }.recap-stage-chef { display:none; }.recap-arcade-next { grid-template-columns:1fr; gap:12px; padding:18px; margin-top:24px; text-align:center; }.recap-arcade-next p { display:none; }.recap-arcade-next strong { font-size:28px; } }
+@media (prefers-reduced-motion:reduce) { .recap-arcade *, .recap-arcade *::before { animation:none !important; transition:none !important; } }
+
+/* Curtain call: keep the scoreboard, chefs and recap handoff in one viewport. */
+.recap-arcade-shell .recap-arcade { min-height:620px; height:calc(100dvh - 78px); flex:none; padding:48px 0 20px; box-sizing:border-box; background-size:100% 100%; }
+.recap-arcade-shell .recap-arcade-board { width:45%; min-width:0; height:76%; padding:25px 22px 17px; display:flex; flex-direction:column; justify-content:center; box-sizing:border-box; }
+.recap-arcade-shell .recap-arcade-board h1 { font-size:clamp(30px,3.35vw,62px); margin-bottom:12px; }
+.recap-arcade-shell .recap-arcade-overline { display:none; }
+.recap-arcade-shell .recap-arcade-number { font-size:clamp(92px,min(12vw,22vh),210px); }
+.recap-arcade-shell .recap-arcade-label { font-size:clamp(10px,1vw,15px); letter-spacing:3px; }
+.recap-arcade-shell .recap-arcade-matchup { min-height:70px; padding-top:12px; }
+.recap-arcade-shell .recap-arcade-track { margin-top:13px; }
+.recap-arcade-shell .recap-arcade-motto { font-size:9px; line-height:1.6; margin-top:8px; }
+.recap-arcade-shell .recap-stage-chef { top:76%; width:13%; }
+.recap-arcade-shell .recap-arcade-next { margin-top:auto; width:70%; padding:15px 24px; gap:20px; box-sizing:border-box; min-height:92px; }
+.recap-arcade-shell .recap-arcade-next strong { font-size:clamp(23px,2.4vw,36px); }
+.recap-arcade-shell .recap-arcade-next p { margin:0; font-size:12px; line-height:1.6; padding-left:18px; }
+.recap-arcade-shell .recap-arcade-next button { padding:14px 8px; font-size:10px; }
+.recap-arcade-skip { position:absolute; right:18px; bottom:12px; z-index:5; border:0; border-bottom:1px solid #947849; background:#fff8e6d9; color:#5e523e; padding:6px 8px; font-size:11px; cursor:pointer; }
+.recap-arcade button:focus-visible { outline:3px solid #b97a14; outline-offset:4px; }
+.recap-arcade--ready .recap-arcade-board h1 { animation:recap-score-land .6s ease-out both; }
+@media (max-width:1050px) and (min-width:651px) {
+ .recap-arcade-shell .recap-arcade-board { width:48%; }
+ .recap-arcade-shell .recap-stage-chef--you { left:12%; }
+ .recap-arcade-shell .recap-stage-chef--rival { right:12%; }
+ .recap-arcade-shell .recap-arcade-next { width:84%; }
+ .recap-arcade-shell .recap-arcade-board h1 { font-size:32px; }
+}
+@media (max-width:650px) {
+ .recap-arcade-shell .recap-arcade { height:auto; min-height:660px; padding:44px 0 32px; background-size:auto 100%; }
+ .recap-arcade-shell .recap-arcade-board { width:92%; height:auto; min-height:410px; padding:26px 18px; }
+ .recap-arcade-shell .recap-arcade-next { width:92%; margin-top:24px; gap:12px; padding:16px; }
+ .recap-arcade-shell .recap-arcade-next strong { font-size:27px; }
+ .recap-arcade-skip { bottom:4px; }
+}
+
+/* Final tally: light catches the counter, then the winner takes the spotlight. */
+.recap-arcade-score-wrap { position:relative; isolation:isolate; }
+.recap-arcade-score-rays { position:absolute; inset:12% -8%; z-index:-1; opacity:.55; background:repeating-conic-gradient(from 4deg at 50% 50%,transparent 0deg 14deg,#edb63d 15deg 17deg,transparent 18deg 30deg); mask-image:radial-gradient(ellipse,transparent 50%,#000 52%,#000 60%,transparent 63%); }
+.recap-arcade--motion .recap-arcade-score-rays { animation:recap-rays-breathe 1.25s ease-in-out infinite alternate; }
+.recap-arcade--suspense .recap-arcade-number { color:#8b611e; text-shadow:0 3px 0 #fff,0 0 34px #ffd15c; }
+.recap-arcade--motion.recap-arcade--suspense .recap-arcade-crown { animation:recap-crown-hover .6s ease-in-out infinite alternate; }
+.recap-arcade--revealed .recap-arcade-board { border-color:#c58d27; box-shadow:0 0 0 4px #fff9ecbb,inset 0 0 0 3px #fff,0 18px 45px #b7883722,0 0 70px #ffdb71bb; }
+.recap-arcade--motion.recap-arcade--revealed .recap-arcade-vs { animation:recap-score-land .6s ease-out both; }
+.recap-arcade--motion.recap-arcade--revealed .recap-arcade-next button { animation:recap-button-ready .75s ease-out both; }
+.recap-arcade--still *, .recap-arcade--still *::before, .recap-arcade--still *::after { animation:none !important; transition:none !important; }
+.recap-arcade-matchup strong { font-variant-numeric:tabular-nums; }
+.recap-arcade-board h1 { overflow-wrap:anywhere; }
+@keyframes recap-rays-breathe { from { opacity:.25; transform:scale(.95); } to { opacity:.7; transform:scale(1.04); } }
+@keyframes recap-crown-hover { from { transform:translateY(0) rotate(-5deg); } to { transform:translateY(-6px) rotate(5deg); } }
+@keyframes recap-button-ready { from { box-shadow:0 0 0 8px #eabb5944; } to { box-shadow:0 3px 0 #091f2b; } }
+@media (max-width:650px) { .recap-arcade-score-rays { inset:10% -3%; } }
+@media (prefers-reduced-motion:reduce) { .recap-arcade *::after { animation:none !important; transition:none !important; } }

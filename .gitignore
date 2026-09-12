@@ -18,3 +18,5 @@ server/public/client-build/*
 
 # Machine-local Claude Code settings (OpenSpec setup writes this)
 .claude/settings.local.json
+
+.dream-loop/
