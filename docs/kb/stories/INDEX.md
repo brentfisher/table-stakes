@@ -54,4 +54,4 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-049 | [The numbers — financial/service summary and detailed scorecard](STORY-049-recap-numbers-and-scorecard.md) | pending |
 | STORY-050 | [Next shift — coaching game plan](STORY-050-recap-next-shift-game-plan.md) | pending |
 | STORY-051 | [Arrange board — reorderable recap sections](STORY-051-recap-arrange-board.md) | pending |
-| STORY-052 | [Win celebration and motion controls](STORY-052-recap-celebration-and-motion.md) | pending |
+| STORY-052 | [Pre-reveal teaser, win celebration, and motion controls](STORY-052-recap-celebration-and-motion.md) | pending |
