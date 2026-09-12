@@ -1,12 +1,12 @@
 ---
 id: STORY-052
 title: Pre-reveal teaser — publish results-phase data early and shorten the dark wait
-status: pending
+status: pr-opened
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
-branch: null
-worktree_path: null
-base_branch: null
-pr_url: null
+branch: story/052-recap-pre-reveal-teaser
+worktree_path: /Users/brent/table-stakes-worktrees/story-052-recap-pre-reveal-teaser
+base_branch: master
+pr_url: https://github.com/brentfisher/table-stakes/pull/73
 is_architectural: true
 approach_summary: >
   Confirmed directly (not assumed): `match.finalResults` is populated SYNCHRONOUSLY inside
@@ -165,3 +165,95 @@ invent a second one).
   `server/src/game/systems/scoring-system.js`'s `onPhaseChange('results')` (where `finalResults`
   is actually populated) — all read directly, not assumed, before writing this story's
   `approach_summary`.
+
+## Implementation notes
+
+**Real bugs caught and fixed before committing:**
+
+- Two stale comment references survived this story's 2026-09-12 split: `client/src/ui/recap/
+  useRecapMotion.ts` and `client/src/ui/ResultsPanel.tsx` both said "STORY-052 owns the Motion
+  toggle control", and `client/src/ui/recap/RecapMenuStars.tsx` said the same about wiring
+  `motionEnabled` through `FoodModelPreview`. All three predate the split and were written when
+  STORY-052 was still the combined "teaser + win celebration + motion controls" story; the
+  Motion toggle itself now belongs to STORY-054, not this one. Left uncorrected, a reviewer
+  reading this story's own diff would find `useRecapMotion()` used but no Motion toggle shipped,
+  with a comment claiming this very story owns it — confusing at best. Fixed all three to name
+  STORY-054 and note the split, rather than leaving a partially-stale trail.
+- Caught and reverted my own comment error before committing: an early draft of
+  `RecapTeaser.tsx` claimed `reputation` was "the same number `RecapNumbers.tsx` shows in the
+  full recap" — I hadn't actually checked. `RecapNumbers.tsx` doesn't show reputation at all;
+  `RecapScorecard.tsx` shows `result.scoreBreakdown.reputationBonus` (a derived score
+  contribution), a DIFFERENT number from the raw `result.reputation` (25-90 band) the teaser
+  actually displays. Verified both fields exist and differ (`scoring-system.js`'s
+  `buildRestaurantResult` keeps both on the wire), then rewrote the comment to state the real
+  distinction instead of a false "matches an existing display" claim.
+- The teaser's score label originally read "Your score, so far" — factually wrong, since
+  `TeaserScore` tallies the DISPLAYED value toward the real, final `MatchResult.score`, which
+  never changes mid-animation; only its reveal is animated. "So far" reads as "this is a partial/
+  running total", which this codebase's never-fabricate convention (`narrative.js`'s own header)
+  would not tolerate on the wire and shouldn't tolerate in a label either. Relabeled to "Your
+  score", with a comment explaining why.
+
+**Deliberate deviations from the approach_summary:** none of substance. The server field, its
+exact expression (`this.finalResults?.results?.[viewerRestaurantId] ?? null`), the `you`-only
+placement, the sibling-mount client gate, and the "no shared toggle state needed" reasoning all
+match the approach_summary as written. The one addition beyond its literal text: I built a
+falsified `check-scoring.mjs` extension (seven new assertions) that the approach_summary didn't
+spell out in detail, since the story's own "falsify any new check" house convention and the
+privacy-sensitivity of this exact field made it the obvious thing to cover, and `check-scoring.mjs`
+already had the exact harness (`twoRestaurantProbe`/`finishMatch`/`forceOrderLedger`) needed to
+prove it without a new script.
+
+**Duration chosen, and the arithmetic behind it:** `PHASE_DURATIONS_MS.prototype.results`
+20s → 7s, `.full.results` 30s → 9s (`smoke.results` untouched at 1.2s). `RecapTeaser.tsx`'s own
+sequence is fixed and fully enumerable: three facts appear staggered 900ms apart (`REVEAL_STEP_MS`),
+the third landing at t=2700ms; the score section mounts at that same instant and its own
+1400ms count-up (`TALLY_DURATION_MS`) runs, settling at ~4100ms. 7s (prototype) and 9s (full)
+both clear that with roughly 2.9s/4.9s left over for the settled final number to sit readable
+before `match_complete` swaps the teaser out — not a guess, the exact numbers are in `tuning.js`'s
+own inline comments next to each value. `full` is kept a little longer than `prototype`, matching
+this file's existing ~2/3 `prototype`:`full` ratio across every other phase, though the teaser's
+own pacing is identical in both presets (nothing in `RecapTeaser.tsx` reads a preset).
+
+**What I found grepping for other `PHASE_DURATIONS_MS.*.results` readers:** confirmed directly,
+not spot-checked. `grep -rn "PHASE_DURATIONS_MS"` across the whole repo turns up exactly one real
+dependency on a specific `results` value: `scripts/smoke-phases.mjs` line 187-188, which sleeps
+`DURATIONS.results + 600` off `PHASE_DURATIONS_MS.smoke.results` (1.2s) specifically — untouched
+by this change. `scripts/check-match-lifecycle.mjs` reads `PHASE_DURATIONS_MS.prototype`/
+`PHASE_DURATIONS_MS[preset]` in several assertions, but every one of them reads the CONSTANT
+itself dynamically (`durations.results`, `expected[p]`, etc.), never a hardcoded `20_000`/
+`30_000` literal, so it self-adjusts to whatever the constant says and needed no changes — ran it
+directly after the tuning change and all 28/28 checks stayed green. Every OTHER `20_000`/`30_000`
+literal found across `scripts/*.mjs` (there are ~25 of them) is either a `runUntilPhase(match,
+phase, maxSteps = 20_000)` step-count safety bound (independent of any phase's actual configured
+duration — it's a loop-guard, not a timer) or an unrelated tuning constant entirely (event
+durations, patience windows, `RECONNECT_GRACE_MS`, `ORDER_FRESHNESS_WINDOW_MS`, etc.) — confirmed
+by reading each hit, not assumed from the grep alone.
+
+**Check coverage / falsification:** `scripts/check-scoring.mjs` gained seven new assertions
+(null before scoring; populated from the right restaurant once scoring runs; matches
+`match.finalResults.results[viewerRestaurantId]` exactly; never equals the rival's own slice;
+never carries `winnerPlayerId`/`decidingSegment`/`turningPoints`/`tieBreakDecided`; never appears
+at the snapshot's top level; stays null on the disconnect-triggered end path). Falsified by
+temporarily changing the real lookup to a wrong key (`this.finalResults?.results?.
+['__wrong_key__']`) — confirmed 4 of the 7 new checks failed cleanly (no crash, thanks to a
+follow-up defensive fix using `?.` instead of a bare property read after the first falsify run
+crashed the script before its summary printed), restored the real lookup, confirmed 74/74 green
+again. The client teaser/`useCountUp` interpolator has NO automated check — this repo has no
+client test framework (per its own conventions, client verification is `tsc --noEmit` + `vite
+build` + diff review, not a runnable assertion script), and there is no existing precedent for a
+script-driven client-animation check anywhere in `scripts/`. I judged this acceptable rather than
+inventing a first-of-its-kind DOM/timing test harness for one small interpolator: the data it
+animates (`resultsPreview`/`score`) is exactly what the seven new server-side checks already
+verify end-to-end over a real socket (`check:phases`/`check:bot-smoke`), and the animation logic
+itself is a straightforward, visually-inspectable `requestAnimationFrame` loop with no branching
+worth a dedicated script. `npm run build:client`/`build:harnesses` (both clean `tsc --noEmit` +
+`vite build`) is this codebase's actual verification bar for new TSX, and both passed.
+
+**Full suite:** ran `npm run check` twice end to end after all changes (once before the
+`ResultsPanel.tsx`/`RecapMenuStars.tsx` comment fixes, once after) — both runs green, exit 0,
+every one of the 37 check sections (including `check:phases`, `check:bot-smoke`,
+`check:invite-lobby-smoke`, `check:bot-menu-smoke`, all real-socket) reporting all assertions
+passed. `check:bot-menu-smoke`'s own top-level-key-list assertion (the one AC1 specifically
+warns about) printed the exact top-level snapshot key list with `resultsPreview` correctly
+absent from it — confirms the new field never leaked past `you`.
