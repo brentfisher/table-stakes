@@ -1,12 +1,12 @@
 ---
 id: STORY-050
 title: Next shift — coaching game plan
-status: pending
+status: pr-opened
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
-branch: null
-worktree_path: null
-base_branch: null
-pr_url: null
+branch: story/050-recap-next-shift-game-plan
+worktree_path: /Users/brent/table-stakes-worktrees/story-050-recap-next-shift
+base_branch: master
+pr_url: https://github.com/brentfisher/table-stakes/pull/71
 is_architectural: false
 approach_summary: >
   CORRECTION to this story's own Notes: `ResultsPanel.tsx`'s "What to change next match" section
@@ -94,3 +94,83 @@ demo copy as literal text.
   fixture's own specific recommendation text for its own specific match — the real integration
   shows whatever `insight.recommendation` the LIVE match actually produced, which will usually
   read differently. Don't hardcode the mockup's example sentence anywhere.
+
+## Implementation notes
+
+Built `client/src/ui/recap/RecapNextShift.tsx` and wired it into `ResultsPanel.tsx`'s
+`category === 'next-shift'` branch. Confirmed every field name used (`managerLedger.constraints[]`
+`.id`/`.observedMs`/`.limitingMs`/`.peakScore`/`.evidence`, `.specials[]`, `.labor`) directly
+against the current `shared/schemas/messages.d.ts` before using it, per the approach_summary's own
+instruction — all matched verbatim, no surprises there.
+
+**Real bugs caught and fixed before the first commit** (all found by re-reading my own draft, not
+by any check script):
+- `ConstraintEvidence`/`LaborEvidence` both originally put a `<p>`/`<ul>` directly inside a `<dl>`
+  — invalid HTML (`<dl>`'s content model only allows `dt`/`dd`, optionally `<div>`-wrapped). Fixed
+  by moving the note/breakdown to a sibling under a `<>` fragment in both functions.
+- The evidence dialog's outer component (`RecapNextShiftEvidence`) had a leftover broken
+  `useState(() => { return null; })` stub from an earlier edit that did nothing — replaced with
+  the real `useEffect` Escape-key handler, the same convention `HowToPlay.tsx`/`RecapScorecard.tsx`
+  already use.
+- A doc comment referenced a nonexistent `evidenceFor` helper (an earlier draft's name for what
+  became inline category checks in `RecapNextShiftEvidence`) — reworded before committing.
+
+**Caught in self-review after the first commit** (via an advisor pass — documented here since a
+human reviewer should know these were real, not hypothetical, gaps):
+- The first commit deleted `RecapPlaceholder.tsx` and its `ResultsPanel.tsx`/`recap-types.ts`/
+  `app.css` references as "now-dead code" once all four `RecapCategory` members had explicit
+  branches. Reverted in the second commit: this story's actual scope was create `RecapNextShift`,
+  wire its branch, add its CSS — not restructure `ResultsPanel.tsx`'s fallback behavior. Keeping
+  `RecapPlaceholder` as the trailing `else` is also the more honest default: if a future story adds
+  a fifth category without also adding its own branch here, it should hit "coming soon," not
+  silently render whatever branch is currently last (which is what my deletion would have caused).
+- `prominentIndex`/`gamePlan` were originally local `useState` inside `RecapNextShift.tsx`. Since
+  that component only mounts while `category === 'next-shift'` is active, switching to another
+  recap tab and back was remounting it and silently wiping a curated game plan — neither
+  "refreshing" nor "leaving the results screen," AC5's own two named reset triggers. Fixed by
+  lifting both into `ResultsPanel.tsx` (which stays mounted for the whole results screen) and
+  passing them down as props; `evidenceIndex` (which dialog is open) stayed local, since that's
+  transient view state with nothing worth preserving across a tab switch.
+  - Verified this lift can't produce a stale index: `GameClient.ts` sets `matchComplete` exactly
+    once per client lifetime (`matchComplete: null` only appears at construction), and
+    `GameView.tsx` only mounts `ResultsPanel` while `status?.matchComplete` is truthy — the
+    "Rematch" button navigates to `/` rather than resetting `matchComplete` in place, which
+    unmounts `ResultsPanel` (and the lifted state with it) entirely. There is no path where a
+    second, different `MatchResult` reaches an already-mounted `ResultsPanel`, so
+    `nextShiftProminentIndex` can never outlive the `insights` array it indexes into.
+  - The evidence dialog was also only reachable from the prominent card, despite a comment on
+    `evidenceIndex` already claiming it could be "opened from a LIST row." Added a per-row
+    "Evidence" button to make that comment true rather than rewriting it to describe less.
+  - Also fixed while in there: `URL.revokeObjectURL(url)` was called synchronously right after
+    `link.click()`; deferred it one tick (`setTimeout(..., 0)`) since some browsers (Safari
+    especially) start the actual file read asynchronously off the click, and an immediate revoke
+    can race and silently kill the download. `.recap-next-shift--empty` was also missing its
+    padding rule (compare `.recap-menu-stars--empty`) — added.
+
+**Deliberate reading of an ambiguous AC**: AC1 says arrows are "disabled at either end when
+there's only one (or ... hidden entirely with exactly one)." With exactly one insight there is
+nothing to cycle to either direction, so I took the AC's own parenthetical and hide the arrows
+entirely rather than rendering a permanently-disabled pair — the "disabled at either end" clause
+reads as describing the >1-insight wraparound case in general, not a second required treatment for
+the single-insight case specifically. With 2+ insights, cycling wraps around (modulo) rather than
+clamping at the ends, since a "prominent" slot with nothing to browse in one direction isn't a
+real state here — every insight is reachable from every other one by going far enough the same way.
+
+**AC4 (export) verification gap — flag for the PR**: the download path (`Blob` +
+`createObjectURL` + a throwaway `<a download>` click) was verified by code review and by
+confirming `build:client`/`npm run check` pass with it in place, but the actual `<a download>`
+trigger was NOT exercised in a real browser here — this environment's automated browser sandbox is
+known not to reliably fire download links (see MEMORY.md's own note on `visibilityState: hidden`
+killing rAF-driven checks; download triggers are a similar automation gap). This AC needs a real
+manual browser check before merge, not just a green `npm run check`.
+
+**Environment note**: this worktree had no `node_modules` anywhere (client/server/harnesses) —
+symlinked each from `/Users/brent/table-stakes`'s own installed copies to run `build:client` and
+the full `npm run check` suite, then removed all three symlinks before every commit. Git does not
+match a symlink named `node_modules` against the plain `node_modules/` `.gitignore` pattern (that
+pattern only matches real directories), so leaving them in place would have shown up as untracked
+files rather than being silently ignored.
+
+No new `check-*.mjs` script was added — per this story's own instructions, `build:client`'s
+type-checking plus the manual verification above was judged sufficient for a client-only UI story
+with no non-trivial grouping/derivation logic to falsify.
