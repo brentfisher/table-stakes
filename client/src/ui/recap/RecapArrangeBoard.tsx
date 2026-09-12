@@ -85,17 +85,31 @@ export function RecapArrangeBoard({ categoryOrder, onChangeOrder, onFinish }: Re
               key={categoryId}
               className={`recap-arrange-card${draggedIndex === index ? ' recap-arrange-card--dragging' : ''}`}
               draggable
-              onDragStart={() => setDraggedIndex(index)}
-              onDragOver={(event) => event.preventDefault()}
+              onDragStart={(event) => {
+                // Firefox refuses to start a drag at all unless `dragstart` writes something to
+                // the transfer object — Chrome/Safari don't enforce this, which is how this went
+                // unnoticed until review. The payload itself is unused (the swap below reads
+                // `draggedIndex`, not the transfer data); this call exists purely to arm the drag.
+                event.dataTransfer.setData('text/plain', categoryId);
+                event.dataTransfer.effectAllowed = 'move';
+                setDraggedIndex(index);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
               onDrop={(event) => {
                 event.preventDefault();
                 handleDrop(index);
               }}
               onDragEnd={() => setDraggedIndex(null)}
             >
-              {/* Decorative — the arrows below are the accessible equivalent of this handle, per
-                  AC1's own "arrows offer the same reordering via keyboard/touch" framing, so this
-                  glyph needs no label of its own. */}
+              {/* Decorative, not the actual drag origin — `draggable` is on the whole card above
+                  (a deliberate deviation from AC1's literal "drag handle" wording, see this
+                  story's KB Implementation notes), so dragging works from anywhere on the card,
+                  not just this glyph. The arrows are the accessible equivalent AC1 itself names
+                  ("arrows offer the same reordering via keyboard/touch"), so this glyph needs no
+                  label of its own. */}
               <div className="recap-arrange-card-handle" aria-hidden="true">
                 ⠿
               </div>
