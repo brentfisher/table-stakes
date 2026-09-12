@@ -1,7 +1,7 @@
 ---
 id: STORY-051
 title: Arrange board — reorderable recap sections
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/051-recap-arrange-board
 worktree_path: /Users/brent/table-stakes-worktrees/story-051-recap-arrange-board
