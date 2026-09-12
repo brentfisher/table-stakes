@@ -652,16 +652,17 @@ export class RestaurantScene {
    * own comment on why markers are hidden, not destroyed, when a table stops being targeted. */
   private readonly carryTargets = new Map<string, THREE.Group>();
   constructor(options: RestaurantSceneOptions = {}) {
-    this.scene.background = new THREE.Color(0x1b1f24);
+    this.scene.background = new THREE.Color(0x0b1512);
 
-    this.ambient = new THREE.AmbientLight(0xffffff, 0.75);
+    this.ambient = new THREE.AmbientLight(0xffffff, 0.48);
     this.scene.add(this.ambient);
 
-    this.keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
     this.keyLight.color.setHex(0xffdfb0);
     this.keyLight.position.set(-12, 18, -6);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
+    this.keyLight.shadow.radius = 4;
     Object.assign(this.keyLight.shadow.camera, { left: -18, right: 18, top: 20, bottom: -20, near: 1, far: 60 });
     this.keyLight.shadow.normalBias = 0.035;
     this.keyLight.shadow.bias = -0.0002;
@@ -999,6 +1000,7 @@ export class RestaurantScene {
         district.add(window);
       }
     }
+    district.visible = false;
     this.scene.add(district);
   }
 
@@ -1216,6 +1218,8 @@ export class RestaurantScene {
     // correctly — the exact bug this replaces.
     const worldPosition = state.remapToRivalFloor ? this.rivalWorldPosition(state.position) : state.position;
     group.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
+    group.userData.remapToRivalFloor = state.remapToRivalFloor === true;
+    group.visible = !state.remapToRivalFloor || this.competitor.visible;
     group.rotation.y = state.facing;
   }
 
@@ -2119,12 +2123,21 @@ export class RestaurantScene {
 
   setCompetitorVisible(visible: boolean): void {
     this.competitor.visible = visible;
+    // Rival avatars share the shell's presentation state, including between snapshots.
+    for (const owner of this.owners.values()) {
+      if (owner.userData.remapToRivalFloor) owner.visible = visible;
+    }
+  }
+
+  setDistrictVisible(visible: boolean): void {
+    const district = this.scene.getObjectByName('district_backdrop');
+    if (district) district.visible = visible;
   }
 
   setNight(night: boolean): void {
-    this.ambient.intensity = night ? 0.32 : 0.6;
-    this.keyLight.intensity = night ? 0.65 : 2.5;
-    this.scene.background = new THREE.Color(night ? 0x17262d : 0xb7c8c5);
+    this.ambient.intensity = night ? 0.32 : 0.48;
+    this.keyLight.intensity = night ? 0.85 : 2.6;
+    this.scene.background = new THREE.Color(night ? 0x07110e : 0x0b1512);
   }
 
   dispose(): void {

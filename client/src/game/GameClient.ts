@@ -517,6 +517,8 @@ export class GameClient {
 
   constructor(container: HTMLElement) {
     this.scene = new SceneManager(container);
+    // Keep the authored restaurant isolated until the player explicitly holds Peek.
+    this.scene.restaurant.setCompetitorVisible(false);
     this.input = new InputController(window);
 
     this.registry.register<PlayerState>('players', {
@@ -1131,6 +1133,8 @@ export class GameClient {
   setPeeking(peeking: boolean): void {
     this.patchStatus({ peeking });
     this.scene.cameraController.setSettings(peeking ? PEEK_CAMERA : DEFAULT_CAMERA);
+    this.scene.restaurant.setDistrictVisible(peeking);
+    this.scene.restaurant.setCompetitorVisible(peeking);
   }
 
   /**

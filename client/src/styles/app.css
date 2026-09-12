@@ -1798,3 +1798,44 @@ body {
 .kitchen-queue-board-remaining { color: #b8c9d2; font-size: 11px; font-variant-numeric: tabular-nums; }
 .kitchen-queue-board-blocked { grid-column: 1 / -1; color: #ef8476; font-size: 11px; }
 .kitchen-queue-board-empty, .kitchen-queue-board-note { margin: 6px 0 0; color: #b8c9d2; font-size: 11px; }
+
+/* Copper & Thyme: the room takes centre stage; the full ledger remains accessible. */
+.restaurant-brand { position:absolute; top:28px; left:32px; display:flex; align-items:center; gap:22px; pointer-events:none; color:#eae8dc; }
+.restaurant-monogram { width:76px; height:76px; display:grid; place-items:center; border:1px solid #746444; border-radius:50%; color:#d8b970; font:italic 38px Georgia,serif; letter-spacing:-6px; padding-right:6px; }
+.restaurant-brand strong { font-size:16px; letter-spacing:3px; }
+.restaurant-brand small { display:block; margin-top:10px; font-size:9px; letter-spacing:3.4px; color:#a9b5ac; }
+.service-card { position:absolute; top:124px; right:28px; width:290px; padding:20px; border:1px solid #3d4c3d; border-radius:20px; background:linear-gradient(135deg,rgba(31,49,39,.97),rgba(18,33,27,.97)); box-shadow:0 20px 60px #0004; color:#e9e8da; }
+.service-card-metrics { display:flex; justify-content:space-between; gap:18px; margin-bottom:18px; }
+.service-card-metrics > div:last-child { text-align:right; }
+.service-card-metrics span { display:block; font-size:9px; letter-spacing:1.8px; color:#b0bcb0; margin-bottom:12px; }
+.service-card-metrics strong { font-size:30px; font-weight:600; letter-spacing:-1.4px; }
+.service-card-metrics > div:last-child strong { color:#d6b776; }
+.service-card-order { display:flex; align-items:center; gap:14px; border:1px solid #627751; border-radius:11px; padding:12px; background:#30422b44; }
+.service-card-order > span { font-size:34px; color:#d8b970; }
+.service-card-order strong { font-size:15px; font-weight:600; }
+.service-card-order small { display:block; margin-top:7px; color:#b7c99f; font-size:10px; line-height:1.6; }
+.service-card-action { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; margin-top:14px; padding:16px 12px; background:#d8be86; color:#1c3025; border:0; border-radius:9px; font-family:inherit; font-size:14px; font-weight:600; line-height:1.4; }
+button.service-card-action { cursor:pointer; }
+.service-card-action span { font-size:26px; font-weight:400; }
+.service-card-action kbd { border:1px solid #647354; padding:3px 7px; border-radius:3px; }
+.service-card p { margin:16px 0 0; text-align:center; font-size:11px; color:#cbd0be; }
+.hud.hud-details { top:122px; left:32px; min-width:190px; max-width:340px; max-height:calc(100vh - 220px); overflow:auto; background:rgba(20,35,28,.96); border-color:#3d4c3d; border-radius:12px; pointer-events:auto; padding:12px 16px; font-size:12px; }
+.hud-details summary { cursor:pointer; display:flex; justify-content:space-between; gap:20px; list-style:none; color:#c8bb94; font-size:11px; letter-spacing:1px; }
+.hud-details[open] summary { margin-bottom:14px; }
+.scope-note { display:none; }
+.help { left:32px; bottom:20px; background:rgba(15,28,22,.92); border-color:#344437; color:#aab7ac; border-radius:10px; font-size:11px; padding:10px 14px; }
+@media(max-width:900px) { .service-card { width:270px; right:18px; top:122px; padding:16px; } .restaurant-brand { top:20px; left:20px; gap:14px; } .restaurant-brand strong { font-size:13px; letter-spacing:2px; } .restaurant-brand small { font-size:8px; letter-spacing:2px; } .restaurant-monogram { width:62px; height:62px; font-size:32px; } .hud.hud-details { left:20px; top:108px; } }
+@media(max-width:600px) { .service-card { top:auto; bottom:65px; right:12px; width:230px; padding:13px; } .service-card-metrics { margin-bottom:12px; } .service-card-metrics strong { font-size:23px; } .service-card-order { padding:9px; } .service-card-action { padding:11px; margin-top:10px; } .service-card p { display:none; } .help { left:12px; right:12px; bottom:10px; font-size:9px; } .restaurant-brand small { letter-spacing:1px; } .hud.hud-details { min-width:150px; left:16px; } }
+
+/* Keep the service controls in the upper-right margin on wide, shallow windows. */
+@media (min-width: 901px) and (max-height: 800px) {
+  .restaurant-brand { top:20px; left:24px; gap:16px; }
+  .restaurant-monogram { width:60px; height:60px; font-size:32px; }
+  .hud.hud-details { top:96px; left:24px; }
+  .service-card { top:96px; right:22px; width:270px; padding:16px; border-radius:16px; }
+  .service-card-metrics strong { font-size:28px; }
+  .service-card-metrics span { margin-bottom:8px; }
+  .service-card-order strong { font-size:13px; }
+  .service-card-action { padding:12px; font-size:13px; }
+  .service-card p { margin-top:12px; font-size:10px; }
+}

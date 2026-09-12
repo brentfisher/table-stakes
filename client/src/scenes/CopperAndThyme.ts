@@ -40,9 +40,10 @@ export class CopperAndThyme {
         disposeModel(gltf.scene);
         return false;
       }
+      // Generated command furniture belongs to gameplay and is not an authored GLB root.
       // Validate before hiding any gameplay geometry: a malformed export is a fallback,
       // never a half-skinned floor with missing interaction targets.
-      const ids = layout.entities.filter((e) => e.type !== 'queue').map((e) => e.id);
+      const ids = layout.entities.filter((e) => e.type !== 'queue' && !('generated' in e && e.generated)).map((e) => e.id);
       if (ids.some((id) => !gltf.scene.getObjectByName(id))) {
         disposeModel(gltf.scene);
         throw new Error('Copper & Thyme model is missing layout entity roots');
@@ -53,6 +54,11 @@ export class CopperAndThyme {
         o.receiveShadow = true;
         for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
           if (/Leaf/.test(m.name)) m.side = THREE.DoubleSide;
+          if (m instanceof THREE.MeshStandardMaterial) {
+            if (/Copper|Brass/.test(m.name)) { m.metalness = 0.78; m.roughness = 0.28; }
+            if (/Forest/.test(m.name)) { m.color.setHex(0x496c50); m.roughness = 0.72; }
+            if (/Steel/.test(m.name)) { m.metalness = 0.65; m.roughness = 0.36; }
+          }
         }
       });
       for (const id of ids) {
