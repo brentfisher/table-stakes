@@ -44,6 +44,7 @@ import type { GameClientStatus } from '../game/GameClient';
 import { botProfileLabel } from './bot-profiles';
 import { isScored } from './recap/match-result';
 import { formatPoints } from './recap/format';
+import { RecapArrangeBoard } from './recap/RecapArrangeBoard';
 import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
@@ -52,7 +53,7 @@ import { RecapNextShift } from './recap/RecapNextShift';
 import { RecapNumbers } from './recap/RecapNumbers';
 import { RecapPlaceholder } from './recap/RecapPlaceholder';
 import { useRecapMotion } from './recap/useRecapMotion';
-import type { RecapCategory, RecapOutcome } from './recap/recap-types';
+import { RECAP_CATEGORIES, type RecapCategory, type RecapOutcome } from './recap/recap-types';
 
 export interface ResultsPanelProps {
   status: GameClientStatus;
@@ -77,6 +78,16 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // whenever `ResultsPanel` itself remounts (a genuine "leave the results screen").
   const [nextShiftProminentIndex, setNextShiftProminentIndex] = useState(0);
   const [nextShiftGamePlan, setNextShiftGamePlan] = useState<Set<number>>(() => new Set());
+  // STORY-051. `categoryOrder` holds only ids (a permutation of `RECAP_CATEGORIES.map(c => c.id)`)
+  // rather than a reordered copy of the `RecapCategoryDef` objects themselves — labels are always
+  // looked up fresh from `RECAP_CATEGORIES` below, so there is exactly one place a category's
+  // label text lives. Session-only component state (AC5): it resets whenever `ResultsPanel` itself
+  // remounts, the same precedent STORY-050's `nextShiftGamePlan` above already established, and
+  // deliberately does NOT touch `nextShiftProminentIndex`/`nextShiftGamePlan`/`selfResult`/
+  // `rivalResult` anywhere below — reordering only ever permutes which nav tab reads in which
+  // position (AC3).
+  const [categoryOrder, setCategoryOrder] = useState<RecapCategory[]>(() => RECAP_CATEGORIES.map((c) => c.id));
+  const [arranging, setArranging] = useState(false);
 
   if (!complete) return null;
 
@@ -116,18 +127,31 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // heading-only distinction that isn't a win/loss/draw. See this story's Implementation notes.
   const outcomeHeading = !hasRival ? 'Shift complete' : outcome === 'draw' ? 'Draw' : outcome === 'win' ? 'You won' : 'You lost';
 
+  // Named (rather than left inline in the ternary below) so the STORY-051 "Arrange" button can
+  // gate on the same condition: arrange mode replaces the nav+content pair, which only renders in
+  // the scored branch below, so an unscored/disconnect-ended match has nothing for it to swap in.
+  const isUnscored = !selfResult || !isScored(selfResult) || (hasRival && (!rivalResult || !isScored(rivalResult)));
+
   return (
     <div className={`recap${motionEnabled ? '' : ' recap--motion-off'}`}>
       <div className="recap-utility-bar">
         {status.matchPhase === 'results' && status.timeRemainingMs !== null ? (
           <div className="recap-countdown">Next match in {Math.ceil(status.timeRemainingMs / 1000)}s</div>
         ) : null}
+        {/* STORY-051. Hidden (not just disabled) for an unscored/disconnect-ended match — arrange
+            mode replaces the nav+content pair below, which that branch never renders, so there
+            would be nothing for the button to swap in. */}
+        {isUnscored ? null : (
+          <button type="button" className="recap-arrange-toggle" onClick={() => setArranging(true)}>
+            Arrange
+          </button>
+        )}
         <button type="button" className="recap-rematch" onClick={onRematch}>
           Rematch
         </button>
       </div>
 
-      {!selfResult || !isScored(selfResult) || (hasRival && (!rivalResult || !isScored(rivalResult))) ? (
+      {isUnscored ? (
         <div className="recap-empty-shell">
           <p className="recap-kicker">Game Over</p>
           <h1 className={`recap-outcome recap-outcome--${outcome}`}>{outcomeHeading}</h1>
@@ -178,50 +202,75 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
             ) : null}
           </div>
 
-          <RecapCategoryNav active={category} onSelect={setCategory} />
+          {/* STORY-051. Arrange mode fully replaces the nav+content pair (AC4's "returns to the
+              normal focused single-category view" phrasing reads as arrange mode being its own
+              distinct screen, not a layer on top of live category content) — the hero above stays
+              visible either way, same as it already does across every category tab. */}
+          {arranging ? (
+            <RecapArrangeBoard
+              categoryOrder={categoryOrder}
+              onChangeOrder={setCategoryOrder}
+              onFinish={() => setArranging(false)}
+            />
+          ) : (
+            <>
+              <RecapCategoryNav
+                active={category}
+                onSelect={setCategory}
+                // `categoryOrder`-mapped, label looked up fresh from `RECAP_CATEGORIES` each
+                // render (see this file's own `categoryOrder` comment) — `RecapCategoryNav`
+                // itself is untouched by this story, exactly as STORY-047 set it up to allow.
+                categories={categoryOrder.map((id) => ({
+                  id,
+                  label: RECAP_CATEGORIES.find((c) => c.id === id)?.label ?? id,
+                }))}
+              />
 
-          <div className="recap-content">
-            {category === 'highlights' ? (
-              <RecapHighlights result={selfResult} />
-            ) : category === 'menu-stars' ? (
-              <RecapMenuStars result={selfResult} />
-            ) : category === 'next-shift' ? (
-              // STORY-050. Self-restaurant only, same reasoning `RecapMenuStars.tsx`'s own
-              // comment gives: management takeaways are this restaurant's own coaching notes,
-              // not a rival-comparison view — there is no rival-shaped data anywhere in
-              // `managerLedger.insights`.
-              <RecapNextShift
-                result={selfResult}
-                prominentIndex={nextShiftProminentIndex}
-                onProminentIndexChange={setNextShiftProminentIndex}
-                gamePlan={nextShiftGamePlan}
-                onGamePlanChange={setNextShiftGamePlan}
-              />
-            ) : category === 'numbers' ? (
-              <RecapNumbers
-                result={selfResult}
-                rivalResult={hasRival && rivalResult && isScored(rivalResult) ? rivalResult : null}
-                rivalTitle={rivalTitle}
-                hasRival={hasRival && !!rivalResult && isScored(rivalResult)}
-                turningPoints={complete.turningPoints}
-                // STORY-049. `selfId` is guaranteed non-null in this branch: `selfResult`
-                // (checked in the outer `if` above) is only ever looked up via
-                // `selfId ? complete.results[selfId] : undefined`, so a truthy `selfResult`
-                // implies a truthy `selfId` — TypeScript just can't see that dependency across
-                // the two variables. The assertion (rather than a defensive `?? ''`) keeps a
-                // turning point's leader label from silently going wrong if this invariant were
-                // ever broken by a future change.
-                selfId={selfId as string}
-              />
-            ) : (
-              // Every `RecapCategory` member has an explicit branch above as of STORY-050 — this
-              // default is provably dead for the CURRENT union, kept anyway as the honest
-              // "coming soon" a future fifth category should get if a later story adds one here
-              // without also adding its own branch, rather than silently falling through to
-              // whichever branch happens to be last (see `RecapPlaceholder.tsx`'s own header).
-              <RecapPlaceholder category={category} />
-            )}
-          </div>
+              <div className="recap-content">
+                {category === 'highlights' ? (
+                  <RecapHighlights result={selfResult} />
+                ) : category === 'menu-stars' ? (
+                  <RecapMenuStars result={selfResult} />
+                ) : category === 'next-shift' ? (
+                  // STORY-050. Self-restaurant only, same reasoning `RecapMenuStars.tsx`'s own
+                  // comment gives: management takeaways are this restaurant's own coaching notes,
+                  // not a rival-comparison view — there is no rival-shaped data anywhere in
+                  // `managerLedger.insights`.
+                  <RecapNextShift
+                    result={selfResult}
+                    prominentIndex={nextShiftProminentIndex}
+                    onProminentIndexChange={setNextShiftProminentIndex}
+                    gamePlan={nextShiftGamePlan}
+                    onGamePlanChange={setNextShiftGamePlan}
+                  />
+                ) : category === 'numbers' ? (
+                  <RecapNumbers
+                    result={selfResult}
+                    rivalResult={hasRival && rivalResult && isScored(rivalResult) ? rivalResult : null}
+                    rivalTitle={rivalTitle}
+                    hasRival={hasRival && !!rivalResult && isScored(rivalResult)}
+                    turningPoints={complete.turningPoints}
+                    // STORY-049. `selfId` is guaranteed non-null in this branch: `selfResult`
+                    // (checked in the outer `if` above) is only ever looked up via
+                    // `selfId ? complete.results[selfId] : undefined`, so a truthy `selfResult`
+                    // implies a truthy `selfId` — TypeScript just can't see that dependency across
+                    // the two variables. The assertion (rather than a defensive `?? ''`) keeps a
+                    // turning point's leader label from silently going wrong if this invariant were
+                    // ever broken by a future change.
+                    selfId={selfId as string}
+                  />
+                ) : (
+                  // Every `RecapCategory` member has an explicit branch above as of STORY-050 —
+                  // this default is provably dead for the CURRENT union, kept anyway as the
+                  // honest "coming soon" a future fifth category should get if a later story adds
+                  // one here without also adding its own branch, rather than silently falling
+                  // through to whichever branch happens to be last (see `RecapPlaceholder.tsx`'s
+                  // own header).
+                  <RecapPlaceholder category={category} />
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
