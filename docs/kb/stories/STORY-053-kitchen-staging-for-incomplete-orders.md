@@ -1,12 +1,12 @@
 ---
 id: STORY-053
 title: Kitchen staging — don't show an incomplete order's early dishes as neglected
-status: pending
+status: pr-opened
 prd_source: null
-branch: null
-worktree_path: null
-base_branch: null
-pr_url: null
+branch: story/053-kitchen-staging-for-incomplete-orders
+worktree_path: /Users/brent/table-stakes-worktrees/story-053-kitchen-staging
+base_branch: master
+pr_url: https://github.com/brentfisher/table-stakes/pull/74
 is_architectural: false
 approach_summary: >
   Re-verified every citation in this story's own investigation against the CURRENT codebase
@@ -120,39 +120,39 @@ pickup sign — moving it again isn't what "further to the left" on a purchase p
 
 ## Acceptance Criteria
 
-- [ ] The all-or-nothing order-delivery RULE is unchanged — no change to `allTicketsOffTheLine`,
+- [x] The all-or-nothing order-delivery RULE is unchanged — no change to `allTicketsOffTheLine`,
   `deliverOrder`, scoring, or freshness penalty timing. This story is presentation-only.
-- [ ] A ticket that finishes cooking while at least one sibling ticket (same `orderId`) is still
+- [x] A ticket that finishes cooking while at least one sibling ticket (same `orderId`) is still
   `queued`/`in_progress` is rendered in a visually DISTINCT "staged" state — not the same
   "READY"/"GOING COLD" treatment a genuinely deliverable (whole-order-ready) dish gets. Group by
   `orderId` client-side (already-published data, per the investigation above) rather than adding
   a new snapshot field, unless the implementer finds a concrete reason client-side grouping is
   insufficient (state that reason explicitly if so — don't add server surface by default).
-- [ ] The staged state communicates WHY it's waiting — at minimum how many sibling dishes are
+- [x] The staged state communicates WHY it's waiting — at minimum how many sibling dishes are
   still outstanding for that order (e.g. "Waiting on 2 more" or similar), not just a different
   color with no explanation.
-- [ ] The staleness/"GOING COLD" pressure either does not apply to a staged-incomplete dish, or is
+- [x] The staleness/"GOING COLD" pressure either does not apply to a staged-incomplete dish, or is
   reframed so it doesn't read as player negligence — implementer's call on the exact visual
   treatment (a distinct staging tray/position vs. the same pass slot with a different badge/color
   — the user proposed both "bigger counter to hold several tables' worth" and "put it on a larger
   tray with an incomplete indicator"; physical space is NOT the bottleneck per this story's own
   research, so the size-increase framing is optional, not required, if the grouping/legibility fix
   alone resolves the complaint).
-- [ ] The instant the LAST sibling ticket for an order finishes, the whole group transitions
+- [x] The instant the LAST sibling ticket for an order finishes, the whole group transitions
   together to the normal deliverable "ready" visual state — no dish is ever silently left behind
   in the staged treatment after its order is actually complete.
-- [ ] The delivery-rejection toast (`ArcadeToast.tsx`'s `not_ready` detail) is improved to name
+- [x] The delivery-rejection toast (`ArcadeToast.tsx`'s `not_ready` detail) is improved to name
   what's actually missing (e.g. dish/count still cooking) if that's cheaply derivable from the
   same client-side grouping — nice-to-have, not a hard blocker if it turns out to need new server
   data the rest of this story didn't already require.
-- [ ] Separately: `.upgrade-terminal`'s CSS panel (`client/src/styles/app.css`) moves further left
+- [x] Separately: `.upgrade-terminal`'s CSS panel (`client/src/styles/app.css`) moves further left
   from its current `right: 12px` anchor. Verify (don't assume) this doesn't create a real overlap
   with `.station-menu` (STORY-042, left-anchored specifically because `.upgrade-terminal` "owns
   the right side" per that file's own comment) — check the actual world distance between
   `upgrade_terminal`'s position and the nearest station in `restaurant-layout.json` against
   `OWNER_INTERACT_RANGE`/each entity's own `interactionRadius` to confirm both panels genuinely
   can't be triggered open simultaneously before assuming no conflict.
-- [ ] `npm run check` (including `build:client`) stays green; add a check if the client-side
+- [x] `npm run check` (including `build:client`) stays green; add a check if the client-side
   grouping logic is non-trivial enough to warrant one (an "orders with mixed ticket readiness are
   grouped and labeled correctly" assertion), following this repo's `check-*.mjs` conventions.
 
@@ -169,3 +169,103 @@ pickup sign — moving it again isn't what "further to the left" on a purchase p
   published per ticket, which is what makes a client-only fix possible.
 - Cites: `client/src/styles/app.css`'s `.upgrade-terminal` (`right: 12px`) and `.station-menu`
   (left-anchored, with an explicit comment about why) for the second, smaller ask.
+
+## Implementation notes
+
+**Shared logic.** `shared/game-logic/kitchen-staging.js` (+`.d.ts`) takes a restaurant's full
+`orders[]` snapshot array and, for every ticket with `state === 'ready'`, reports `staged`/
+`waitingOnCount` from its siblings — mirroring `order-system.js#allTicketsOffTheLine`'s own
+`every(t.state === 'ready' || t.state === 'cancelled')` predicate, inverted, with a comment citing
+that function directly. Wired into `GameClient.ts`'s `readyDishes` reconcile (against the full
+restaurant-scoped `orders`, not the pre-filtered `selfReadyOrders`) and into
+`RestaurantScene.ts#upsertReadyDish`'s new third label. `staged`/`waitingOnCount` were made
+**required** fields on `ReadyDishRenderState`, not optional — this surfaced three other
+construction sites (`InteractionController.ts` doesn't build the render state but does its own
+independent order-completeness check; the two harnesses do) that needed updating for
+`build:harnesses`/`build:client` to stay green. All are fixed; see below.
+
+**A real duplicate found and consolidated (deviation from the approach_summary, in its own
+spirit).** While tracing every place "is this order really deliverable" gets computed, found
+`InteractionController.ts#pickupCandidate` already had its OWN independent, hand-rolled version
+of the identical grouping/predicate (with a comment describing the exact bug this story fixes —
+STORY-030/031's own prior discovery that a single ready ticket with a still-cooking sibling must
+not offer the pickup prompt). That was a THIRD expression of `allTicketsOffTheLine`'s rule
+alongside the server original and this story's new module — exactly the kind of drift the
+approach_summary's "cite the function directly rather than re-deriving the rule" reasoning exists
+to prevent. Refactored `pickupCandidate` to consume `kitchenStaging` instead of its own loop.
+Not asked for explicitly in the approach_summary's touch-point list, but directly serves its
+stated goal, low-risk (verified behavioral equivalence: same "all-cancelled order contributes
+nothing," same "per-group oldest vs. global max over the union," same "cancelled siblings don't
+count" cases), and confirmed green by `build:client`.
+
+**Harness call sites.** `harnesses/src/kitchen-bottleneck-harness.ts`'s ticket model gives every
+`MockTicket.ticketId` its own `orderId` (an existing, pre-STORY-053 simplification — see
+`OwnerMock.carryingTicketIds`'s own comment) — no sibling can ever exist there, so `staged: false,
+waitingOnCount: 0` is a true reflection of that harness's own model, not a stub. Added a THIRD
+Ready-dish-proxy showcase variant to `asset-showcase-harness.ts` (`pass_ready_staged`, plus a
+matching option in the "Restaurant Models" tab's own `PASS_OPTIONS` dropdown) that runs a real
+synthetic two-ticket order through the actual `kitchenStaging` function rather than a hand-typed
+`staged: true` — this wasn't explicitly requested, but the harness's whole purpose is exhibiting
+every production visual state, and this story adds one.
+
+**The toast (AC6).** Traced every path that can produce `action-validator.js#resolveDeliver`'s
+`not_ready` reason. `resolvePickup` only ever claims an order once `order.state === 'ready'`
+(`order-system.js#readyOrders` filters on exactly that), and an order's ticket set never grows
+after creation — so by the time a plate is in `player.carrying`, EVERY ticket on that order is
+already `ready` or `cancelled`. `resolveDeliver`'s `not_ready` (its own `deliverOrder` returning
+false because `order.state !== 'ready'`) can therefore never fire for the "siblings still
+cooking" reason on today's code path — that case is already fully prevented one layer up, at
+pickup, by the very check `InteractionController.ts#pickupCandidate` makes (see above). The two
+ways `not_ready` CAN actually fire today: (1) the defensive `!match.kitchen` guard
+(`action-validator.js` line ~102, unreachable in a real running match, same as the file's own
+comment says), and (2) a genuine race — the carried order's party's patience expires and the
+order is `cancelled` while the plate is already in the owner's hands, so `deliverOrder`'s
+`order.state !== 'ready'` check now sees `'cancelled'`. In case (2), `kitchenStaging` correctly
+reports `waitingOnCount: 0` for that order (its tickets are `cancelled`, not cooking) — so the
+generic "ORDER NOT READY YET" string is the CORRECT output there, not a fallback standing in for
+dead code. Wired exactly as specified: `GameClient.ts` tracks `lastInteractTargetId` (new, same
+send-site pattern as `lastInteractAction`) plus the last snapshot's `orders`/`self.carrying`
+(new private fields, needed because `interact_rejected` arrives as a separate message with no
+local closure over the snapshot handler's variables), looks up the carried order via table-id
+cross-reference, and only attaches `waitingOnCount` to the emitted `PresentationEvent` when
+`kitchenStaging` reports a value greater than zero. Today that condition is never true — this is
+wired correctly for whenever it becomes reachable (e.g. a future worker/brigade delivery path),
+not exercised by any check script (there is no reachable path to force it with today's rules,
+and inventing one would test a scenario the codebase cannot currently produce).
+
+**`.upgrade-terminal` CSS.** Moved from `right: 12px` to `right: 330px`. Re-verified the
+story's own world-distance arithmetic directly rather than trusting the restatement: distance
+from `upgrade_terminal` `[7,0,-7]` to `station_plating` `[6,0,5]` is `sqrt(1² + 12²) ≈ 12.04`
+units (matches); combined trigger radius is `1.8 + 2.2 = 4.0` (matches). Went further and checked
+every OTHER layout entity's distance to `upgrade_terminal` — the closest is actually `host_stand`
+at `≈4.47` units (not `station_plating`), whose own panel (`.front-door-board`) is ALSO
+right-anchored (`right: 22px; bottom: 88px`). `4.47 > 4.0` (combined radius `1.8 +
+OWNER_INTERACT_RANGE 2.2`), so still provably impossible to trigger both at once — but a much
+tighter margin (0.47 units of slack) than the `station_plating` case the story's Notes cited
+(which has ~8 units of slack). Documented this as the closest real candidate in the CSS comment.
+`.pantry-board` shares `.front-door-board`'s exact offsets too, but pantry's world position
+(`[-6,0,9]`) is `≈20.6` units away — not a real candidate.
+
+The BINDING constraint turned out to be neither of those two proximity-triggered panels, but the
+two ALWAYS-VISIBLE HUD pieces `HudPanel.tsx` renders (`.hud-scoreboard`, `.hud-alerts`) — both
+share `.app`'s single `position: relative` containing block with `.upgrade-terminal`
+(`GameView.tsx` mounts all three as direct siblings under `.app`, confirmed by reading the JSX
+before trusting this arithmetic, rather than assuming the containing-block premise held), so
+they can visually collide with the upgrade panel regardless of the owner's
+in-world position, any time the terminal is open during a live match. `.hud-scoreboard`
+(`right:12px, width:270px`) requires `right >= 282px`; `.hud-alerts` (`right:12px, width:300px`)
+requires `right >= 312px` — both exact, viewport-width-independent thresholds since all three
+boxes share one containing block. Chose `330px`: 18px past the binding 312px floor, deliberately
+NOT much further, because both `.hud-scoreboard`'s own comment ("keep the cutaway kitchen's
+center visible") and `.upgrade-terminal`'s own pre-existing comment ("stays small and to one
+side rather than covering the scene") argue against retreating toward screen center.
+
+**Falsification.** `scripts/check-orders.mjs` section 13: hand-built fixtures for
+`staged`/`waitingOnCount` (including the cancelled-sibling-doesn't-count case), the
+last-sibling-finishes transition, and an identity check running a real 12-party, multi-dish
+match tick-by-tick, comparing `kitchenStaging(snapshot.orders)` against the real internal
+`order.state` on every tick. Broke the logic by replacing the sibling filter with a hardcoded
+empty array (`staged` always false) — 4 of the new assertions failed as expected, including the
+identity check (29,652 mismatches against real server state). Restored; all 58 checks pass again.
+`npm run check` (all 37 check/build/smoke scripts, including `build:client`/`build:harnesses`)
+passed clean end to end after restoring.
