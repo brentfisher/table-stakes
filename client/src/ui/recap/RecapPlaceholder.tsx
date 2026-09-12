@@ -4,11 +4,12 @@
 // player who clicks "The numbers" mid-slice should see a stated placeholder, not wonder whether
 // the tab is broken.
 //
-// STORY-048 UPDATE: 'menu-stars' now routes to `RecapMenuStars.tsx` in `ResultsPanel.tsx`'s
-// category router and no longer reaches this component — its entry in `PLACEHOLDER_COPY` below
-// is kept (not deleted) only because `RecapCategory`/`RECAP_CATEGORIES` still include it and this
-// map's type is `Record<Exclude<RecapCategory, 'highlights'>, string>`; 'next-shift'/'numbers'
-// are the two that still land here until STORY-050/049.
+// STORY-048/049 UPDATE: 'menu-stars' (STORY-048) and 'numbers' (STORY-049) now route to
+// `RecapMenuStars.tsx`/`RecapNumbers.tsx` in `ResultsPanel.tsx`'s category router and no longer
+// reach this component — both entries in `PLACEHOLDER_COPY` below are kept (not deleted) only
+// because `RecapCategory`/`RECAP_CATEGORIES` still include them and this map's type is
+// `Record<Exclude<RecapCategory, 'highlights'>, string>`; 'next-shift' is the only one that
+// still lands here, until STORY-050 replaces it.
 
 import { RECAP_CATEGORIES, type RecapCategory } from './recap-types';
 
