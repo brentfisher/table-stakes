@@ -46,6 +46,7 @@ import { isScored } from './recap/match-result';
 import { formatPoints } from './recap/format';
 import { RecapArrangeBoard } from './recap/RecapArrangeBoard';
 import { RecapCategoryNav } from './recap/RecapCategoryNav';
+import { RecapCelebration } from './recap/RecapCelebration';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
 import { RecapMenuStars } from './recap/RecapMenuStars';
@@ -64,11 +65,32 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   const complete = status.matchComplete;
   const [category, setCategory] = useState<RecapCategory>('highlights');
   // STORY-047's shared motion convention (PRD-recap-screen-redesign.md constraint 5) — see
-  // `useRecapMotion.ts`'s own header. `setMotionEnabled` is unused by this component (no Motion
-  // toggle control ships here; STORY-054 owns that, split off from the original combined
-  // STORY-052 on 2026-09-12) but is returned now so wiring one in later is a one-line change,
-  // not a retrofit of this hook's shape.
-  const [motionEnabled] = useRecapMotion();
+  // `useRecapMotion.ts`'s own header. STORY-054 is the story that finally wires the setter this
+  // hook has always returned to a real on-screen control (below, in `.recap-utility-bar`).
+  const [motionEnabled, setMotionEnabled] = useRecapMotion();
+  // STORY-054 AC2. `replayToken` is what "Replay Reveal" actually resets: it is used as (part
+  // of) the `key` on `.recap-content` below, so bumping it forces React to unmount+remount
+  // whichever category component is currently active, which is what makes its `.recap-content`
+  // CSS entrance animation (a brand-new DOM node) play again from the start. Category switches
+  // ALSO remount that content (different component types), so this token only needs to move the
+  // needle when the player replays WITHOUT switching category.
+  const [replayToken, setReplayToken] = useState(0);
+  // STORY-054 AC1/AC2. `celebrationToken > 0` means "a celebration burst is due to render right
+  // now" — `RecapCelebration` is keyed off this value in the JSX below, so every increment is a
+  // fresh mount, i.e. a fresh finite burst. Lazy-initialized directly from `status.matchComplete`
+  // (not a `useEffect` watching `category`/`outcome`) because `category` above always STARTS as
+  // 'highlights': "the first time highlights becomes active on a win" and "this component's
+  // first render, if it's a win" are the same moment for the initial default tab, so there is
+  // nothing to watch for after mount — `category` can only ever LEAVE 'highlights' after this,
+  // never newly arrive at it for "the first time". That is also exactly why switching tabs away
+  // and back never replays it on its own: nothing here re-derives or re-checks this after mount,
+  // only the Replay Reveal handler below ever increments it again.
+  const [celebrationToken, setCelebrationToken] = useState<number>(() => {
+    const c = status.matchComplete;
+    if (!c) return 0;
+    const self = status.restaurantId ?? status.playerId;
+    return c.winnerPlayerId !== null && c.winnerPlayerId === self ? 1 : 0;
+  });
   // STORY-050. `RecapNextShift.tsx`'s "which takeaway is prominent" / "game plan selection"
   // state, OWNED HERE rather than inside that component — `ResultsPanel` stays mounted for the
   // whole results screen, while `RecapNextShift` only mounts while `category === 'next-shift'`.
@@ -133,12 +155,36 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // the scored branch below, so an unscored/disconnect-ended match has nothing for it to swap in.
   const isUnscored = !selfResult || !isScored(selfResult) || (hasRival && (!rivalResult || !isScored(rivalResult)));
 
+  // STORY-054 AC2: "restarts the category-entrance animations and, on a win, replays the
+  // celebration effect too" — one handler bumps both tokens rather than the button re-deriving
+  // "should I also replay the celebration" logic itself; `celebrationToken` only moves for a WIN,
+  // matching AC1's own "no celebration regardless of outcome" for loss/draw.
+  function handleReplayReveal(): void {
+    setReplayToken((t) => t + 1);
+    if (outcome === 'win') setCelebrationToken((t) => t + 1);
+  }
+
   return (
     <div className={`recap${motionEnabled ? '' : ' recap--motion-off'}`}>
       <div className="recap-utility-bar">
         {status.matchPhase === 'results' && status.timeRemainingMs !== null ? (
           <div className="recap-countdown">Next match in {Math.ceil(status.timeRemainingMs / 1000)}s</div>
         ) : null}
+        {/* STORY-054 AC2. Same "nothing to replay" reasoning as the Arrange button just below —
+            an unscored match never renders the hero/category content this restarts. */}
+        {isUnscored ? null : (
+          <button type="button" className="recap-replay-reveal" onClick={handleReplayReveal}>
+            Replay Reveal
+          </button>
+        )}
+        {/* STORY-054 AC3/AC4. The one on-screen control for `useRecapMotion()`'s shared
+            convention (PRD constraint 5) — flips `motionEnabled`, which drives BOTH the
+            `.recap--motion-off` class below (killing every `.recap-*` CSS animation in one rule)
+            and whether `RecapCelebration` is even allowed to mount at all (see that render below
+            — motion off must mean no celebration DOM, not just a suppressed animation on it). */}
+        <button type="button" className="recap-motion-toggle" onClick={() => setMotionEnabled((m) => !m)}>
+          Motion {motionEnabled ? 'on' : 'off'}
+        </button>
         {/* STORY-051. Hidden (not just disabled) for an unscored/disconnect-ended match — arrange
             mode replaces the nav+content pair below, which that branch never renders, so there
             would be nothing for the button to swap in. */}
@@ -168,6 +214,19 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
         </div>
       ) : (
         <>
+          {/* STORY-054 AC1/AC5. `key={celebrationToken}` is the actual replay mechanism (see
+              this file's own `celebrationToken` comment) — every increment is a brand-new mount,
+              i.e. a fresh finite burst. `motionEnabled &&` is not redundant with the blanket
+              `.recap--motion-off` CSS rule below: that rule only stops elements from ANIMATING,
+              it does not stop them from being rendered, and a burst of static, motionless
+              particle divs sitting on screen would itself be a visual bug (AC5) — so with motion
+              off this component is never even mounted, not just visually frozen. Rendered above
+              the hero (not inside `.recap-hero-mascot`) as a full-panel overlay — `.recap`
+              itself is already `position: absolute`, so it is a valid containing block for
+              `.recap-celebration`'s own `position: absolute; inset: 0` without any extra
+              positioning context needed. */}
+          {motionEnabled && celebrationToken > 0 ? <RecapCelebration key={celebrationToken} /> : null}
+
           {/* The always-visible hero — outcome heading, mascot, and (when there's a rival to
               compare against) the final score. AC2 lists these as part of "opening highlights",
               and they ARE shown whenever 'highlights' is the active category (the default); this
@@ -227,7 +286,15 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                 }))}
               />
 
-              <div className="recap-content">
+              {/* STORY-054 AC2/AC4. `key` includes `replayToken` so clicking "Replay Reveal"
+                  forces a fresh mount of whatever category is active RIGHT NOW even when the
+                  category itself hasn't changed (switching category already forces a fresh mount
+                  on its own, since each branch below is a different component type) — a brand
+                  new DOM node is what makes `.recap-content-enter`'s CSS animation
+                  (`app.css`) play again from the start. `.recap-content-enter` is plain
+                  `animation: ... 420ms ease both`, so it is already covered by the existing
+                  blanket `.recap--motion-off` rule with no second gate needed here. */}
+              <div className="recap-content recap-content-enter" key={`${category}:${replayToken}`}>
                 {category === 'highlights' ? (
                   <RecapHighlights result={selfResult} />
                 ) : category === 'menu-stars' ? (

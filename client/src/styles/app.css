@@ -541,6 +541,22 @@ body {
   cursor: pointer;
 }
 
+/* STORY-054. Same plain-toggle visual weight as `.recap-arrange-toggle` just below (a peer
+   utility-bar action, not a primary CTA like `.recap-rematch`) — both new AC2/AC3 controls this
+   story adds reuse that existing pattern rather than inventing a third button treatment. */
+.recap-replay-reveal, .recap-motion-toggle {
+  padding: 8px 14px;
+  background: none;
+  border: 1px solid var(--recap-border);
+  border-radius: 6px;
+  color: var(--recap-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.recap-replay-reveal:hover, .recap-motion-toggle:hover { border-color: var(--recap-accent); }
+
 .recap-kicker {
   margin: 0 0 4px;
   font-size: 12px;
@@ -599,6 +615,21 @@ body {
 .recap-nav-tab--active { color: var(--recap-ink); border-bottom-color: var(--recap-accent); }
 
 .recap-content { flex: 1 1 auto; }
+
+/* STORY-054 AC2's own correction: no earlier recap story actually built a category-entrance
+   animation (confirmed by reading this file before this story started — no `.recap-card`/
+   `.recap-content`/`.recap-hero` rule anywhere had one), so "Replay Reveal" would have had
+   nothing to replay. Same finite `animation: X 420ms ease both` shape as `.recap-teaser-enter`
+   (STORY-052, below) — reused as the template, a new keyframe name so the two entrance paths
+   stay independent — applied to `.recap-content` itself (see `ResultsPanel.tsx`'s own `key`
+   comment: a fresh `key` on that div is what makes this animation actually restart). Covered by
+   the blanket `.recap--motion-off`/`prefers-reduced-motion` override further down, same as
+   everything else under `.recap`. */
+.recap-content-enter { animation: recap-content-in 420ms ease both; }
+@keyframes recap-content-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .recap-placeholder { padding: 30px 6px; color: var(--recap-muted); }
 .recap-placeholder h2 { margin: 0 0 6px; color: var(--recap-ink); font-size: 16px; }
@@ -697,6 +728,46 @@ body {
   0% { transform: translateY(0); opacity: 1; }
   85% { opacity: 1; }
   100% { transform: translateY(14px); opacity: 0; }
+}
+
+/* --- Win celebration (AC1) — RecapCelebration.tsx ------------------------------------------
+   A full-panel overlay (`.recap` is already `position: absolute`, so it's a valid containing
+   block — no extra positioning context needed here) of small particles, each animated by its
+   OWN plain CSS `animation` — see `RecapCelebration.tsx`'s own header for why this is CSS/DOM,
+   not a second WebGL context, same reasoning as the mascot just above. Deliberately a different
+   visual language than the mascot's own continuous bounce: these are one-shot, gravity-falling,
+   rotating particles that fade to nothing — see that component's header for the "genuinely
+   finite" bound. Covered by the blanket `.recap--motion-off` rule below like everything else
+   under `.recap`, though `ResultsPanel.tsx` also simply never mounts this component at all when
+   motion is off (AC5 — a frozen, static particle field would itself be a visual bug). */
+.recap-celebration {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+.recap-celebration-particle {
+  position: absolute;
+  top: -10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0;
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+}
+.recap-celebration-particle--drift-left { animation-name: recap-celebration-fall-left; }
+.recap-celebration-particle--drift-right { animation-name: recap-celebration-fall-right; }
+@keyframes recap-celebration-fall-left {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-52px, 260px) rotate(-220deg); }
+}
+@keyframes recap-celebration-fall-right {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(52px, 260px) rotate(220deg); }
 }
 
 /* --- The numbers (STORY-049) — RecapNumbers.tsx --------------------------------------------
