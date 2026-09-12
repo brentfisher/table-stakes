@@ -47,6 +47,7 @@ import { formatPoints } from './recap/format';
 import { RecapArrangeBoard } from './recap/RecapArrangeBoard';
 import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapCelebration } from './recap/RecapCelebration';
+import { RecapArcadeStage } from './recap/RecapArcadeStage';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
 import { RecapMenuStars } from './recap/RecapMenuStars';
@@ -111,6 +112,7 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // position (AC3).
   const [categoryOrder, setCategoryOrder] = useState<RecapCategory[]>(() => RECAP_CATEGORIES.map((c) => c.id));
   const [arranging, setArranging] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   if (!complete) return null;
 
@@ -160,12 +162,14 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   // "should I also replay the celebration" logic itself; `celebrationToken` only moves for a WIN,
   // matching AC1's own "no celebration regardless of outcome" for loss/draw.
   function handleReplayReveal(): void {
+    setShowDetails(false);
     setReplayToken((t) => t + 1);
     if (outcome === 'win') setCelebrationToken((t) => t + 1);
   }
 
   return (
-    <div className={`recap${motionEnabled ? '' : ' recap--motion-off'}`}>
+    <div className={`recap${!showDetails && !isUnscored ? ' recap-arcade-shell' : ''}${motionEnabled ? '' : ' recap--motion-off'}`}>
+      <header className="recap-arcade-header"><strong>T/S <span>TABLE<br />STAKES</span></strong><span>AFTER HOURS / YOUR SHIFT, REPLAYED</span></header>
       <div className="recap-utility-bar">
         {status.matchPhase === 'results' && status.timeRemainingMs !== null ? (
           <div className="recap-countdown">Next match in {Math.ceil(status.timeRemainingMs / 1000)}s</div>
@@ -189,7 +193,7 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
             mode replaces the nav+content pair below, which that branch never renders, so there
             would be nothing for the button to swap in. */}
         {isUnscored ? null : (
-          <button type="button" className="recap-arrange-toggle" onClick={() => setArranging(true)}>
+          <button type="button" className="recap-arrange-toggle" onClick={() => { setShowDetails(true); setArranging(true); }}>
             Arrange
           </button>
         )}
@@ -212,6 +216,8 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
           ) : null}
           <p className="recap-empty">No score was recorded for this match — it ended before scoring ran.</p>
         </div>
+      ) : !showDetails ? (
+        <RecapArcadeStage key={replayToken} score={selfResult.score} rivalScore={rivalResult && isScored(rivalResult) ? rivalResult.score : undefined} outcome={outcome} motionEnabled={motionEnabled} onReveal={() => { setShowDetails(true); if (outcome === 'win') setCelebrationToken(t => t + 1); }} />
       ) : (
         <>
           {/* STORY-054 AC1/AC5. `key={celebrationToken}` is the actual replay mechanism (see
