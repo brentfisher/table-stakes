@@ -1,12 +1,12 @@
 ---
 id: STORY-051
 title: Arrange board — reorderable recap sections
-status: pending
+status: pr-opened
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
-branch: null
-worktree_path: null
-base_branch: null
-pr_url: null
+branch: story/051-recap-arrange-board
+worktree_path: /Users/brent/table-stakes-worktrees/story-051-recap-arrange-board
+base_branch: master
+pr_url: https://github.com/brentfisher/table-stakes/pull/72
 is_architectural: false
 approach_summary: >
   Checked the mockup's own screenshots (`08-rearrangeable-board.png`/`09-board-service-and-
@@ -45,7 +45,7 @@ approach_summary: >
   interactions) — the arrow-button path is the one `npm run check`/manual keyboard testing can
   actually exercise directly.
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-12
 ---
 
 # Arrange board — reorderable recap sections
@@ -93,3 +93,70 @@ board" bullet. See `docs/PRD-recap-screen-redesign.md` for the full slice and it
 - Cites: `table-stakes-menu-suite/src/recap.js`'s drag/arrow reordering logic as an
   INTERACTION-PATTERN reference (the general mechanism), not code to port — the real
   implementation is React/TypeScript against React-owned section components, not raw DOM.
+
+## Implementation notes
+
+**Bug caught and fixed before finalizing (a real defect, not just an unverified path):** the
+first cut of `RecapArrangeBoard.tsx`'s `onDragStart` never called
+`event.dataTransfer.setData(...)`. Chrome and Safari will start a native HTML5 drag anyway, but
+Firefox refuses to arm a drag at all unless `dragstart` writes something to the transfer object —
+so the whole drag-and-drop path would have silently done nothing in Firefox. Fixed by calling
+`event.dataTransfer.setData('text/plain', categoryId)` (the payload itself is unused; the actual
+swap reads `draggedIndex` state, not the transfer data — this call exists purely to satisfy the
+browser's own gate) and setting `effectAllowed`/`dropEffect` for the correct cursor. Caught via a
+second-opinion review, not manual browser testing, since this environment can't reliably exercise
+native drag gestures (see the flag below) — but it's a straightforward spec-compliance fix, not
+something that needed a browser to diagnose.
+
+**Deliberate deviations from `approach_summary`, and why:**
+
+- **"Drag handle" (AC1's literal wording) is decorative; the whole card is `draggable`.** The `⠿`
+  glyph has no `onDragStart` of its own — dragging works from anywhere on the card. This is a
+  superset of AC1's requirement (a handle-only drag would also satisfy "dragging a handle onto
+  another card's position swaps the two," but whole-card dragging does too, and is more forgiving
+  for a first-use-in-this-codebase interaction with no existing precedent to match). Flagging it
+  explicitly because a reviewer skimming for "does clicking only the glyph work" would find it
+  doesn't — that's expected, not a bug.
+- **The "Arrange" button is hidden (not shown-but-disabled) for an unscored/disconnect-ended
+  match.** Not called out in the approach_summary. `isUnscored` was extracted from the pre-existing
+  inline ternary (previously computed twice, once implicitly per branch) so both the empty-shell
+  branch and the new button could share one condition — arrange mode replaces the nav+content pair,
+  which that branch never renders, so there's nothing for the button to swap in during an unscored
+  match.
+- **The hero (outcome heading, mascot, final-score card) stays visible during arrange mode**; only
+  the nav+content pair swaps out for `RecapArrangeBoard`. The approach_summary left this as "your
+  call" — kept it visible for consistency with the pre-existing behavior that the hero already
+  shows on every category tab, rather than tearing down match context the instant arrange mode
+  opens.
+- **Cards lay out in a responsive `auto-fill` grid**, not a fixed 2x2 like the mockup screenshots.
+  These are small identity cards (label + one line), not the mockup's live-content dashboard cards,
+  so a rigid 2x2 would leave excess dead space at typical window widths.
+
+**Verification actually performed:** `tsc --noEmit` (via `build:client`) plus the full
+`npm run check` (`build:client` + `build:harnesses` + every `check-*.mjs`/`smoke-*.mjs` script) —
+all green, twice (once before, once after the drag-and-drop fix). No new `check-*.mjs` script was
+added: there is no non-trivial derivation/grouping logic here (`RECAP_CATEGORIES.map`/array swap
+is not the kind of logic STORY's other `check:*` scripts exist to protect). AC3 ("reordering must
+never alter match values or another section's saved state") was verified by construction/code
+trace, not by running the UI and clicking through: `RecapArrangeBoard.tsx` never imports or reads
+`MatchResult`, `nextShiftGamePlan`, `nextShiftProminentIndex`, `selfResult`, or `rivalResult`
+anywhere in its module — there is no live match state in its render tree for a reorder to
+possibly disturb. That is an argument from the code's own import graph, not an observation from
+manually reordering cards and then checking STORY-050's game plan afterward in a browser.
+
+**Flag for manual verification (same category of gap STORY-050's download-trigger path
+flagged):** the native HTML5 drag-and-drop path (`draggable`/`onDragStart`/`onDragOver`/`onDrop`
+in `RecapArrangeBoard.tsx`) has no prior precedent in this codebase and was never exercised in an
+actual browser — this environment's automated sandbox has known gaps around some native browser
+interaction patterns. Needs a real manual drag-and-drop check across at least Chrome and Firefox
+before treating AC1's drag path as fully verified (the Firefox `dataTransfer.setData` fix above
+was reasoned from the HTML5 drag-and-drop spec, not confirmed against an actual Firefox drag). The
+arrow-button reordering path, by contrast, was reasoned through by full code trace (swap logic,
+boundary-disabling conditions) and is straightforward to click-test manually if further assurance
+is wanted; it has no equivalent cross-browser API gap the way native drag does.
+
+**Known minor UX rough edge, not fixed:** repeatedly clicking a card's "move earlier" arrow until
+it reaches index 0 leaves that arrow `disabled` with no explicit focus management — focus falls
+back to `<body>` rather than moving to a still-enabled control (e.g. "move later" on the same
+card). Keyboard users can still tab to the next control, but a rapid repeated-click/keyboard-enter
+reordering flow stalls at the boundary. Not required by any AC; left as a possible follow-up.
