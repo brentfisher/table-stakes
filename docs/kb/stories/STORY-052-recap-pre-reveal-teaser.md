@@ -1,7 +1,7 @@
 ---
 id: STORY-052
 title: Pre-reveal teaser — publish results-phase data early and shorten the dark wait
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/052-recap-pre-reveal-teaser
 worktree_path: /Users/brent/table-stakes-worktrees/story-052-recap-pre-reveal-teaser

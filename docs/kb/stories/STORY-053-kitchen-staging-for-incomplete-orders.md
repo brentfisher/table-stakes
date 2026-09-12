@@ -7,8 +7,74 @@ branch: null
 worktree_path: null
 base_branch: null
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  Re-verified every citation in this story's own investigation against the CURRENT codebase
+  (touched by many stories since this was written) — all still accurate: `order-system.js`'s
+  `toPublicOrderSnapshot` (line ~1123) publishes `orderId`+`ticketId`+`state: ticket.state` (per-
+  TICKET, confirmed) per entry in `orders[]`; `GameClient.ts`'s `selfReadyOrders`/`readyDishes`
+  reconcile (line ~894-914) filters `orders[]` on `o.state === 'ready'` alone, with no sibling
+  check; `RestaurantScene.ts#upsertReadyDish` (line ~1524) shows the READY/GOING COLD chip driven
+  purely by `state.readyAgeMs > ORDER_FRESHNESS_GRACE_MS`; `MAX_READY_DISH_SLOTS = 8` still real.
+  DESIGN: extract a new pure function into `shared/game-logic/` (new file, e.g.
+  `kitchen-staging.js` + sibling `.d.ts`, matching this repo's established pattern for client-
+  consumed-but-pure grouping logic — `recap-highlights.js`/`district-population.js` are the direct
+  precedents, both small single-purpose modules with their own `check:*` script) rather than
+  inlining the grouping in `GameClient.ts` — this makes the logic checkable by a real `check-*.mjs`
+  script (pure data in, data out) instead of only reachable via `tsc --noEmit`/manual browser
+  verification, which this codebase has no framework for on the client side. Input: the full
+  per-restaurant `orders[]` array (every ticket, every state — NOT pre-filtered to `state ===
+  'ready'`, since determining "how many siblings remain" needs to see the still-cooking ones too).
+  Output: per `state === 'ready'` ticket, `{ ticketId, orderId, staged: boolean,
+  waitingOnCount: number }` — `staged` true when the order has at least one sibling ticket whose
+  `state` is `'queued'`/`'in_progress'` (mirror `order-system.js#allTicketsOffTheLine`'s own
+  `t.state === 'ready' || t.state === 'cancelled'` predicate exactly, inverted, so this display
+  logic's definition of "order complete" can never quietly drift from the server's real one —
+  cite that function directly in a comment rather than re-deriving the rule independently).
+  `waitingOnCount` is the count of such outstanding siblings.
+  CLIENT WIRING: `GameClient.ts`'s existing `selfReadyOrders`/`readyDishes` reconcile block calls
+  this new function against the FULL `orders` array for `restaurantId` (not the pre-filtered
+  `selfReadyOrders`), and folds `staged`/`waitingOnCount` into each `readyDishes` entry —
+  `ReadyDishRenderState` (`RestaurantScene.ts`) gains those two new fields. `upsertReadyDish` adds
+  a third visual state alongside READY/GOING COLD: a "STAGED — waiting on N" label (own neutral
+  color, distinct from the healthy-green/stale-orange freshness bands so it never reads as either)
+  — while `staged` is true, force the ring to the healthy/neutral color and hide both READY and
+  GOING COLD labels regardless of `readyAgeMs`, satisfying AC4's "staleness pressure does not
+  apply while staged" without touching `readyAgeMs`'s computation or any server timing (AC1 is
+  unconditional: no change to `allTicketsOffTheLine`/`deliverOrder`/scoring/freshness penalty
+  timing anywhere). The instant the last sibling finishes, next snapshot's `staged` flips false and
+  the SAME ticket entry (same `ticketId`, no despawn/respawn) transitions to the normal READY/
+  GOING COLD treatment picking up wherever its real `readyAgeMs` actually is — AC5 falls out of
+  this for free, no special transition code needed, because `staged` is just another field on the
+  same per-snapshot upsert.
+  TOAST (nice-to-have, AC6): `resolveDeliver`'s `not_ready` rejection (`action-validator.js` line
+  245) carries no detail string server-side today and needs none added — the client already knows
+  which order it's carrying (`self.carrying`, the same field `CarriedDishRenderState` already
+  cross-references against `orders[]`, per that interface's own comment). In `GameClient.ts`'s
+  delivery-rejection handler, before emitting the `delivery-rejected` presentation event, look up
+  the carried order's own siblings via the SAME new `shared/game-logic` function and attach a
+  count when it's genuinely the "still cooking" case; extend `PresentationEvent`'s
+  `delivery-rejected` shape (`shared/game-logic/presentation-event-reducer.d.ts`) with an optional
+  field, and `ArcadeToast.tsx`'s `DELIVERY_REJECTION_DETAIL['not_ready']` to interpolate it when
+  present, falling back to today's generic "ORDER NOT READY YET" string otherwise (never invent a
+  count when the true cause isn't sibling-tickets-still-cooking — `not_ready` can also fire from
+  the defensive `!match.kitchen` guard, which has nothing to count).
+  UPGRADE-TERMINAL CSS (separate, smaller ask): concretely verified, not assumed — `restaurant-
+  layout.json` places `upgrade_terminal` at `[7,0,-7]` (`interactionRadius: 1.8`) and the nearest
+  station (`station_plating`) at `[6,0,5]` with NO radius override, so it falls back to
+  `OWNER_INTERACT_RANGE` (2.2, `shared/constants/tuning.js`) per `InteractionController#inRange`.
+  Straight-line distance ≈12.04 world units against a combined trigger radius of at most 4.0 —
+  nowhere close to simultaneous, confirming `.station-menu`'s own existing CSS comment ("far
+  enough apart... should not happen") with real numbers rather than trusting the comment on faith.
+  Re-verify this arithmetic directly rather than trusting this summary's restatement of it. Move
+  `.upgrade-terminal` (`client/src/styles/app.css`, currently `right: 12px`) further left — pick a
+  concrete new value and check it doesn't crowd any OTHER fixed screen-space UI chrome (not just
+  `.station-menu`), since a pure world-distance check only rules out the one specific collision
+  this story's Notes raised.
+  CHECK: extend `scripts/check-orders.mjs` (it already has order/ticket state-machine fixtures to
+  build on) with the new function's grouping/labeling behavior, falsified before trusting it, per
+  house convention — a genuinely new, non-trivial derivation (which siblings count as
+  "outstanding") warrants one, matching the AC's own instruction.
 created: 2026-09-12
 updated: 2026-09-12
 ---
