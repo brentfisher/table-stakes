@@ -1,97 +1,67 @@
-// PRD §11 "End-of-match results" + the results-screen narrative layer (STORY-014). PRD §11's
-// own framing is the spec for this component: the results screen should "turn each match into
-// a learning loop rather than a black-box simulation" (§11 intro) and clear the §21 Milestone 4
-// bar — "most players understand why they lost" — not just dump every §11 field in a table.
+// PRD §11 "End-of-match results" + the results-screen narrative layer (STORY-014), restructured
+// by STORY-047 (PRD-recap-screen-redesign.md) into a small category-navigation shell instead of
+// one long flat scroll. PRD §11's own framing is still the spec for this component: the results
+// screen should "turn each match into a learning loop rather than a black-box simulation" (§11
+// intro) and clear the §21 Milestone 4 bar — "most players understand why they lost" — not just
+// dump every §11 field in a table.
 //
 // ============================================================================================
-// EVERY NUMBER HERE COMES FROM `match_complete`, VERBATIM. This component's only job is
-// formatting and sentence assembly — dish/segment/event NAMES come from the same static
-// catalogue JSON `SetupScreen.tsx`/`GameClient.ts` already import client-side (public game
-// data, not a simulation result), but every COUNT, MARGIN, SCORE, and TIME comes straight out
-// of `status.matchComplete`, which is `GameClient`'s untouched copy of the server message. If a
-// number is not already a field on `MatchResult`/`MatchCompleteMessage`, it does not appear
-// here — see messages.d.ts's own STORY-014 field comments for what each one means.
+// EVERY NUMBER HERE (AND IN EVERY `client/src/ui/recap/*` MODULE THIS FILE COMPOSES) COMES FROM
+// `match_complete`, VERBATIM. This component's only job is composing sections and routing
+// between categories — dish/segment/event NAMES come from the same static catalogue JSON
+// `SetupScreen.tsx`/`GameClient.ts` already import client-side (public game data, not a
+// simulation result, see `recap/catalogue.ts`), but every COUNT, MARGIN, SCORE, and TIME comes
+// straight out of `status.matchComplete`, which is `GameClient`'s untouched copy of the server
+// message. If a number is not already a field on `MatchResult`/`MatchCompleteMessage`, it does
+// not appear here — see messages.d.ts's own STORY-014 field comments for what each one means.
 // ============================================================================================
 //
 // PRD §13 "React responsibilities": React owns application UI, mounted as a full-bleed overlay
 // above the Three.js canvas — same `SetupScreen.tsx` pattern (`App.tsx` mounts this only when
-// `status.matchComplete` exists, the same way `SetupScreen` mounts only during `setup`), and
-// `ResultsScene.ts` is the ambient backdrop behind it, not a data source.
+// `status.matchComplete` exists, the same way `SetupScreen` mounts only during `setup`).
+//
+// STORY-047 VISUAL-STYLE DECISION: `ResultsScene.ts` remains the results-phase Three.js backdrop
+// (`SceneManager#setActiveScene('results')` is UNCHANGED by this story) — this component's own
+// `.recap` root simply renders FULLY OPAQUE over it, exactly the way the pre-STORY-047 `.results`
+// class already did at 94% opacity (see `app.css`'s own comment on `.recap` for why 100%, not a
+// restyle of `ResultsScene` itself, was the lower-risk choice: `ResultsScene` draws two static,
+// dimly-lit podium blocks with no per-frame motion worth preserving underneath a bright card UI,
+// so there is nothing gained by keeping it partially visible, and every risk in touching
+// `SceneManager`/`GameClient`'s phase-swap wiring is avoided). Nothing dark is visible at once
+// with the new bright cards — see this story's KB "Implementation notes" for the full reasoning.
+//
+// STORY-047 CATEGORY SHELL: this file now owns ONLY the always-visible "hero" (Game Over kicker,
+// outcome heading, disconnect reason, the mascot, the score-comparison card, the countdown/
+// rematch controls) plus the category nav and content router. Section CONTENT for each category
+// lives in `client/src/ui/recap/*` — `RecapHighlights.tsx` for 'highlights' (this story's real
+// content), `RecapPlaceholder.tsx` for the other three until STORY-048/049/050 replace them.
 
-import dishesData from '../../../shared/game-data/dishes.json';
-import segmentsData from '../../../shared/game-data/customer-segments.json';
-import eventsData from '../../../shared/game-data/events.json';
-import upgradesData from '../../../shared/game-data/upgrades.json';
-import frontDoorData from '../../../shared/game-data/front-door-specials.json';
-import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
+import { useState } from 'react';
 import type { GameClientStatus } from '../game/GameClient';
-import type { MatchResult } from '../../../shared/schemas/messages';
 import { botProfileLabel } from './bot-profiles';
-
-const DISH_NAMES = new Map<string, string>(
-  (dishesData.dishes as Array<{ id: string; name: string }>).map((d) => [d.id, d.name]),
-);
-const SEGMENT_NAMES = new Map<string, string>(
-  (segmentsData.segments as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]),
-);
-const EVENT_TITLES = new Map<string, string>(
-  (eventsData.events as Array<{ id: string; title: string }>).map((e) => [e.id, e.title]),
-);
-const UPGRADE_INFO = new Map<string, { name: string; description: string }>(
-  (upgradesData.upgrades as Array<{ id: string; name: string; description: string }>).map((upgrade) => [upgrade.id, upgrade]),
-);
-const SPECIAL_NAMES = new Map(frontDoorData.specials.map((special) => [special.id, special.name]));
-const KITCHEN_FOCUSES = new Map(kitchenCommandData.focuses.map((focus) => [focus.id, focus]));
-const CONSTRAINT_LABELS = {
-  demand_conversion: 'Demand conversion',
-  seating_service: 'Seating / service capacity',
-  production: 'Production capacity',
-  inventory: 'Inventory availability',
-  prioritization: 'Prioritization',
-};
-
-const dishName = (dishId: string) => DISH_NAMES.get(dishId) ?? dishId;
-const segmentName = (segmentId: string) => SEGMENT_NAMES.get(segmentId) ?? segmentId;
-const eventTitle = (eventId: string) => EVENT_TITLES.get(eventId) ?? eventId;
-const upgradeName = (upgradeId: string) => UPGRADE_INFO.get(upgradeId)?.name ?? upgradeId;
-
-/** §17 decision-reason vocabulary (customer-system.js's `REASON_BY_COMPONENT`, plus the
- * capacity-driven `restaurant_full`), in plain language for a narrative sentence. */
-const REASON_LABELS: Record<string, string> = {
-  better_price: 'a better price',
-  better_menu_fit: 'a better menu match',
-  shorter_projected_wait: 'a shorter projected wait',
-  higher_reputation: 'higher reputation',
-  event_affinity: 'a menu that fit the event better',
-  restaurant_full: 'the queue looking too long to bother with',
-};
-const reasonLabel = (reason: string) => REASON_LABELS[reason] ?? reason.replace(/_/g, ' ');
-
-const TIE_BREAK_LABELS: Record<string, string> = {
-  averageSatisfaction: 'higher average satisfaction',
-  guestsServed: 'more guests served',
-  netRevenue: 'higher net revenue',
-  abandonedParties: 'fewer abandoned parties',
-};
-
-const formatMoney = (dollars: number) => `$${dollars.toFixed(2)}`;
-const formatMs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-const formatPoints = (points: number) => points.toFixed(1);
-const formatPercent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+import { isScored } from './recap/match-result';
+import { formatPoints } from './recap/format';
+import { RecapCategoryNav } from './recap/RecapCategoryNav';
+import { RecapMascot } from './recap/RecapMascot';
+import { RecapHighlights } from './recap/RecapHighlights';
+import { RecapPlaceholder } from './recap/RecapPlaceholder';
+import { useRecapMotion } from './recap/useRecapMotion';
+import type { RecapCategory, RecapOutcome } from './recap/recap-types';
 
 export interface ResultsPanelProps {
   status: GameClientStatus;
   onRematch: () => void;
 }
 
-/** True once the payload carries a real `MatchResult` rather than the §12 `{}` fallback a
- * disconnect-triggered end sends (see match.js's own comment on `matchCompleteMessage`). */
-function isScored(result: MatchResult | Record<string, never>): result is MatchResult {
-  return 'score' in result;
-}
-
 export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Element | null {
   const complete = status.matchComplete;
+  const [category, setCategory] = useState<RecapCategory>('highlights');
+  // STORY-047's shared motion convention (PRD-recap-screen-redesign.md constraint 5) — see
+  // `useRecapMotion.ts`'s own header. `setMotionEnabled` is unused by this story (no Motion
+  // toggle control ships here; STORY-052 owns that) but is returned now so wiring one in later
+  // is a one-line change, not a retrofit of this hook's shape.
+  const [motionEnabled] = useRecapMotion();
+
   if (!complete) return null;
 
   // STORY-039. `status.restaurantId`, not `status.playerId` — `complete.results` is keyed by
@@ -116,295 +86,93 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   const rivalBot = status.bots.find((bot) => bot.playerId === rivalId) ?? null;
   const rivalTitle = rivalBot ? `Rival — ${botProfileLabel(rivalBot.difficulty)} Bot` : 'Rival';
 
-  const outcome =
-    complete.winnerPlayerId === null
-      ? 'Draw'
-      : complete.winnerPlayerId === selfId
-        ? 'You won'
-        : 'You lost';
+  const outcome: RecapOutcome =
+    complete.winnerPlayerId === null ? 'draw' : complete.winnerPlayerId === selfId ? 'win' : 'loss';
+
+  // STORY-047 co-op decision (PRD constraint 3: co-op matches must degrade honestly, never
+  // silently reuse a two-rival narrative). `scoring-system.js` sets `winnerPlayerId = null` for
+  // ANY match without exactly two restaurants — "the same honest null a genuine draw would [get]"
+  // per its own comment — so a co-op match's `outcome` above is definitionally `'draw'` even
+  // though nothing was actually drawn; there was no rival to draw against. Rather than headline
+  // a co-op shift "Draw" (which reads as "you tied someone"), `!hasRival` gets its own honest
+  // label and reuses the neutral 'draw' mascot face (calm, not tearful/triumphant) as the closest
+  // real visual for "nothing to compare against" — no new mascot state was worth inventing for a
+  // heading-only distinction that isn't a win/loss/draw. See this story's Implementation notes.
+  const outcomeHeading = !hasRival ? 'Shift complete' : outcome === 'draw' ? 'Draw' : outcome === 'win' ? 'You won' : 'You lost';
 
   return (
-    <div className="results">
-      <div className="results-top">
-        <div>
-          {/* STORY-034. Reported: the match-end transition read as the screen "going black" —
-              this backdrop (`ResultsScene.ts`) is a deliberately dim "curtain call" stage, and
-              the win/loss headline it sits behind was the same 26px size as every other label
-              on this panel, easy to miss on the first glance that matters most. A short, large,
-              unmissable "GAME OVER" kicker makes the state change itself obvious before the
-              reader has processed anything else on the panel. */}
-          <p className="results-game-over">Game Over</p>
-          <h1 className={`results-outcome results-outcome--${complete.winnerPlayerId === selfId ? 'win' : complete.winnerPlayerId === null ? 'draw' : 'loss'}`}>
-            {outcome}
-          </h1>
-          {complete.reason === 'player_disconnected' ? (
-            <p className="results-reason">Your opponent disconnected and did not reconnect in time.</p>
-          ) : null}
-        </div>
-        <div className="results-top-right">
-          {status.matchPhase === 'results' && status.timeRemainingMs !== null ? (
-            <div className="results-countdown">Next match in {Math.ceil(status.timeRemainingMs / 1000)}s</div>
-          ) : null}
-          <button type="button" className="results-rematch" onClick={onRematch}>
-            Rematch
-          </button>
-        </div>
+    <div className={`recap${motionEnabled ? '' : ' recap--motion-off'}`}>
+      <div className="recap-utility-bar">
+        {status.matchPhase === 'results' && status.timeRemainingMs !== null ? (
+          <div className="recap-countdown">Next match in {Math.ceil(status.timeRemainingMs / 1000)}s</div>
+        ) : null}
+        <button type="button" className="recap-rematch" onClick={onRematch}>
+          Rematch
+        </button>
       </div>
 
       {!selfResult || !isScored(selfResult) || (hasRival && (!rivalResult || !isScored(rivalResult))) ? (
-        <div className="results-region results-empty">
-          No score was recorded for this match — it ended before scoring ran.
+        <div className="recap-empty-shell">
+          <p className="recap-kicker">Game Over</p>
+          <h1 className={`recap-outcome recap-outcome--${outcome}`}>{outcomeHeading}</h1>
+          {/* The `{}`-results disconnect fallback (`match.js`'s own comment on
+              `matchCompleteMessage`) is exactly the case that lands here — an unscored match is
+              usually a disconnect-triggered end, so this sentence belongs in THIS branch at
+              least as much as the scored one below. Kept in both rather than hoisted above the
+              ternary so each branch stays a self-contained, readable block. */}
+          {complete.reason === 'player_disconnected' ? (
+            <p className="recap-reason">Your opponent disconnected and did not reconnect in time.</p>
+          ) : null}
+          <p className="recap-empty">No score was recorded for this match — it ended before scoring ran.</p>
         </div>
       ) : (
         <>
-          {/* STORY-039. `hasRival` is false for a co-op match (one shared restaurant, no rival
-              to compare against — scoring/win-condition for co-op is explicitly out of this
-              story's scope, see its own "Implementation notes"): the rival column, and every
-              narrative line below that depends on a rival's result, simply do not render rather
-              than showing a duplicate of the player's own restaurant mislabeled "Rival". */}
-          <div className="results-region results-stats">
-            <StatColumn title="You" result={selfResult} />
+          {/* The always-visible hero — outcome heading, mascot, and (when there's a rival to
+              compare against) the final score. AC2 lists these as part of "opening highlights",
+              and they ARE shown whenever 'highlights' is the active category (the default); this
+              story keeps them visible on every category too, rather than tearing the "match just
+              ended" context down the instant a player looks at "The numbers" tab — see this
+              story's own Implementation notes for why that's a superset of the AC, not a gap. */}
+          <div className="recap-hero">
+            <div className="recap-hero-text">
+              <p className="recap-kicker">Game Over</p>
+              <h1 className={`recap-outcome recap-outcome--${outcome}`}>{outcomeHeading}</h1>
+              {complete.reason === 'player_disconnected' ? (
+                <p className="recap-reason">Your opponent disconnected and did not reconnect in time.</p>
+              ) : null}
+            </div>
+            <div className="recap-hero-mascot">
+              <RecapMascot outcome={outcome} motionEnabled={motionEnabled} />
+            </div>
             {hasRival && rivalResult && isScored(rivalResult) ? (
-              <StatColumn title={rivalTitle} result={rivalResult} />
+              <div className="recap-score-card">
+                <h3 className="recap-card-eyebrow">The final score</h3>
+                <div className="recap-score-comparison">
+                  <div>
+                    <span className="recap-score-label">You</span>
+                    <strong className="recap-score-value">{formatPoints(selfResult.score)}</strong>
+                  </div>
+                  <span className="recap-score-vs">vs</span>
+                  <div>
+                    <span className="recap-score-label">{rivalTitle}</span>
+                    <strong className="recap-score-value">{formatPoints(rivalResult.score)}</strong>
+                  </div>
+                </div>
+              </div>
             ) : null}
           </div>
 
-          <div className="results-region results-narrative">
-            <h2>Why you {complete.winnerPlayerId === selfId ? 'won' : complete.winnerPlayerId === null ? 'drew' : 'lost'}</h2>
-            <ul>
-              {complete.decidingSegment ? (
-                <li>
-                  {complete.decidingSegment.leaderRestaurantId === selfId ? 'You' : 'Your rival'} won the{' '}
-                  {segmentName(complete.decidingSegment.segmentId)} segment, by{' '}
-                  {complete.decidingSegment.servedDifferential} more{' '}
-                  {segmentName(complete.decidingSegment.segmentId).toLowerCase()} parties served.
-                </li>
-              ) : null}
-              {selfResult.bestDish ? (
-                <li>
-                  Your {dishName(selfResult.bestDish.dishId)} had the fastest average fulfillment time —{' '}
-                  {formatMs(selfResult.bestDish.avgFulfillmentMs)} order-to-plate, across {selfResult.bestDish.count}{' '}
-                  orders.
-                </li>
-              ) : null}
-              {hasRival && rivalResult && isScored(rivalResult) && rivalResult.largestLossCause ? (
-                <li>
-                  Your rival's biggest loss was {rivalResult.largestLossCause.count} parties choosing you for{' '}
-                  {reasonLabel(rivalResult.largestLossCause.reason)}
-                  {rivalResult.largestLossCause.eventId
-                    ? `, mostly during the ${eventTitle(rivalResult.largestLossCause.eventId)} event`
-                    : ''}
-                  .
-                </li>
-              ) : null}
-              {complete.tieBreakDecided ? (
-                <li>
-                  The match was tied on score — {complete.tieBreakDecided.winnerPlayerId === selfId ? 'you' : 'your rival'}{' '}
-                  won the tie-break on {TIE_BREAK_LABELS[complete.tieBreakDecided.criterion] ?? complete.tieBreakDecided.criterion}.
-                </li>
-              ) : null}
-              {!complete.decidingSegment &&
-              !selfResult.bestDish &&
-              !(hasRival && rivalResult && isScored(rivalResult) && rivalResult.largestLossCause) ? (
-                <li>Not enough happened this match to point to a single deciding factor.</li>
-              ) : null}
-            </ul>
-          </div>
+          <RecapCategoryNav active={category} onSelect={setCategory} />
 
-          <div className="results-region results-manager-ledger">
-            <h2>Manager's ledger</h2>
-            <p className="manager-ledger-dominant">
-              <span>Dominant constraint</span>
-              <strong>{selfResult.managerLedger.dominantConstraint
-                ? CONSTRAINT_LABELS[selfResult.managerLedger.dominantConstraint]
-                : 'No sustained constraint observed'}</strong>
-            </p>
-
-            <div className="manager-ledger-costs">
-              <article>
-                <span>Temporary labor</span>
-                <strong>{formatMoney(selfResult.managerLedger.labor.laborExpenses)}</strong>
-                <small>{formatMoney(selfResult.managerLedger.labor.hireFees)} hire fees · {formatMoney(selfResult.managerLedger.labor.wagesPaid)} wages · {selfResult.managerLedger.labor.taskCompletions} tasks completed</small>
-              </article>
-              <article>
-                <span>Service restocks</span>
-                <strong>{formatMoney(selfResult.managerLedger.restocking.expense)}</strong>
-                <small>{formatMoney(selfResult.managerLedger.restocking.marketPremiumPaid)} market premium · {selfResult.managerLedger.restocking.ordersPlaced} orders</small>
-              </article>
-              <article>
-                <span>Kitchen direction</span>
-                <strong>{KITCHEN_FOCUSES.get(selfResult.managerLedger.kitchen.finalFocusId)?.name ?? selfResult.managerLedger.kitchen.finalFocusId}</strong>
-                <small>{selfResult.managerLedger.kitchen.focusChanges} changes · {Object.values(selfResult.managerLedger.kitchen.selectionsByFocus).reduce((sum, count) => sum + count, 0)} tracked selections</small>
-              </article>
-            </div>
-
-            {(() => {
-              const focus = KITCHEN_FOCUSES.get(selfResult.managerLedger.kitchen.finalFocusId);
-              return focus ? <p className="manager-ledger-tradeoff"><strong>{focus.benefit}</strong> Trade-off: {focus.downside}</p> : null;
-            })()}
-
-            <h3>Special performance</h3>
-            {selfResult.managerLedger.specials.length > 0 ? (
-              <ul className="manager-ledger-specials">
-                {selfResult.managerLedger.specials.map((special) => (
-                  <li key={special.specialId}>
-                    <strong>{SPECIAL_NAMES.get(special.specialId) ?? special.specialId}</strong> ran {special.activations}× for {formatMoney(special.spend)}. During its active windows, {special.observedConversions} of {special.observedDecisions} observed district decisions chose you; {special.deliveredOrders} delivered orders produced {formatMoney(special.observedRevenue)}
-                    {special.averageCheck === null ? '' : ` at a ${formatMoney(special.averageCheck)} average check`}; {special.averageSatisfaction === null ? 'no satisfaction sample' : `average satisfaction ${special.averageSatisfaction}`}; peak queue {special.peakQueue}.
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="muted">No front-door special was activated, so no special outcome is claimed.</p>}
-
-            {selfResult.managerLedger.insights.length > 0 ? (
-              <>
-                <h3>What to change next match</h3>
-                <ul className="manager-ledger-insights">
-                  {selfResult.managerLedger.insights.map((insight, index) => (
-                    <li key={`${insight.category}-${index}`}>
-                      <strong>{insight.observation}</strong> {insight.recommendation}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : <p className="muted">No tracked management decision produced enough evidence for an additional recommendation.</p>}
-          </div>
-
-          {complete.turningPoints.length > 0 ? (
-            <div className="results-region results-turning-points">
-              <h2>Key turning points</h2>
-              <ol>
-                {complete.turningPoints.map((point) => (
-                  <li key={point.atMs}>
-                    {point.leaderRestaurantId === selfId ? 'You' : 'Your rival'} pulled ahead by {point.swing}{' '}
-                    {point.swing === 1 ? 'party' : 'parties'}
-                    {point.eventId
-                      ? ` during the ${eventTitle(point.eventId)} event`
-                      : point.phase
-                        ? ` in ${point.phase === 'final_rush' ? 'the final rush' : 'service'}`
-                        : ''}
-                    .
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : null}
-
-          <div className="results-region results-breakdown">
-            <h2>Score breakdown — you: {formatPoints(selfResult.score)} pts</h2>
-            <table>
-              <tbody>
-                <tr><td>Revenue</td><td>{formatPoints(selfResult.scoreBreakdown.revenueScore)}</td></tr>
-                <tr><td>Guests served</td><td>{formatPoints(selfResult.scoreBreakdown.guestsServedScore)}</td></tr>
-                <tr><td>Satisfaction</td><td>{formatPoints(selfResult.scoreBreakdown.satisfactionScore)}</td></tr>
-                <tr><td>Reputation</td><td>{formatPoints(selfResult.scoreBreakdown.reputationBonus)}</td></tr>
-                <tr><td>Event objective</td><td>{formatPoints(selfResult.scoreBreakdown.eventObjectiveBonus)}</td></tr>
-                <tr className="results-penalty-row">
-                  <td>Penalties</td>
-                  <td>-{formatPoints(selfResult.scoreBreakdown.penaltyScore)}</td>
-                </tr>
-              </tbody>
-            </table>
-            {selfResult.scoreBreakdown.penaltyScore > 0 ? (
-              <>
-                <h3>Penalty detail</h3>
-                <table>
-                  <tbody>
-                    {selfResult.penaltyBreakdown.abandonmentPoints > 0 ? (
-                      <tr><td>Abandoned parties</td><td>-{formatPoints(selfResult.penaltyBreakdown.abandonmentPoints)}</td></tr>
-                    ) : null}
-                    {selfResult.penaltyBreakdown.cancelledOrderPoints > 0 ? (
-                      <tr><td>Cancelled orders</td><td>-{formatPoints(selfResult.penaltyBreakdown.cancelledOrderPoints)}</td></tr>
-                    ) : null}
-                    {selfResult.penaltyBreakdown.severeDissatisfactionPoints > 0 ? (
-                      <tr><td>Severe dissatisfaction</td><td>-{formatPoints(selfResult.penaltyBreakdown.severeDissatisfactionPoints)}</td></tr>
-                    ) : null}
-                    {selfResult.penaltyBreakdown.wastePoints > 0 ? (
-                      <tr><td>Unserved food waste</td><td>-{formatPoints(selfResult.penaltyBreakdown.wastePoints)}</td></tr>
-                    ) : null}
-                    {selfResult.penaltyBreakdown.criticFailurePoints > 0 ? (
-                      <tr><td>Failed critic events</td><td>-{formatPoints(selfResult.penaltyBreakdown.criticFailurePoints)}</td></tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </>
-            ) : null}
+          <div className="recap-content">
+            {category === 'highlights' ? (
+              <RecapHighlights result={selfResult} />
+            ) : (
+              <RecapPlaceholder category={category} />
+            )}
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function StatColumn({ title, result }: { title: string; result: MatchResult }): JSX.Element {
-  return (
-    <div className="results-stat-column">
-      <h2>{title}</h2>
-      <table>
-        <tbody>
-          <tr><td>Score</td><td>{formatPoints(result.score)}</td></tr>
-          <tr><td>Revenue</td><td>{formatMoney(result.revenue)}</td></tr>
-          <tr><td>Expenses</td><td>{formatMoney(result.expenses)}</td></tr>
-          <tr><td>Temporary labor</td><td>{formatMoney(result.laborExpenses)}</td></tr>
-          <tr><td>Front-door specials</td><td>{formatMoney(result.specialExpenses)}</td></tr>
-          <tr><td>Service restock spend</td><td>{formatMoney(result.inventoryExpenses)}</td></tr>
-          <tr><td>Market premium</td><td>{formatMoney(result.marketPremiumPaid)}</td></tr>
-          <tr><td>Stock orders</td><td>{result.stockOrdersPlaced}</td></tr>
-          <tr><td>Shortage time</td><td>{formatMs(result.shortageDurationMs)}</td></tr>
-          <tr><td>Net profit</td><td>{formatMoney(result.netProfit)}</td></tr>
-          <tr><td>Customers served</td><td>{result.guestsServed}</td></tr>
-          <tr><td>Lost to rival</td><td>{result.customersLostToRival}</td></tr>
-          <tr><td>Avg satisfaction</td><td>{result.averageSatisfaction}</td></tr>
-          <tr><td>Avg wait</td><td>{formatMs(result.averageWaitTimeMs)}</td></tr>
-          <tr><td>Event objective</td><td>{formatPercent(result.eventPerformance.eventObjectiveFraction)}</td></tr>
-          {result.eventPerformance.criticFailures > 0 ? (
-            <tr><td>Failed critic visits</td><td>{result.eventPerformance.criticFailures}</td></tr>
-          ) : null}
-        </tbody>
-      </table>
-
-      {result.bestSellingDishes.length > 0 ? (
-        <>
-          <h3>Best-selling dishes</h3>
-          <ol>
-            {result.bestSellingDishes.slice(0, 3).map((d) => (
-              <li key={d.dishId}>{dishName(d.dishId)} — {d.count} sold ({formatMoney(d.revenue)})</li>
-            ))}
-          </ol>
-        </>
-      ) : null}
-
-      {result.highestMarginDishes.length > 0 ? (
-        <>
-          <h3>Highest-margin dishes</h3>
-          <ol>
-            {result.highestMarginDishes.slice(0, 3).map((d) => (
-              <li key={d.dishId}>{dishName(d.dishId)} — {formatMoney(d.marginPerUnit)}/unit</li>
-            ))}
-          </ol>
-        </>
-      ) : null}
-
-      {Object.keys(result.customerSegmentBreakdown).length > 0 ? (
-        <>
-          <h3>Customer segments served</h3>
-          <ul>
-            {Object.entries(result.customerSegmentBreakdown)
-              .sort((a, b) => b[1] - a[1])
-              .map(([segmentId, count]) => (
-                <li key={segmentId}>{segmentName(segmentId)} — {count}</li>
-              ))}
-          </ul>
-        </>
-      ) : null}
-
-      {result.upgradesPurchased.length > 0 ? (
-        <>
-          <h3>Upgrades</h3>
-          <ul>{result.upgradesPurchased.map((id) => (
-            <li key={id}><strong>{upgradeName(id)}:</strong> {UPGRADE_INFO.get(id)?.description ?? 'Purchased during service.'}</li>
-          ))}</ul>
-        </>
-      ) : null}
     </div>
   );
 }
