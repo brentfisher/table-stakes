@@ -1,7 +1,7 @@
 ---
 id: STORY-050
 title: Next shift — coaching game plan
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/050-recap-next-shift-game-plan
 worktree_path: /Users/brent/table-stakes-worktrees/story-050-recap-next-shift

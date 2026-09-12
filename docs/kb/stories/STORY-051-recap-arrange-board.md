@@ -7,8 +7,43 @@ branch: null
 worktree_path: null
 base_branch: null
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  Checked the mockup's own screenshots (`08-rearrangeable-board.png`/`09-board-service-and-
+  finances.png`): the prototype's arrange mode is a full 2x2 grid showing each category's LIVE
+  summary content (net profit, best-seller card, etc.) simultaneously with a drag handle + arrows
+  per card. Do NOT build that — this story's own Notes explicitly scope it down to "the section
+  container abstraction, not their final content," and AC3 (reordering must never touch a
+  section's own internal state, e.g. STORY-050's game-plan `Set`) is trivially guaranteed rather
+  than something to carefully verify if arrange-mode cards never mount the real section
+  components at all. Build lightweight IDENTITY cards instead (icon-free, just each category's
+  `RECAP_CATEGORIES` `label` + a short static one-line description) — arrange mode never touches
+  `result`/`gamePlan`/any match data, so there is nothing live to preserve.
+  Mechanism: lift a new `categoryOrder: RecapCategory[]` (session `useState`, seeded from
+  `RECAP_CATEGORIES.map(c => c.id)`) into `ResultsPanel.tsx`, alongside a boolean `arranging`
+  toggle. `RecapCategoryNav.tsx` ALREADY accepts an optional `categories` prop for exactly this
+  purpose (its own header comment: "lets STORY-051's... mechanism later pass a REORDERED copy...
+  in without touching this component at all") — pass it a `categoryOrder`-mapped array of
+  `RecapCategoryDef`s (label lookup from `RECAP_CATEGORIES`) when arranging is active or not;
+  either way the active single-category content view (`ResultsPanel`'s existing ternary router)
+  is completely unaffected by arrange mode — reordering only permutes which nav tab is FIRST/
+  which order they read in, never which category is currently selected/rendered.
+  New `client/src/ui/recap/RecapArrangeBoard.tsx`: renders `categoryOrder` as cards with a drag
+  handle (native HTML5 `draggable`/`onDragStart`/`onDragOver`/`onDrop` — no existing precedent in
+  this codebase, first use, keep it simple: store the dragged index, swap-on-drop per AC1's own
+  "swaps the two" wording, not a full-reflow insert) plus move-left/move-right buttons (disabled
+  at each boundary) and a "Reset order" control (resets to `RECAP_CATEGORIES`'s own declared
+  order — AC2 is explicit this is about the mechanism working, not matching the mockup's literal
+  category-name framing). Entry point: a new "Arrange" button in `ResultsPanel.tsx`'s existing
+  `.recap-utility-bar` (next to Rematch) toggling `arranging`; "Finish Arranging" (inside
+  `RecapArrangeBoard`) toggles it back off. All new state is session-only (component state, reset
+  when `ResultsPanel` itself remounts) — same precedent STORY-050 already established.
+  No new shared/server module, no wire-schema change, no persistence, no touching of any other
+  recap section's props or content — hence `is_architectural: false`. Flag the native drag-and-
+  drop path as needing a real manual browser check for the same reason STORY-050's download path
+  did (this environment's automated sandbox has known gaps around some native browser
+  interactions) — the arrow-button path is the one `npm run check`/manual keyboard testing can
+  actually exercise directly.
 created: 2026-09-11
 updated: 2026-09-11
 ---
