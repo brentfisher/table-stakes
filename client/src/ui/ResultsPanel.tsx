@@ -33,8 +33,11 @@
 // STORY-047 CATEGORY SHELL: this file now owns ONLY the always-visible "hero" (Game Over kicker,
 // outcome heading, disconnect reason, the mascot, the score-comparison card, the countdown/
 // rematch controls) plus the category nav and content router. Section CONTENT for each category
-// lives in `client/src/ui/recap/*` — `RecapHighlights.tsx` for 'highlights' (this story's real
-// content), `RecapPlaceholder.tsx` for the other three until STORY-048/049/050 replace them.
+// lives in `client/src/ui/recap/*` — `RecapHighlights.tsx` ('highlights'), `RecapMenuStars.tsx`
+// ('menu-stars', STORY-048), `RecapNumbers.tsx` ('numbers', STORY-049), and `RecapNextShift.tsx`
+// ('next-shift', STORY-050). STORY-047's own `RecapPlaceholder.tsx` "coming soon" stand-in for
+// the latter three was removed once STORY-050 (the last of them) shipped real content — nothing
+// in `RecapCategory`'s four-member union reaches it anymore.
 
 import { useState } from 'react';
 import type { GameClientStatus } from '../game/GameClient';
@@ -45,8 +48,8 @@ import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
 import { RecapMenuStars } from './recap/RecapMenuStars';
+import { RecapNextShift } from './recap/RecapNextShift';
 import { RecapNumbers } from './recap/RecapNumbers';
-import { RecapPlaceholder } from './recap/RecapPlaceholder';
 import { useRecapMotion } from './recap/useRecapMotion';
 import type { RecapCategory, RecapOutcome } from './recap/recap-types';
 
@@ -170,10 +173,18 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
             {category === 'highlights' ? (
               <RecapHighlights result={selfResult} />
             ) : category === 'menu-stars' ? (
-              // STORY-048/049. 'next-shift' still falls through to the placeholder until
-              // STORY-050 replaces it.
               <RecapMenuStars result={selfResult} />
-            ) : category === 'numbers' ? (
+            ) : category === 'next-shift' ? (
+              // STORY-050. Self-restaurant only, same reasoning `RecapMenuStars.tsx`'s own
+              // comment gives: management takeaways are this restaurant's own coaching notes,
+              // not a rival-comparison view — there is no rival-shaped data anywhere in
+              // `managerLedger.insights`.
+              <RecapNextShift result={selfResult} />
+            ) : (
+              // STORY-050 note: `category` here is statically narrowed to `'numbers'` — every
+              // other `RecapCategory` member has its own branch above. `RecapPlaceholder.tsx`
+              // (STORY-047's "coming soon" stand-in) is now unused by any live category and was
+              // removed rather than kept as dead code; see this story's KB Implementation notes.
               <RecapNumbers
                 result={selfResult}
                 rivalResult={hasRival && rivalResult && isScored(rivalResult) ? rivalResult : null}
@@ -189,8 +200,6 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                 // ever broken by a future change.
                 selfId={selfId as string}
               />
-            ) : (
-              <RecapPlaceholder category={category} />
             )}
           </div>
         </>

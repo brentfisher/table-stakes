@@ -4,11 +4,13 @@
 // is the one contract those four other stories all depend on — see this story's own KB notes.
 
 /**
- * The four recap categories, per `RECAP-PREVIEW.md`'s own list. This story gives only
- * `'highlights'` real content; the other three render `RecapPlaceholder` until STORY-048
- * (`'menu-stars'`), STORY-049 (`'numbers'`), and STORY-050 (`'next-shift'`) replace them. A
- * union, not a highlights-only special case, so adding a category later never means widening
- * this type from a boolean/enum-of-one — it already holds all four.
+ * The four recap categories, per `RECAP-PREVIEW.md`'s own list. STORY-047 gave only
+ * `'highlights'` real content, with the other three rendering `RecapPlaceholder` until
+ * STORY-048 (`'menu-stars'`), STORY-049 (`'numbers'`), and STORY-050 (`'next-shift'`) replaced
+ * them in turn — `RecapPlaceholder.tsx` was removed once STORY-050 shipped, since every member
+ * of this union has had real content since. A union, not a highlights-only special case, so
+ * adding a category later never means widening this type from a boolean/enum-of-one — it
+ * already holds all four.
  */
 export type RecapCategory = 'highlights' | 'next-shift' | 'menu-stars' | 'numbers';
 
