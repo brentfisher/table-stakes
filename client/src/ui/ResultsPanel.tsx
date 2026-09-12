@@ -45,6 +45,7 @@ import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
 import { RecapMenuStars } from './recap/RecapMenuStars';
+import { RecapNumbers } from './recap/RecapNumbers';
 import { RecapPlaceholder } from './recap/RecapPlaceholder';
 import { useRecapMotion } from './recap/useRecapMotion';
 import type { RecapCategory, RecapOutcome } from './recap/recap-types';
@@ -169,9 +170,25 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
             {category === 'highlights' ? (
               <RecapHighlights result={selfResult} />
             ) : category === 'menu-stars' ? (
-              // STORY-048. 'next-shift' and 'numbers' still fall through to the placeholder
-              // until STORY-050/049 replace them.
+              // STORY-048/049. 'next-shift' still falls through to the placeholder until
+              // STORY-050 replaces it.
               <RecapMenuStars result={selfResult} />
+            ) : category === 'numbers' ? (
+              <RecapNumbers
+                result={selfResult}
+                rivalResult={hasRival && rivalResult && isScored(rivalResult) ? rivalResult : null}
+                rivalTitle={rivalTitle}
+                hasRival={hasRival && !!rivalResult && isScored(rivalResult)}
+                turningPoints={complete.turningPoints}
+                // STORY-049. `selfId` is guaranteed non-null in this branch: `selfResult`
+                // (checked in the outer `if` above) is only ever looked up via
+                // `selfId ? complete.results[selfId] : undefined`, so a truthy `selfResult`
+                // implies a truthy `selfId` — TypeScript just can't see that dependency across
+                // the two variables. The assertion (rather than a defensive `?? ''`) keeps a
+                // turning point's leader label from silently going wrong if this invariant were
+                // ever broken by a future change.
+                selfId={selfId as string}
+              />
             ) : (
               <RecapPlaceholder category={category} />
             )}

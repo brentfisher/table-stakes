@@ -675,6 +675,112 @@ body {
   85% { opacity: 1; }
   100% { transform: translateY(14px); opacity: 0; }
 }
+
+/* --- The numbers (STORY-049) — RecapNumbers.tsx --------------------------------------------
+   Two-card layout mirroring `06-financial-summary.png`: a financial "business end" card and a
+   service-quality "how the floor felt" card, side by side, same two-column shape as
+   `.recap-highlights`/`.recap-menu-stars` rather than a third grid convention. */
+.recap-numbers { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 760px) { .recap-numbers { grid-template-columns: 1fr; } }
+
+.recap-numbers-label { margin: 4px 0 0; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--recap-muted); }
+.recap-numbers-hero { margin: 2px 0 0; font-size: 40px; font-weight: 800; line-height: 1.05; }
+.recap-numbers-hero--positive { color: var(--recap-win); }
+.recap-numbers-hero--negative { color: var(--recap-loss); }
+
+.recap-numbers-grid { display: flex; gap: 24px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--recap-border); }
+.recap-numbers-service-grid { display: flex; gap: 24px; margin: 14px 0 0; flex-wrap: wrap; }
+.recap-numbers-mini-label { display: block; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--recap-muted); }
+.recap-numbers-mini-value { display: block; margin-top: 2px; font-size: 20px; font-weight: 800; color: var(--recap-ink); }
+
+/* AC1: temp-staff/promotion spend as INCLUDED SUBSETS of expenses — visually nested under the
+   revenue/expenses figures above, never presented as its own additional total. */
+.recap-numbers-subset-rows { margin: 14px 0 0; }
+.recap-numbers-subset-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: var(--recap-ink); }
+.recap-numbers-subset-row--total { font-weight: 800; border-top: 1px solid var(--recap-border); margin-top: 4px; padding-top: 8px; }
+.recap-numbers-subset-note { margin: 4px 0 0; font-size: 12px; color: var(--recap-muted); }
+
+.recap-numbers-rival-receipt {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--recap-bg);
+  border: 1px solid var(--recap-border);
+  border-radius: 8px;
+}
+.recap-numbers-rival-receipt h4 { margin: 0 0 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--recap-muted); }
+
+.recap-numbers-scorecard-link {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--recap-accent);
+  color: var(--recap-ink);
+  font: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.recap-numbers-service-headline { margin: 4px 0 0; font-size: 26px; font-weight: 800; line-height: 1.15; font-style: italic; }
+.recap-numbers-service-compare { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--recap-border); }
+
+/* --- Detailed scorecard dialog (AC4) — RecapScorecard.tsx -----------------------------------
+   Same structural pattern as `.menu-modal-backdrop`/`.menu-modal` (`HowToPlay.tsx`/
+   `SettingsPanel.tsx`) but styled on the bright `--recap-*` tokens instead of the app's dark
+   theme — see `RecapScorecard.tsx`'s own header for why this isn't a literal reuse of those
+   classes. */
+.recap-scorecard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(38, 49, 61, 0.45);
+}
+.recap-scorecard {
+  width: min(640px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 22px 24px;
+  background: var(--recap-card);
+  border: 1px solid var(--recap-border);
+  border-radius: 12px;
+  color: var(--recap-ink);
+}
+.recap-scorecard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.recap-scorecard-header h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.recap-scorecard-close {
+  padding: 2px 10px;
+  background: transparent;
+  border: 1px solid var(--recap-border);
+  border-radius: 6px;
+  color: var(--recap-muted);
+  font-size: 16px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.recap-scorecard-close:hover { color: var(--recap-ink); border-color: var(--recap-accent); }
+
+.recap-scorecard-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.recap-scorecard-table th { text-align: left; padding: 6px 8px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--recap-muted); border-bottom: 1px solid var(--recap-border); }
+.recap-scorecard-table td { padding: 6px 8px; border-bottom: 1px solid var(--recap-border); }
+.recap-scorecard-table th:not(:first-child), .recap-scorecard-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.recap-scorecard-penalty-row td { font-weight: 700; color: var(--recap-loss); }
+
+.recap-scorecard-detail { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--recap-border); }
+.recap-scorecard-detail summary { cursor: pointer; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--recap-muted); }
+.recap-scorecard-detail h4 { margin: 16px 0 6px; font-size: 13px; }
+.recap-scorecard-detail h4:first-of-type { margin-top: 12px; }
+.recap-scorecard-turning-points, .recap-scorecard-specials, .recap-scorecard-plain-list { margin: 0; padding-left: 18px; }
+.recap-scorecard-turning-points li, .recap-scorecard-specials li, .recap-scorecard-plain-list li { margin-bottom: 6px; }
+.recap-scorecard-dominant { display: flex; justify-content: space-between; margin: 6px 0; font-size: 13px; }
+.recap-scorecard-dominant span { color: var(--recap-muted); }
+
 /* PRD-recap-screen-redesign.md constraint 5 — the shared motion convention's one blanket
    override: `.recap--motion-off` (set from `useRecapMotion`, seeded from the system
    `prefers-reduced-motion` preference) and the system preference itself both kill every
