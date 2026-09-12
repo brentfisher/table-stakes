@@ -1278,14 +1278,10 @@ export const PEEK_CAMERA_DISTANCE = 20;
 /**
  * Peek's camera target while held, world z (`GameClient#handleFrame`'s peeking branch) —
  * replaces the pre-045 `-23` (the rival floor's own rough centre). This constant, not the fov
- * widening rejected above, is what actually does the framing work AC1 asks for: it sits inside
- * the district street's own span (the customer entry/exit cluster, z ~ -11/-12,
- * `restaurant-layout.json`'s `spawn.customerEntry` and `customer-system.js#ensureState`'s
- * derived `exitPosition`, versus the street's far edge at the rival floor's near wall, z=-20),
- * so the street reads in the well-framed middle band of the shot rather than the far,
- * foreshortened edge a rival-floor-centred target put it in. The rival floor (z=-24.5 centre,
- * `RestaurantScene.RIVAL_FLOOR`) stays in frame on the near side of this target, at a still
- * comfortable frustum angle — worked out alongside `PEEK_CAMERA_DISTANCE` above, not centred on
- * by this target directly the way it was before this story.
+ * widening rejected above, is what keeps the authored rival room readable: it sits just in front
+ * of the district street while keeping the rival floor (z=-24.5 centre,
+ * `RestaurantScene.RIVAL_FLOOR`) near the middle of the peek frame. The street's customer
+ * entry/exit cluster (z ~ -11/-12) remains visible behind it as context, while the tables,
+ * kitchen, and rival-only dressing get enough screen area to read as a second restaurant.
  */
-export const PEEK_CAMERA_TARGET_Z = -17;
+export const PEEK_CAMERA_TARGET_Z = -22;

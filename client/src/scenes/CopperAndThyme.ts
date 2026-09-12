@@ -27,6 +27,10 @@ export class CopperAndThyme {
   private enabled = true;
   private readonly artwork: THREE.Object3D[] = [];
   private readonly fallbackMaterials = new Set<THREE.Material>();
+  /** Untouched GLB hierarchy used to stage the rival's recolored cutaway once the primary
+   * restaurant has finished mounting its entity roots. It shares geometry with the live model,
+   * while `createRivalVariant` clones materials so the two restaurants can have distinct palettes. */
+  private rivalTemplate: THREE.Object3D | null = null;
 
   constructor(private readonly scene: THREE.Scene) {
     scene.userData.sceneryStatus = 'loading';
@@ -48,6 +52,10 @@ export class CopperAndThyme {
         disposeModel(gltf.scene);
         throw new Error('Copper & Thyme model is missing layout entity roots');
       }
+      // Keep one pristine hierarchy before entity roots are re-parented into the gameplay scene.
+      // This is a cheap in-memory clone (geometry remains shared) that lets Peek reveal a full
+      // second floor without issuing a second 22 MB network request.
+      this.rivalTemplate = gltf.scene.clone(true);
       gltf.scene.traverse((o) => {
         if (!(o instanceof THREE.Mesh)) return;
         o.castShadow = true;
@@ -120,8 +128,63 @@ export class CopperAndThyme {
     for (const material of this.fallbackMaterials) material.visible = !visible;
   }
 
+  /** Create a material-isolated rival copy of the authored hierarchy for the Peek cutaway.
+   * Entity roots retain their exported coordinates; the caller owns the rival floor transform.
+   * Returns null while the primary export is still loading or after disposal. */
+  createRivalVariant(): THREE.Group | null {
+    if (!this.rivalTemplate || this.disposed) return null;
+    const variant = this.rivalTemplate.clone(true) as THREE.Group;
+    variant.name = 'rival_authored_scenery';
+    const palette: Array<[RegExp, number]> = [
+      [/LeafLight/, 0x5aa99f],
+      [/Leaf/, 0x2f776e],
+      [/Forest/, 0x236a67],
+      [/GlassGreen/, 0x174357],
+      [/Terracotta/, 0xa34d5b],
+      [/Copper/, 0xc65b7c],
+      [/Brass/, 0xd67b91],
+      [/Glow/, 0xffb347],
+      [/Cheese/, 0xf4b45b],
+      [/Tomato/, 0xe76c5d],
+      [/Ceramic/, 0xf0d7d0],
+      [/Linen/, 0xe6c5b5],
+      [/Plaster/, 0xc7b9cf],
+      [/Brick/, 0x72586f],
+      [/OakLight/, 0x875968],
+      [/Oak/, 0x4b2d4e],
+      [/Walnut/, 0x281b31],
+      [/Steel/, 0x8298ac],
+      [/Stone/, 0x5d687b],
+      [/Grout/, 0x2b3046],
+      [/Black/, 0x17172b],
+    ];
+    variant.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+      const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+      const materials = sourceMaterials.map((source) => {
+        const material = source.clone();
+        if (!(material instanceof THREE.MeshStandardMaterial)) return material;
+        const match = palette.find(([pattern]) => pattern.test(source.name));
+        if (match) material.color.setHex(match[1]);
+        if (/Glow/.test(source.name)) {
+          material.emissive.setHex(0xff8fba);
+          material.emissiveIntensity = 1.1;
+        }
+        if (/Leaf/.test(source.name)) material.side = THREE.DoubleSide;
+        if (/Copper|Brass/.test(source.name)) { material.metalness = 0.72; material.roughness = 0.3; }
+        if (/Steel/.test(source.name)) { material.metalness = 0.58; material.roughness = 0.34; }
+        return material;
+      });
+      object.material = Array.isArray(object.material) ? materials : materials[0];
+    });
+    return variant;
+  }
+
   dispose(): void {
     // Attached resources are disposed by RestaurantScene; a pending load disposes itself.
     this.disposed = true;
+    this.rivalTemplate = null;
   }
 }
