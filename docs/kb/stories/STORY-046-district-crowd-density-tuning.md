@@ -1,7 +1,7 @@
 ---
 id: STORY-046
 title: Tune visible non-conversion crowd volume against the real district decision rate
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-co-op-mode-and-district-crowds.md
 branch: story/046-district-crowd-density-tuning
 worktree_path: /Users/brent/table-stakes-story-046
