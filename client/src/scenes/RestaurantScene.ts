@@ -640,8 +640,13 @@ export class RestaurantScene {
   private readonly readyBellSparks: THREE.Sprite[] = [];
   /** The rival's own "table" boxes and sign, captured from `buildCompetitor()` so
    * `updateRivalActivity` can recolor them without rebuilding the shell. */
+  private competitorSlab!: THREE.Mesh;
   private readonly competitorTables: THREE.Mesh[] = [];
   private readonly competitorSign: THREE.Mesh;
+  /** The authored rival cutaway reuses the primary GLB's geometry with a material-isolated
+   * palette; these surfaces carry the rival's live occupancy glow during Peek. */
+  private rivalScenery: THREE.Group | null = null;
+  private readonly rivalActivityMeshes: THREE.Mesh[] = [];
   /** STORY-031. Per-player, per-ticket carry-socket dish proxies — a NESTED map (unlike
    * `readyDishes`' flat one) because two owners can each be carrying at once, and `setCarriedDishes`
    * needs to diff/prune ONE player's own set without touching the other's. Children of that
@@ -694,7 +699,10 @@ export class RestaurantScene {
     });
     this.scenery = new CopperAndThyme(this.scene);
     this.sceneryReady = this.scenery.ready.then((loaded) => {
-      if (loaded) for (const [station, upgraded] of this.upgradedStations) this.setStationUpgraded(station, upgraded);
+      if (loaded) {
+        for (const [station, upgraded] of this.upgradedStations) this.setStationUpgraded(station, upgraded);
+        this.installRivalScenery();
+      }
       return loaded;
     });
     this.scenery.setVisible(options.scenery ?? true);
@@ -1121,6 +1129,7 @@ export class RestaurantScene {
       new THREE.MeshStandardMaterial({ color: 0x3f464e, roughness: 0.95 }),
     );
     slab.position.set(0, 0.15, -26);
+    this.competitorSlab = slab;
     group.add(slab);
     // STORY-016. These 6 boxes double as the rival's own "occupied table" activity readout —
     // `updateRivalActivity` lights up however many of them the rival's own occupied-seat
@@ -1141,6 +1150,126 @@ export class RestaurantScene {
     group.add(sign);
     group.name = 'competitor_restaurant';
     return group;
+  }
+
+  /** Mount the same authored room a second time for Peek, then give it a clear rival identity.
+   * The GLB clone is scaled into the compact rival footprint and kept under the existing
+   * competitor group so the hold-to-peek camera and visibility seam remain unchanged. */
+  private installRivalScenery(): void {
+    if (this.rivalScenery) return;
+    const variant = this.scenery.createRivalVariant();
+    if (!variant) return;
+
+    for (let i = 1; i <= 6; i += 1) {
+      const table = variant.getObjectByName(`table_${i}`);
+      if (!table) continue;
+      let surface: THREE.Mesh | null = null;
+      table.traverse((object) => {
+        if (surface || !(object instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        if (materials.some((material) => /Ceramic|Linen|OakLight|Walnut/.test(material.name))) surface = object;
+      });
+      if (!surface) table.traverse((object) => { if (!surface && object instanceof THREE.Mesh) surface = object; });
+      if (surface) this.rivalActivityMeshes.push(surface);
+    }
+
+    // Duplicate names would make scene.getObjectByName('table_1') ambiguous for the live player's
+    // interaction layer. Prefix every rival node after collecting the activity surfaces above.
+    variant.traverse((object) => {
+      if (object !== variant && object.name) object.name = `rival_${object.name}`;
+    });
+    variant.add(this.buildRivalAccents());
+    variant.scale.setScalar(0.52);
+    variant.position.set(0, 0, RestaurantScene.RIVAL_FLOOR.centerZ);
+    this.rivalScenery = variant;
+    this.competitor.add(variant);
+
+    // The authored variant now supplies the rival's floor, tables, and kitchen. Keep the old
+    // shell meshes as an activity fallback for export/harness code, but remove them from the
+    // player-facing Peek view so the silhouette reads as one coherent restaurant.
+    this.competitorSlab.visible = false;
+    this.competitorTables.forEach((table) => { table.visible = false; });
+    this.competitorSign.visible = false;
+  }
+
+  /** Rival-only dressing: jewel-toned succulents, a small neon rail, and pendant lamps make the
+   * second room feel authored rather than like a recolored duplicate of Copper & Thyme. */
+  private buildRivalAccents(): THREE.Group {
+    const accents = new THREE.Group();
+    accents.name = 'rival_accents';
+    const planterPositions = [
+      [-7.3, -7.2, 0xc86879], [6.8, -6.5, 0x5db3a6], [-7.2, 7.2, 0x8c6bb4], [6.7, 7.4, 0xe09a57],
+    ] as const;
+    for (const [x, z, potColor] of planterPositions) {
+      const planter = new THREE.Group();
+      planter.position.set(x, 0, z);
+      const pot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.58, 0.44, 0.62, 12),
+        new THREE.MeshStandardMaterial({ color: potColor, roughness: 0.55 }),
+      );
+      pot.position.y = 0.31;
+      planter.add(pot);
+      const soil = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.42, 0.035, 16),
+        new THREE.MeshStandardMaterial({ color: 0x302035, roughness: 0.95 }),
+      );
+      soil.position.y = 0.63;
+      planter.add(soil);
+      for (let i = 0; i < 6; i += 1) {
+        const angle = (i / 6) * Math.PI * 2;
+        const leaf = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 8, 6),
+          new THREE.MeshStandardMaterial({ color: i % 2 ? 0x5db3a6 : 0x2f776e, roughness: 0.75 }),
+        );
+        leaf.scale.set(0.52, 1.5, 0.34);
+        leaf.position.set(Math.cos(angle) * 0.22, 0.9 + (i % 3) * 0.06, Math.sin(angle) * 0.22);
+        leaf.rotation.z = Math.cos(angle) * 0.45;
+        leaf.rotation.x = Math.sin(angle) * -0.35;
+        planter.add(leaf);
+      }
+      accents.add(planter);
+    }
+
+    const railMaterial = new THREE.MeshStandardMaterial({
+      color: 0x54d4d2,
+      emissive: 0x1b8e9b,
+      emissiveIntensity: 1.2,
+      metalness: 0.25,
+      roughness: 0.3,
+    });
+    const neonRail = new THREE.Mesh(new THREE.BoxGeometry(11, 0.1, 0.1), railMaterial);
+    neonRail.position.set(0, 4.85, 10.3);
+    accents.add(neonRail);
+
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 1.15, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0x28152f, roughness: 0.5, metalness: 0.25 }),
+    );
+    sign.position.set(0, 5.45, 10.45);
+    const signLabel = createLabelSprite('RIVAL CANTEEN', 0xffb1c1, 0.5);
+    signLabel.position.set(0, 0.02, 0.1);
+    sign.add(signLabel);
+    accents.add(sign);
+
+    for (const [x, color] of [[-4.2, 0xffb347], [4.2, 0x73e0dd]] as const) {
+      const pendant = new THREE.Group();
+      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0x17172b, roughness: 0.7 }));
+      cord.position.y = 3.55;
+      pendant.add(cord);
+      const shade = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.26, 16, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xd67b91, emissive: color, emissiveIntensity: 0.8,
+          metalness: 0.4, roughness: 0.28, side: THREE.DoubleSide }));
+      shade.position.y = 2.25;
+      pendant.add(shade);
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfff0d1, emissive: color, emissiveIntensity: 1.4 }));
+      bulb.position.y = 2.18;
+      pendant.add(bulb);
+      pendant.position.set(x, 0, 4.5);
+      accents.add(pendant);
+    }
+    return accents;
   }
 
   /**
@@ -2040,15 +2169,16 @@ export class RestaurantScene {
    * passerby would notice" line the HUD's own `long_entry_queue` bottleneck already uses.
    */
   private updateRivalActivity(rival: RestaurantSnapshot | null): void {
+    const activityMeshes = this.rivalActivityMeshes.length ? this.rivalActivityMeshes : this.competitorTables;
     if (!rival) {
-      for (const t of this.competitorTables) (t.material as THREE.MeshStandardMaterial).emissiveIntensity = 0;
+      for (const t of activityMeshes) (t.material as THREE.MeshStandardMaterial).emissiveIntensity = 0;
       if (this.competitorSign) (this.competitorSign.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.3;
       return;
     }
     const occupiedFraction =
       rival.seatsTotal > 0 ? (rival.seatsTotal - rival.seatsAvailable) / rival.seatsTotal : 0;
-    const litCount = Math.round(occupiedFraction * this.competitorTables.length);
-    this.competitorTables.forEach((t, i) => {
+    const litCount = Math.round(occupiedFraction * activityMeshes.length);
+    activityMeshes.forEach((t, i) => {
       const material = t.material as THREE.MeshStandardMaterial;
       const lit = i < litCount;
       material.emissive.setHex(lit ? STATE_COLORS.opportunity : 0x000000);

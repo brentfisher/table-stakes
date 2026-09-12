@@ -1203,16 +1203,11 @@ export class GameClient {
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (this.status.peeking) {
-      // STORY-045. `PEEK_CAMERA_TARGET_Z` (`shared/constants/tuning.js`, own comment there,
-      // worked frustum-angle reasoning included) sits inside the district street STORY-044's
-      // population now walks/decides on — the owner's own floor's entry/exit cluster, z ~
-      // -11/-12, out to the rival floor's near wall, z=-20 — so the street reads in a legibly
-      // framed band rather than the far, foreshortened edge the pre-045 rival-floor-centred
-      // target put it in. The rival's decorative table cluster/sign AND its
-      // now-actually-rendered avatar (`RestaurantScene#rivalWorldPosition`'s own comment), which
-      // sit around x=0, z=-20..-29, stay in frame on the near side of this target. `setPeeking`
-      // already swapped `CameraController` onto the pulled-back `PEEK_CAMERA` profile (own
-      // comment there) — this call only ever needs to move the target, not the framing.
+      // `PEEK_CAMERA_TARGET_Z` (`shared/constants/tuning.js`, with the frustum reasoning in its
+      // own comment) biases the shot toward the authored rival room at z=-24.5 while retaining
+      // the district street and its moving parties behind it. `PEEK_CAMERA` already swapped
+      // `CameraController` onto the pulled-back profile (own comment there) — this call only
+      // ever needs to move the target, not the framing.
       this.scene.cameraController.setTarget(0, PEEK_CAMERA_TARGET_Z);
     } else if (self) {
       this.scene.cameraController.setTarget(
