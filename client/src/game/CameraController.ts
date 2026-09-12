@@ -16,10 +16,10 @@ export interface CameraSettings {
 // see the whole dining room and kitchen, while dishes, customers, and task labels read without
 // needing an overview toggle.
 export const DEFAULT_CAMERA: CameraSettings = {
-  height: 19,
-  distance: 17,
-  angle: Math.PI - 0.28,
-  fov: 40,
+  height: 21,
+  distance: 24,
+  angle: Math.PI - 0.70,
+  fov: 37.5,
 };
 
 /**

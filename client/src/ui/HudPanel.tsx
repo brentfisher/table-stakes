@@ -177,7 +177,21 @@ export function HudPanel({
 
   return (
     <>
-      <div className="hud">
+      <div className="restaurant-brand" aria-label="Copper and Thyme">
+        <span className="restaurant-monogram">c&amp;t</span>
+        <div><strong>COPPER &amp; THYME</strong><small>A LITTLE WORLD, MADE TO ORDER</small></div>
+      </div>
+      <div className="service-card">
+        <div className="service-card-metrics">
+          <div><span>{inService ? 'SERVICE TIME' : 'THE NEXT SERVICE'}</span><strong>{inService ? formatCountdown(status?.timeRemainingMs ?? null) : 'Welcome in.'}</strong></div>
+          <div><span>{inService ? 'REVENUE' : 'YOUR CREW'}</span><strong>{inService ? money(status?.revenue ?? null) : String(status?.playerCount ?? 0).padStart(2, '0')}</strong></div>
+        </div>
+        <div className="service-card-order"><span>{inService ? '✦' : '✧'}</span><div><strong>{carriedDishes.length ? carriedDishes.join(', ') : inService ? 'A good service starts with you.' : 'The kitchen is yours.'}</strong><small>{inService ? status?.prompt?.label ?? 'Look after your guests and keep the pass moving.' : 'Choose your menu, gather your crew, make their evening.'}</small></div></div>
+        {canReady ? <button type="button" className="service-card-action" onClick={() => onReady(!status?.ready)}>{status?.ready ? 'Ready ✓ · Cancel' : 'Prepare for service'}<span>↗</span></button> : <div className="service-card-action"><kbd>E</kbd>{status?.prompt?.label ?? 'Explore your restaurant'}</div>}
+        <p>{inService ? 'Every plate is a little occasion.' : 'Your next great service begins here.'}</p>
+      </div>
+      <details className="hud hud-details">
+        <summary>Service ledger <span>＋</span></summary>
         <h1>Rival Restaurant</h1>
         {inService && manager ? (
           <div className="manager-chips" aria-label="Active management choices">
@@ -286,7 +300,7 @@ export function HudPanel({
             {status?.ready ? 'Ready ✓ (cancel)' : 'Ready up'}
           </button>
         ) : null}
-      </div>
+      </details>
 
       {/* PRD §18 "Current score comparison" + the compact rival summary's "Rival score,
           rival customer count, rival satisfaction trend" — one panel, since both AC bullets
