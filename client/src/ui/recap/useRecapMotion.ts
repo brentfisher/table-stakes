@@ -8,11 +8,13 @@ import { useState, type Dispatch, type SetStateAction } from 'react';
 // down as a prop and applied as ONE root CSS class (`recap--motion-off` — see `app.css`'s
 // `.recap` rules) rather than every section reading `matchMedia` itself.
 //
-// STORY-052 ("win celebration and motion controls") owns the actual on-screen Motion toggle
-// control and the fireworks/idle-animation payoff — this story does not add that button, only
-// the state and the setter it will call. Returning the setter (not just the boolean) now is
-// what makes that later addition a one-line wire-up instead of a retrofit: a `[value, setValue]`
-// pair is the whole contract STORY-052 needs, already in place.
+// STORY-054 ("win celebration and motion controls", split off from the original combined
+// STORY-052 on 2026-09-12) owns the actual on-screen Motion toggle control and the
+// fireworks/idle-animation payoff — this story does not add that button, only the state and the
+// setter it will call. Returning the setter (not just the boolean) now is what makes that later
+// addition a one-line wire-up instead of a retrofit: a `[value, setValue]` pair is the whole
+// contract STORY-054 needs, already in place. STORY-052 (post-split: the pre-reveal teaser) is a
+// second, independent consumer of the boolean half only — see `RecapTeaser.tsx`.
 
 /** `false` (motion off) whenever the OS/browser reports `prefers-reduced-motion: reduce`, or in
  * a non-browser render (harness/SSR-style contexts with no `matchMedia`) — never assume motion

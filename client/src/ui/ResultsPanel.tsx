@@ -64,9 +64,10 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
   const complete = status.matchComplete;
   const [category, setCategory] = useState<RecapCategory>('highlights');
   // STORY-047's shared motion convention (PRD-recap-screen-redesign.md constraint 5) — see
-  // `useRecapMotion.ts`'s own header. `setMotionEnabled` is unused by this story (no Motion
-  // toggle control ships here; STORY-052 owns that) but is returned now so wiring one in later
-  // is a one-line change, not a retrofit of this hook's shape.
+  // `useRecapMotion.ts`'s own header. `setMotionEnabled` is unused by this component (no Motion
+  // toggle control ships here; STORY-054 owns that, split off from the original combined
+  // STORY-052 on 2026-09-12) but is returned now so wiring one in later is a one-line change,
+  // not a retrofit of this hook's shape.
   const [motionEnabled] = useRecapMotion();
   // STORY-050. `RecapNextShift.tsx`'s "which takeaway is prominent" / "game plan selection"
   // state, OWNED HERE rather than inside that component — `ResultsPanel` stays mounted for the

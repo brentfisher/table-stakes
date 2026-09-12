@@ -31,7 +31,8 @@
 // turntable rotation is `food-preview-renderer.ts`'s own `turntable.rotation.y = time * 0.00022`,
 // gated only by that file's own `prefers-reduced-motion` media-query read, NOT by STORY-047's
 // `useRecapMotion`/`.recap--motion-off` convention (which is CSS-only and cannot stop a
-// per-frame JS rotation). STORY-052 owns the Motion toggle; wiring `motionEnabled` through
+// per-frame JS rotation). STORY-054 owns the Motion toggle (split off from the original combined
+// STORY-052 on 2026-09-12); wiring `motionEnabled` through
 // `FoodModelPreview`/`food-preview-renderer.ts`'s registration (both shared with `SetupScreen.tsx`)
 // is that story's call to make, not a change to bolt on here to a shared, safety-critical
 // renderer for one caller. See this story's Implementation notes.
