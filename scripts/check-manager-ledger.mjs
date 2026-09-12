@@ -117,7 +117,18 @@ check('the React HUD, tactical overview, results ledger, and HTML harness are wi
   const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
   assert.match(read('client/src/ui/HudPanel.tsx'), /manager-chips/);
   assert.match(read('client/src/ui/TacticalOverviewPanel.tsx'), /Constraint diagnosis/);
-  assert.match(read('client/src/ui/ResultsPanel.tsx'), /Manager's ledger/);
+  // STORY-047 restructured the results screen into a category shell (`ResultsPanel.tsx`) plus
+  // per-category section components under `client/src/ui/recap/`. The full "Manager's ledger"
+  // breakdown (dominant constraint, cost articles, specials) no longer renders anywhere until
+  // STORY-049/050 add it back under their own categories — only the single lead
+  // `managerLedger.insights[0]` takeaway survives into this story's "opening highlights". This
+  // assertion now checks that the LEAD TAKEAWAY DATA is still wired into the recap's highlights
+  // section, rather than pinning a specific heading string in a file this redesign moved the
+  // heading out of. If STORY-050 ("Next shift — coaching game plan") relocates the lead
+  // takeaway under its own category, repoint this `read()` call to wherever it lands — the
+  // point is that SOME recap file still reads `managerLedger.insights`, not that this exact
+  // path is permanent.
+  assert.match(read('client/src/ui/recap/RecapHighlights.tsx'), /managerLedger\.insights/);
   assert.match(read('harnesses/src/harnesses.ts'), /managerLedgerHarness/);
   assert.match(read('server/src/game/systems/scoring-system.js'), /managerLedgerSummary/);
   assert.match(read('server/src/game/systems/scoring-system.js'), /specialExpenses/);
