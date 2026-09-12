@@ -14,6 +14,7 @@ import type {
   CustomerSnapshot,
   KitchenQueueBoardEntry,
   MatchCompleteMessage,
+  MatchResult,
   ManagerLedgerSnapshot,
   MatchEndReason,
   MatchPhase,
@@ -210,6 +211,16 @@ export interface GameClientStatus {
    * them by checking `matchComplete !== null`, not by `winnerPlayerId`.
    */
   matchComplete: MatchCompleteMessage | null;
+  /**
+   * STORY-052. The viewer's own final `MatchResult`, straight off the private
+   * `you.resultsPreview` — available from the very first `results`-phase snapshot, well before
+   * `matchComplete` arrives. `RecapTeaser` is the one consumer: it renders a building sequence
+   * of facts from this while `matchComplete` is still null, then gets out of the way (see
+   * `matchComplete`'s own comment — `ResultsPanel` is the sole reader once that arrives). Null
+   * before `results`, and also null on the disconnect-end path where `matchComplete` follows
+   * immediately anyway — see `match.js#toSnapshot`'s own comment on `you.resultsPreview`.
+   */
+  resultsPreview: MatchResult | null;
   /**
    * STORY-008 §8 "contextual interact prompt" — `InteractionController`'s current pick, or
    * null with nothing in range. Recomputed every render frame from interpolated position but
@@ -429,6 +440,7 @@ export class GameClient {
     setupRejection: null,
     endReason: null,
     matchComplete: null,
+    resultsPreview: null,
     prompt: null,
     carrying: [],
     currentAction: null,
@@ -730,6 +742,7 @@ export class GameClient {
             kitchenCommand?: GameClientStatus['kitchenCommand'];
             managerLedger?: ManagerLedgerSnapshot | null;
             kitchenQueueBoard?: KitchenQueueBoardEntry[];
+            resultsPreview?: MatchResult | null;
           }
         | null;
       // STORY-039. `you.restaurantId` off the wire — `playerId` for every pre-existing mode, the
@@ -1022,6 +1035,10 @@ export class GameClient {
         // reads — reused, not recomputed, so the panel and the scene pool can never disagree on
         // which tickets exist or their order.
         kitchenQueueBoard,
+        // STORY-052. Straight off `you.resultsPreview` — see that wire field's own `.d.ts`
+        // comment for why it is safe to publish this early (the viewer's own slice only) and
+        // `GameClientStatus.resultsPreview`'s own comment for who reads it.
+        resultsPreview: you?.resultsPreview ?? null,
         ...(serviceStationNotice ? { serviceStationNotice } : {}),
         // STORY-015. Ranked (§18 order) and already capped (`HUD_CRITICAL_ALERTS_MAX`) here,
         // once per snapshot — see `criticalAlerts`'s own field comment on why.

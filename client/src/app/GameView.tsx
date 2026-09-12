@@ -25,6 +25,7 @@ import { HudPanel } from '../ui/HudPanel';
 import { SetupScreen } from '../ui/SetupScreen';
 import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
+import { RecapTeaser } from '../ui/recap/RecapTeaser';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
 import { EventBanner } from '../ui/EventBanner';
 import { ArcadeToast } from '../ui/ArcadeToast';
@@ -245,6 +246,20 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
             navigate('/');
           }}
         />
+      ) : null}
+      {/*
+        STORY-052 (PRD-recap-screen-redesign.md). Fills the dark, empty gap between the match
+        entering `results` (the 3D backdrop already went dim) and `match_complete` actually
+        arriving, which the §5/§11 results window leaves otherwise empty for the whole
+        results-phase duration. Sibling to `<ResultsPanel>` above, NOT nested under its
+        condition — `!status.matchComplete` here is exactly `status.matchComplete`'s inverse
+        above, so the two conditions are mutually exclusive and only one of these ever mounts at
+        once (see `RecapTeaser.tsx`'s own header). `status.resultsPreview` is the viewer's own
+        slice of the already-computed result, published the instant `results` begins — see
+        `match.js#toSnapshot`'s own comment on that field for why it is safe to show this early.
+      */}
+      {status?.matchPhase === 'results' && !status.matchComplete && status.resultsPreview ? (
+        <RecapTeaser result={status.resultsPreview} />
       ) : null}
       {/* STORY-012. Opens on proximity, not an `E` press — see
           `InteractionController#nearUpgradeTerminal`'s own comment for why. */}

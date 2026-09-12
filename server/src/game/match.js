@@ -654,6 +654,20 @@ export class Match {
             // `[]`, not `null` (unlike `kitchenCommand`): see `GameClientStatus.kitchenQueueBoard`'s
             // own comment on why this field has no meaningful null/empty distinction to carry.
             kitchenQueueBoard: this.kitchen?.queuedTicketsAcrossStations(viewerRestaurantId) ?? [],
+            // STORY-052. `scoring-system.js#onPhaseChange('results')` populates
+            // `this.finalResults` SYNCHRONOUSLY the instant the match enters `results` — the
+            // viewer's own final numbers exist from the phase's first tick, long before
+            // `match_complete` arrives at the end of the results-phase timer. Publishing THIS
+            // viewer's own slice here lets the client tease the recap early without waiting.
+            // Never `this.finalResults` wholesale: that also carries `winnerPlayerId`,
+            // `decidingSegment`, `turningPoints` and the RIVAL's own full result, any of which
+            // would leak the outcome early or cross PRD §18's privacy boundary. `null` before
+            // `results` (this.finalResults is undefined) and also null on a disconnect-triggered
+            // end (`#endMatch` with reason !== 'completed' sets `phase = 'results'` directly
+            // without `onPhaseChange` ever firing, so `finalResults` never gets set) — both are
+            // the honest answer, and `match_complete` follows immediately in the disconnect path
+            // anyway, so there is nothing for a teaser to show there.
+            resultsPreview: this.finalResults?.results?.[viewerRestaurantId] ?? null,
           }
         : null,
       // Each of these is populated by a system attaching its own pre-sanitized, already

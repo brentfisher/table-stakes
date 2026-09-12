@@ -320,6 +320,18 @@ export interface SnapshotViewer {
    * identically to a board with nothing to show either way.
    */
   kitchenQueueBoard: KitchenQueueBoardEntry[];
+  /**
+   * STORY-052 "Pre-reveal teaser". This viewer's own already-computed `MatchResult` slice of
+   * `match.finalResults.results`, published as soon as `scoring-system.js#onPhaseChange`
+   * populates it — the very first `results`-phase snapshot, well before `match_complete`
+   * arrives at the end of the results-phase timer. Never the rival's own result and never any
+   * of `match.finalResults`'s match-wide fields (`winnerPlayerId`, `decidingSegment`,
+   * `turningPoints`) — those would leak the outcome or the rival's figures early, breaking PRD
+   * §18. Null before `results`, and also null on a disconnect-triggered end (`onPhaseChange`
+   * never fires for that path — see match.js's `#endMatch`), where `match_complete` follows
+   * immediately anyway.
+   */
+  resultsPreview: MatchResult | null;
 }
 
 export interface ManagerLedgerSnapshot {

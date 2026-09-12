@@ -26,6 +26,12 @@
 // floating-point-residual reason section 11's own comment already documents for the four
 // tie-break rungs.
 //
+// STORY-052 extends this same file (rather than a new check-*.mjs, same precedent as STORY-014
+// above) with `match.js#toSnapshot`'s new `you.resultsPreview` field's wiring and privacy
+// boundary — it is a straight read off `match.finalResults`, the exact data this file already
+// drives through `finishMatch`, so no new harness was needed, only new assertions against the
+// existing one.
+//
 // Run: node scripts/check-scoring.mjs
 
 import { Match } from '../server/src/game/match.js';
@@ -1169,6 +1175,82 @@ function finishMatch(match) {
     'compareForTieBreak (pure) agrees — A wins on satisfaction despite trailing on guestsServed',
     compareForTieBreak(orderCheckA, orderCheckB) < 0,
     `compare=${compareForTieBreak(orderCheckA, orderCheckB)}`,
+  );
+}
+
+// =============================================================================================
+// STORY-052 "Pre-reveal teaser" — you.resultsPreview wiring and its privacy boundary
+// =============================================================================================
+// `match.js#toSnapshot`'s new `you.resultsPreview` field publishes the viewer's OWN slice of
+// `match.finalResults.results` the instant scoring populates it, well before `match_complete`.
+// This is the one narrow addition this story makes to `toSnapshot` — everything else about
+// scoring itself is already covered above. What matters here is the privacy boundary: this
+// restaurant's own numbers only, never the rival's, and never any of the match-wide fields
+// (`winnerPlayerId`/`decidingSegment`/`turningPoints`/`tieBreakDecided`) that would leak the
+// outcome or the rival's own figures before AC2 says they may show.
+{
+  const match = twoRestaurantProbe('m_results_preview');
+
+  check(
+    'resultsPreview is null before finalResults exists — nothing to tease yet',
+    match.toSnapshot('p1').you.resultsPreview === null,
+  );
+
+  // Deliberately different revenue per restaurant so a viewer accidentally handed the WRONG
+  // restaurant's slice is caught by a value mismatch, not just by a missing key.
+  forceOrderLedger(match, 'p1', { revenue: 777 });
+  forceOrderLedger(match, 'p2', { revenue: 333 });
+  const { finalResults } = finishMatch(match);
+
+  const p1Preview = match.toSnapshot('p1').you.resultsPreview;
+  const p2Preview = match.toSnapshot('p2').you.resultsPreview;
+  check(
+    "resultsPreview is populated once finalResults exists, straight off this viewer's own restaurant",
+    p1Preview !== null && p1Preview.revenue === 777 && p2Preview !== null && p2Preview.revenue === 333,
+    `p1=${p1Preview?.revenue} p2=${p2Preview?.revenue}`,
+  );
+  check(
+    'resultsPreview matches match.finalResults.results[viewerRestaurantId] exactly',
+    JSON.stringify(p1Preview) === JSON.stringify(finalResults.results.p1) &&
+      JSON.stringify(p2Preview) === JSON.stringify(finalResults.results.p2),
+  );
+  check(
+    "a viewer never receives the RIVAL's own resultsPreview",
+    // Optional chaining rather than a bare `.revenue` read: a badly wrong `resultsPreview`
+    // (e.g. looked up under the wrong key entirely) should surface here as a clean FAIL, not
+    // crash the whole check script before the summary prints.
+    p1Preview?.revenue !== p2Preview?.revenue && JSON.stringify(p1Preview) !== JSON.stringify(p2Preview),
+  );
+  check(
+    'resultsPreview never carries any match-wide field — those stay off `you` entirely',
+    p1Preview !== null &&
+      !('winnerPlayerId' in p1Preview) &&
+      !('decidingSegment' in p1Preview) &&
+      !('turningPoints' in p1Preview) &&
+      !('tieBreakDecided' in p1Preview),
+    p1Preview ? Object.keys(p1Preview).join(', ') : 'resultsPreview was null',
+  );
+  check(
+    'resultsPreview is never published at the snapshot\'s top level — only under `you`',
+    !('resultsPreview' in match.toSnapshot('p1')),
+  );
+}
+
+// --- STORY-052 disconnect-end path: resultsPreview stays the honest null, nothing to tease -----
+{
+  const match = twoRestaurantProbe('m_results_preview_disconnect');
+  match.removePlayer('p2');
+  // Past the reconnect grace: #endMatch('player_disconnected', ...) sets phase = 'results'
+  // DIRECTLY, without onPhaseChange ever running (see match.js's own comment on
+  // `matchCompleteMessage`), so `finalResults` is never set — same real path
+  // check-match-lifecycle.mjs's own "exceeding the reconnect grace" section exercises.
+  quiet(() => {
+    for (let i = 0; i < 20_000 && !match.ended; i += 1) stepMatch(match, TICK_MS);
+  });
+  check(
+    'a disconnect-triggered end never runs scoring, so resultsPreview stays the honest null',
+    match.ended && match.endReason === 'player_disconnected' && match.toSnapshot('p1').you.resultsPreview === null,
+    `ended=${match.ended} reason=${match.endReason} resultsPreview=${JSON.stringify(match.toSnapshot('p1').you.resultsPreview)}`,
   );
 }
 

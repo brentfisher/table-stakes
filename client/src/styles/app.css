@@ -1039,6 +1039,62 @@ body {
   cursor: pointer;
 }
 
+/* --- Pre-reveal teaser (STORY-052) — RecapTeaser.tsx -----------------------------------------
+   Reuses the `.recap` root class itself (see that class's own header comment — no descendant
+   selector anywhere in this file is scoped narrower than a dedicated `.recap-*` class, so
+   sharing it costs nothing and gives this a free copy of the same `--recap-*` tokens, the same
+   fully-opaque full-bleed overlay positioning, and the same `.recap--motion-off` override
+   `RecapTeaser.tsx` already applies conditionally). `.recap-teaser` only overrides what needs to
+   differ: centered content instead of `.recap`'s top-anchored stacked layout, since there is no
+   nav/utility bar here, just one small card. */
+.recap-teaser { align-items: center; justify-content: center; }
+.recap-teaser-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-width: 280px;
+  padding: 28px 36px;
+  background: var(--recap-card);
+  border: 1px solid var(--recap-border);
+  border-radius: 12px;
+}
+.recap-teaser-facts { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.recap-teaser-fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 20px;
+  font-size: 15px;
+}
+.recap-teaser-fact-label { color: var(--recap-muted); }
+.recap-teaser-fact-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.recap-teaser-score {
+  margin-top: 4px;
+  padding-top: 14px;
+  width: 100%;
+  border-top: 1px solid var(--recap-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.recap-teaser-score-label { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--recap-muted); }
+.recap-teaser-score-value { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--recap-ink); }
+
+/* The one entrance animation this section has — a fact/the score card sliding gently into place
+   as it joins the building sequence (`RecapTeaser.tsx`'s own `revealedCount`/`TeaserScore` mount
+   timing). A SEPARATE class (`.recap-teaser-enter`, applied alongside `.recap-teaser-fact` or
+   `.recap-teaser-score` in the component, not folded into either) so it never fights either
+   class's own `display`/`flex-direction` with a same-specificity, declaration-order-dependent
+   override. Covered by the blanket `.recap--motion-off`/`prefers-reduced-motion` override just
+   below, same as everything else under `.recap`. */
+.recap-teaser-enter { animation: recap-teaser-fact-in 420ms ease both; }
+@keyframes recap-teaser-fact-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* PRD-recap-screen-redesign.md constraint 5 — the shared motion convention's one blanket
    override: `.recap--motion-off` (set from `useRecapMotion`, seeded from the system
    `prefers-reduced-motion` preference) and the system preference itself both kill every

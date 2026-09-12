@@ -42,7 +42,18 @@ export const PHASE_DURATIONS_MS = {
     setup: 120_000,
     service: 300_000,
     final_rush: 60_000,
-    results: 30_000,
+    // STORY-052. Was 30_000. This used to be dead time — the whole point of the wait was that
+    // `match_complete` (and the recap it unlocks) withheld the outcome, but `client/src/ui/
+    // recap/RecapTeaser.tsx` now fills it starting from the very first `results` snapshot, so
+    // there is no reason left to hold this open as long as before. Sized against
+    // `RecapTeaser.tsx`'s own fixed client-side timeline, not this preset specifically (the
+    // teaser's pacing does not change between presets): 3 facts appear staggered 900ms apart
+    // (last one at t=2700ms) and the score tally that starts then runs 1400ms more, finishing at
+    // ~4100ms — plus a few seconds so the final tallied number sits still and readable before
+    // `match_complete` swaps the teaser for the full recap, rather than yanking it away the
+    // instant the tally settles. 9s clears that with room to spare without adding back the kind
+    // of empty wait this story exists to remove.
+    results: 9_000,
   },
   prototype: {
     lobby: null,
@@ -50,7 +61,12 @@ export const PHASE_DURATIONS_MS = {
     setup: 45_000,
     service: 150_000,
     final_rush: 45_000,
-    results: 20_000,
+    // STORY-052. Was 20_000. Same reasoning and the same `RecapTeaser.tsx` timeline as `full
+    // .results` above (the teaser's own pacing is fixed, not preset-scoped) — 7s gives the
+    // ~4.1s sequence a shorter but still comfortable couple of seconds to sit on the tallied
+    // score before `match_complete` arrives, matching this preset's own faster pacing everywhere
+    // else (`prototype` is consistently ~2/3 of `full` across every other phase here).
+    results: 7_000,
   },
   smoke: {
     lobby: null,
@@ -58,6 +74,8 @@ export const PHASE_DURATIONS_MS = {
     setup: 2_000,
     service: 2_000,
     final_rush: 1_200,
+    // STORY-052. UNCHANGED — scripts/smoke-phases.mjs sleeps `DURATIONS.results + 600` off this
+    // exact preset/field pair to prove `match_complete` arrives, not this story's concern.
     results: 1_200,
   },
 };
