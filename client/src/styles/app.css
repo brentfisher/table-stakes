@@ -947,6 +947,98 @@ body {
 .recap-evidence-list li { margin-bottom: 8px; }
 .recap-evidence-fallback { margin: 0; font-size: 14px; }
 
+/* STORY-051 "Arrange board". A plain toggle button in `.recap-utility-bar`, same visual weight as
+   the pre-existing `.recap-rematch` neighbor it sits beside — arranging is a peer action to
+   rematching, not a subordinate one. */
+.recap-arrange-toggle {
+  padding: 9px 16px;
+  background: #fff;
+  border: 1px solid var(--recap-border);
+  border-radius: 6px;
+  color: var(--recap-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recap-arrange-toggle:hover { border-color: var(--recap-accent); }
+
+/* The arrange board itself replaces the nav+content pair (see `ResultsPanel.tsx`'s own comment on
+   why) — a header/cards/footer stack, same rhythm as `.recap-next-shift`'s own top-level layout. */
+.recap-arrange-board { display: flex; flex-direction: column; gap: 16px; }
+.recap-arrange-board-header h2 { margin: 0 0 4px; font-size: 18px; font-weight: 800; color: var(--recap-ink); }
+.recap-arrange-board-header p { margin: 0; }
+
+/* IDENTITY cards only (see `RecapArrangeBoard.tsx`'s own header for why) — a responsive grid
+   rather than a fixed 2x2 like the mockup's live-content dashboard, since these cards hold far
+   less content and a rigid 2x2 would leave a lot of dead space at typical window widths. */
+.recap-arrange-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.recap-arrange-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  background: var(--recap-card);
+  border: 1px solid var(--recap-border);
+  border-radius: 10px;
+  /* Native HTML5 drag-and-drop (first use in this codebase, see this component's own header) —
+     `grab`/`grabbing` on the card itself, not just the handle glyph, since the whole card (not
+     only the handle) is `draggable`. */
+  cursor: grab;
+}
+.recap-arrange-card--dragging { opacity: 0.5; cursor: grabbing; }
+.recap-arrange-card-handle {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  color: var(--recap-muted);
+  font-size: 18px;
+  line-height: 1;
+  /* Braille-pattern glyph reads as a grip/handle without shipping an icon font — matches this
+     codebase's existing text-glyph convention for chrome (`‹`/`›` arrows, `×` close buttons)
+     rather than introducing the first image/icon-font asset for a single button. */
+}
+.recap-arrange-card-body { flex: 1 1 auto; min-width: 0; }
+.recap-arrange-card-body h3 { margin: 0 0 4px; font-size: 14px; font-weight: 800; color: var(--recap-ink); }
+.recap-arrange-card-body p { margin: 0; font-size: 12px; color: var(--recap-muted); }
+.recap-arrange-card-arrows { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
+/* Same visual treatment as `.recap-next-shift-arrow` — this is the second place this codebase
+   needs a small bordered prev/next control, so it reuses that pattern rather than inventing a
+   third look for the same interaction. */
+.recap-arrange-arrow {
+  padding: 2px 10px;
+  background: transparent;
+  border: 1px solid var(--recap-border);
+  border-radius: 6px;
+  color: var(--recap-muted);
+  font-size: 16px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.recap-arrange-arrow:hover:not(:disabled) { color: var(--recap-ink); border-color: var(--recap-accent); }
+.recap-arrange-arrow:disabled { opacity: 0.35; cursor: default; }
+
+.recap-arrange-board-footer { display: flex; justify-content: space-between; align-items: center; }
+.recap-arrange-reset {
+  padding: 9px 16px;
+  background: transparent;
+  border: 1px solid var(--recap-border);
+  border-radius: 6px;
+  color: var(--recap-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recap-arrange-reset:hover { color: var(--recap-ink); border-color: var(--recap-accent); }
+.recap-arrange-finish {
+  padding: 9px 16px;
+  background: var(--recap-ink);
+  border: 1px solid var(--recap-ink);
+  border-radius: 6px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* PRD-recap-screen-redesign.md constraint 5 — the shared motion convention's one blanket
    override: `.recap--motion-off` (set from `useRecapMotion`, seeded from the system
    `prefers-reduced-motion` preference) and the system preference itself both kill every
