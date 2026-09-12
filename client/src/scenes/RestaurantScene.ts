@@ -33,7 +33,7 @@ import {
   CUSTOMER_SEGMENT_COLORS,
   CUSTOMER_SEGMENT_COLOR_FALLBACK,
 } from '../game/state-colors';
-import { createGlyphSprite, createLabelSprite, setGlyphSpriteColor } from './icon-sprites';
+import { createGlyphSprite, createLabelSprite, setGlyphSpriteColor, setLabelSpriteText } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 
 export interface OwnerRenderState {
@@ -85,6 +85,14 @@ export interface ReadyDishRenderState {
   tableId: string | null;
   readyAgeMs: number;
   isOldest: boolean;
+  /** STORY-053. True iff at least one sibling ticket on this same order (same `orderId`, not
+   * carried on this narrow render-state shape — see `GameClient.ts`'s own `kitchenStaging` call)
+   * is still `queued`/`in_progress`. Derived client-side, same Pattern 4/11 discipline as
+   * `isOldest` above: `upsertReadyDish` renders this, it does not decide it. */
+  staged: boolean;
+  /** STORY-053. How many such outstanding siblings there are — the "waiting on N more" count the
+   * staged label shows. Meaningless (and unused) while `staged` is false. */
+  waitingOnCount: number;
 }
 
 /** STORY-031 PRD §5.3/§10.2. One entry per DISH the owner is physically carrying, keyed by
@@ -326,6 +334,16 @@ function formatTableChip(tableId: string | null): string {
   if (!tableId) return '—';
   const n = tableId.replace(/^table_/, '');
   return `T${n.padStart(2, '0')}`;
+}
+
+/** STORY-053. AC3: the staged label must say WHY — at minimum how many sibling dishes are still
+ * outstanding — not just a different color with no explanation. Kept as its own function (rather
+ * than inlined at the one call site) because `upsertReadyDish` needs the identical string both
+ * at first build (`createLabelSprite`) and on every later call (`setLabelSpriteText`), and a
+ * literal template repeated at two call sites is exactly the kind of drift a `.d.ts`-adjacent
+ * naming mismatch could introduce silently. */
+function stagedLabelText(waitingOnCount: number): string {
+  return `WAITING ON ${waitingOnCount}`;
 }
 
 /** Food-part colors — a plate's own dish identity, DELIBERATELY DISTINCT from the six
@@ -1522,7 +1540,14 @@ export class RestaurantScene {
    * the oldest-ticket highlight, the same "build once, toggle per snapshot" discipline
    * `upsertWorker`'s job glyphs already use. */
   upsertReadyDish(state: ReadyDishRenderState): void {
-    const stale = state.readyAgeMs > ORDER_FRESHNESS_GRACE_MS;
+    // STORY-053. `staged` short-circuits `stale` to false regardless of `readyAgeMs` — AC4's
+    // "staleness pressure does not apply while staged", without touching `readyAgeMs`'s own
+    // computation (still server-authoritative, untouched by this story). This is also what makes
+    // the ring's forced healthy/neutral color (spec'd separately below) fall out for free: `band`
+    // can only read 'bottleneck' when `stale` is true, so a staged ticket's ring is always
+    // 'healthy' by construction, never a third color of its own — the DISTINCT staged signal
+    // lives entirely in the label below, not in the ring.
+    const stale = !state.staged && state.readyAgeMs > ORDER_FRESHNESS_GRACE_MS;
     const band: 'healthy' | 'bottleneck' = stale ? 'bottleneck' : 'healthy';
     const ringColor = colorForBand(band);
 
@@ -1565,6 +1590,19 @@ export class RestaurantScene {
       coldLabel.name = 'label_cold';
       group.add(coldLabel);
 
+      // STORY-053. A THIRD label, same position/size discipline as the two above but a
+      // different color family: `STATE_COLORS.premium` (purple) is not one of the two freshness
+      // bands this proxy's ring/READY/GOING COLD already use (green/orange), specifically so it
+      // can never read as a variant of either — this dish is not "fine" and not "spoiling", it
+      // is blocked on the kitchen, which is a different fact altogether. Unlike the other two,
+      // its TEXT can change after creation (a sibling ticket finishing lowers `waitingOnCount`
+      // over this one ticket's own on-pass lifetime), so it is re-baked via `setLabelSpriteText`
+      // on every call below rather than built once and only toggled.
+      const stagedLabel = createLabelSprite(stagedLabelText(state.waitingOnCount), STATE_COLORS.premium, 0.52);
+      stagedLabel.position.set(0, 0.83, 0);
+      stagedLabel.name = 'label_staged';
+      group.add(stagedLabel);
+
       group.name = `ready_dish_${state.ticketId}`;
       this.readyDishes.set(state.ticketId, group);
       const passMesh = this.scene.getObjectByName('service_pass');
@@ -1598,8 +1636,19 @@ export class RestaurantScene {
 
     const readyLabel = group.getObjectByName('label_ready') as THREE.Sprite;
     const coldLabel = group.getObjectByName('label_cold') as THREE.Sprite;
-    readyLabel.visible = !stale;
-    coldLabel.visible = stale;
+    const stagedLabel = group.getObjectByName('label_staged') as THREE.Sprite;
+    // STORY-053 AC2/AC4: while staged, NEITHER of the two freshness labels shows — this ticket
+    // is not "READY" (the player cannot actually deliver it — its order isn't off the line) and
+    // not "GOING COLD" (staleness pressure is deliberately suspended above via `stale`'s own
+    // `!state.staged` guard). Only the staged label is visible. The instant a later snapshot's
+    // `staged` flips false (the last sibling finished), this same block falls straight through
+    // to the ordinary `!stale`/`stale` branch below on the SAME ticket entry — no despawn/respawn,
+    // no extra transition code, which is what makes AC5 ("the whole group transitions together")
+    // true for free.
+    readyLabel.visible = !state.staged && !stale;
+    coldLabel.visible = !state.staged && stale;
+    stagedLabel.visible = state.staged;
+    if (state.staged) setLabelSpriteText(stagedLabel, stagedLabelText(state.waitingOnCount));
 
     this.setReadyBellActive(true);
   }

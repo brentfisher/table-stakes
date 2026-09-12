@@ -60,6 +60,16 @@ export type PresentationEvent =
        */
       type: 'delivery-rejected';
       reason: string;
+      /**
+       * STORY-053 AC6. How many sibling dishes on the carried order are still `queued`/
+       * `in_progress`, attached ONLY when `reason === 'not_ready'` AND `GameClient.ts`'s own
+       * `kitchenStaging` lookup genuinely found a nonzero count for the carried order — never
+       * fabricated for the OTHER things `not_ready` can mean (the defensive `!match.kitchen`
+       * guard in `action-validator.js`, or a race where the order was cancelled out from under
+       * an already-carried plate), which have nothing real to count. `undefined`, not `0`, is
+       * the "no detail available" case — `ArcadeToast.tsx` falls back to the generic string.
+       */
+      waitingOnCount?: number;
     };
 
 export type PresentationEventType = PresentationEvent['type'];

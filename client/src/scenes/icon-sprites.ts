@@ -144,3 +144,17 @@ export function createLabelSprite(text: string, colorHex: number, scale = 0.5): 
   sprite.renderOrder = 10;
   return sprite;
 }
+
+/** STORY-053. Swaps a `createLabelSprite` sprite's TEXT in place, for the rare label whose text
+ * changes after creation — `RestaurantScene#upsertReadyDish`'s staged "WAITING ON N" chip is the
+ * first one: a sibling ticket finishing lowers N over a single ticket's own on-pass lifetime,
+ * unlike READY/GOING COLD's two fixed strings, which are built once and only ever toggled by
+ * visibility. Goes through the SAME `labelTexture` cache `createLabelSprite` reads, so this is a
+ * cache hit (a map lookup, not a new canvas draw) for any count already seen this session. */
+export function setLabelSpriteText(sprite: THREE.Sprite, text: string): void {
+  const material = sprite.material as THREE.SpriteMaterial;
+  const next = labelTexture(text);
+  if (material.map === next) return;
+  material.map = next;
+  material.needsUpdate = true;
+}

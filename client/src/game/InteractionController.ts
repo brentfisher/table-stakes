@@ -23,6 +23,11 @@ import dishesData from '../../../shared/game-data/dishes.json';
 import layoutData from '../../../shared/game-data/restaurant-layout.json';
 import { OWNER_DELIVERY_RANGE, OWNER_INTERACT_RANGE } from '../../../shared/constants/tuning';
 import type { CustomerSnapshot, InteractAction, OrderSnapshot, RestaurantSnapshot } from '../../../shared/schemas/messages';
+// STORY-053. `pickupCandidate` below used to re-derive "every ticket on this order is
+// ready/cancelled" independently (a THIRD expression of `order-system.js#allTicketsOffTheLine`'s
+// rule, alongside this story's own new pass-display logic) — now shares the one client-side
+// grouping function both places need, so the rule can only drift in one place if it ever does.
+import { kitchenStaging } from '../../../shared/game-logic/kitchen-staging';
 
 interface DishInfo {
   id: string;
@@ -217,22 +222,18 @@ export class InteractionController {
     // `carrying[]` treats a whole order as one carry slot, not one dish. A single ticket can
     // individually be `ready` (and render READY/GOING COLD at the pass, STORY-030) while a
     // sibling dish on the same order is still cooking — offering "E to pick up" then looks
-    // legitimate but the server silently rejects it `nothing_ready`. Only offer the prompt for
-    // an order whose every ticket has actually finished.
+    // legitimate but the server silently rejects it `nothing_ready`. STORY-053's
+    // `kitchenStaging` computes exactly this ("does a `ready` ticket have a sibling still
+    // `queued`/`in_progress`?") for the pass display, so this prompt now reads the SAME function
+    // instead of re-deriving the rule a third time (`allTicketsOffTheLine` being the first) —
+    // only offer the prompt for a `ready` ticket whose order is NOT staged.
     const mine = this.orders.filter((o) => o.restaurantId === this.restaurantId);
-    const ticketsByOrder = new Map<string, OrderSnapshot[]>();
-    for (const ticket of mine) {
-      const group = ticketsByOrder.get(ticket.orderId);
-      if (group) group.push(ticket);
-      else ticketsByOrder.set(ticket.orderId, [ticket]);
-    }
+    const stagingByTicketId = new Map(kitchenStaging(mine).map((s) => [s.ticketId, s]));
     let best: OrderSnapshot | null = null;
-    for (const tickets of ticketsByOrder.values()) {
-      if (!tickets.every((t) => t.state === 'ready' || t.state === 'cancelled')) continue;
-      const readyTickets = tickets.filter((t) => t.state === 'ready');
-      if (readyTickets.length === 0) continue; // every ticket on this order was cancelled
-      const oldest = readyTickets.reduce((a, b) => (b.readyAgeMs > a.readyAgeMs ? b : a));
-      if (!best || oldest.readyAgeMs > best.readyAgeMs) best = oldest;
+    for (const ticket of mine) {
+      if (ticket.state !== 'ready') continue;
+      if (stagingByTicketId.get(ticket.ticketId)?.staged) continue;
+      if (!best || ticket.readyAgeMs > best.readyAgeMs) best = ticket;
     }
     if (!best) return null;
     return { targetId: 'service_pass', action: 'pickup', label: `Pick Up ${dishName(best.dishId)}` };

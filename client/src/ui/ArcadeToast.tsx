@@ -122,7 +122,14 @@ function toastCopyFor(event: PresentationEvent): { title: string; detail?: strin
     case 'delivery-rejected':
       return {
         title: "CAN'T DELIVER HERE",
-        detail: DELIVERY_REJECTION_DETAIL[event.reason] ?? event.reason.toUpperCase().replace(/_/g, ' '),
+        // STORY-053 AC6. `waitingOnCount` is only ever present for the genuine "still cooking"
+        // case (see `PresentationEvent`'s own field comment) — interpolate it in place of the
+        // generic `not_ready` string when it's there; every other reason, and a `not_ready` with
+        // no count, falls back to the table below exactly as before this story.
+        detail:
+          event.reason === 'not_ready' && typeof event.waitingOnCount === 'number'
+            ? `WAITING ON ${event.waitingOnCount} MORE DISH${event.waitingOnCount === 1 ? '' : 'ES'}`
+            : DELIVERY_REJECTION_DETAIL[event.reason] ?? event.reason.toUpperCase().replace(/_/g, ' '),
       };
     default:
       return { title: 'UPDATE' };

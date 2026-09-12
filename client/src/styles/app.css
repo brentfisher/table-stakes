@@ -378,10 +378,33 @@ body {
 
 /* STORY-012 §10 "Upgrades": a compact panel, not a full-bleed screen like `.setup-*` — this
    opens on proximity to the physical terminal, mid-service, and the owner keeps moving around
-   it, so it stays small and to one side rather than covering the scene. */
+   it, so it stays small and to one side rather than covering the scene.
+
+   STORY-053. Reported: this panel crowded other right-side UI. `right` moved from 12px to
+   330px — not an arbitrary "further left", but the smallest value clear of BOTH always-on
+   right-anchored HUD pieces this panel shares `.app`'s single `position: relative` containing
+   block with (`GameView.tsx` mounts `HudPanel`/`UpgradeTerminal`/`StationMenu` as siblings
+   directly under `.app`, so this arithmetic is exact, not viewport-dependent):
+     - `.hud-scoreboard` (right:12px, width:270px) needs this panel's own right >= 282px to
+       clear its left edge;
+     - `.hud-alerts` (right:12px, width:300px, the tighter constraint) needs right >= 312px.
+   330px leaves an 18px gap past the binding 312px floor — kept deliberately close to that floor
+   (not e.g. 500px) because `.hud-scoreboard`'s own comment says it exists to "keep the cutaway
+   kitchen's center visible", and this panel's own comment above says the same about "covering
+   the scene"; the goal is clearing the two fixed HUD panels, not retreating toward center.
+   Checked, not assumed: `upgrade_terminal`'s world position ([7,0,-7], restaurant-layout.json)
+   is ~12.04 units from `station_plating` ([6,0,5]) and ~4.47 from `host_stand` (the nearest
+   entity overall, and the one `.front-door-board` — also right-anchored — opens near) — both
+   comfortably over the combined trigger-radius ceiling of 4.0 (`interactionRadius`/
+   `OWNER_INTERACT_RANGE`, `shared/constants/tuning.js`), so neither of those two panels can ever
+   be open at the same moment as this one; `.pantry-board` shares `.front-door-board`'s exact
+   `right:22px;bottom:88px` offsets too, but pantry's world position is ~20.6 units away, not a
+   real candidate either. The proximity-triggered panels were never the tight constraint here —
+   the two ALWAYS-VISIBLE HUD pieces above are, since they can be on screen at the same time as
+   this panel regardless of world position. */
 .upgrade-terminal {
   position: absolute;
-  right: 12px;
+  right: 330px;
   top: 50%;
   transform: translateY(-50%);
   width: 260px;

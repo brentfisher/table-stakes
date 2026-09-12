@@ -53,6 +53,10 @@ import { cashFeedbackFor } from '../../../shared/game-logic/hud-cash-feedback';
 // belongs on THIS viewer's floor, dual-imported by `scripts/check-district-population.mjs` so
 // this filter and that check can never quietly diverge.
 import { shouldRenderCustomerForViewer } from '../../../shared/game-logic/district-population';
+// STORY-053. See that file's own header: the one predicate deciding whether a ready ticket's
+// order still has a sibling dish cooking — dual-imported by `scripts/check-orders.mjs` so this
+// display logic and that check can never quietly diverge from `order-system.js#allTicketsOffTheLine`.
+import { kitchenStaging } from '../../../shared/game-logic/kitchen-staging';
 // STORY-029. PRD-027 §9 "Presentation Event Reducer" — the ONE place a `match_snapshot` diff
 // turns into deduplicated, stably-keyed `PresentationEvent`s for the arcade toast layer
 // (`client/src/ui/ArcadeToast.tsx`). Same Decision 4 shape/dual-import reasoning as
@@ -523,6 +527,18 @@ export class GameClient {
    * outstanding `interact` per player to misattribute this to.
    */
   private lastInteractAction: string | null = null;
+  /** STORY-053. Same send-site tracking as `lastInteractAction` just above, same "never more
+   * than one outstanding `interact`" safety — the table id a `deliver` attempt targeted, so the
+   * `not_ready` rejection handler below can identify WHICH of `self.carrying`'s orders (there can
+   * be more than one with a Serving Tray upgrade) the rejected delivery was actually for. */
+  private lastInteractTargetId: string | null = null;
+  /** STORY-053. The full, UNFILTERED `orders[]` from the most recent snapshot — same shape
+   * `CarriedDishRenderState`'s own cross-reference already reads, kept here because the
+   * `interact_rejected` handler runs in a SEPARATE message from `match_snapshot` and has no
+   * local `orders` of its own to close over. */
+  private lastSnapshotOrders: OrderSnapshot[] = [];
+  /** STORY-053. `self?.carrying` from that same most recent snapshot, for the same reason. */
+  private lastSelfCarrying: string[] = [];
 
   /** Called at panel cadence, not per frame — React subscribes here. */
   onStatus: ((status: GameClientStatus) => void) | null = null;
@@ -624,6 +640,9 @@ export class GameClient {
         // STORY-031. See `lastInteractAction`'s own comment — recorded here, at the send site,
         // so the `error` handler can tell a `deliver` rejection apart from any other.
         this.lastInteractAction = this.status.prompt.action;
+        // STORY-053. See `lastInteractTargetId`'s own comment — the table this `deliver` attempt
+        // (if that's what this is) targeted.
+        this.lastInteractTargetId = this.status.prompt.targetId;
         this.network.sendInteract(this.status.prompt.targetId, this.status.prompt.action);
       }
     };
@@ -762,6 +781,11 @@ export class GameClient {
       const orders = (message.orders ?? []) as OrderSnapshot[];
       const events = (message.events ?? []) as SnapshotEventEntry[];
       const eventForecast = (message.eventForecast ?? []) as SnapshotEventForecastEntry[];
+      // STORY-053. See `lastSnapshotOrders`/`lastSelfCarrying`'s own comments — captured here,
+      // every snapshot, so the separate `interact_rejected` message handler below has this
+      // snapshot's data to work with without needing its own copy of the whole handler.
+      this.lastSnapshotOrders = orders;
+      this.lastSelfCarrying = self?.carrying ?? [];
 
       // STORY-031 PRD §5.3/§10.2. Supersedes STORY-012's generic plate-count indicator
       // (`setCarrying`) with real per-dish geometry: each player's OWN `carrying` (order ids,
@@ -897,6 +921,13 @@ export class GameClient {
           o.state === 'ready' &&
           !selfCarryingOrderIds.has(o.orderId),
       );
+      // STORY-053. `kitchenStaging` needs to see every ticket for THIS restaurant — queued and
+      // in-progress siblings included — not just the pre-filtered `selfReadyOrders` above, since
+      // "how many siblings remain" is exactly what a ready-but-incomplete order's still-cooking
+      // tickets answer. Keyed by ticketId for an O(1) lookup below.
+      const stagingByTicketId = new Map(
+        kitchenStaging(orders.filter((o) => o.restaurantId === restaurantId)).map((s) => [s.ticketId, s]),
+      );
       const oldestTicketId =
         selfReadyOrders.length > 0
           ? selfReadyOrders.reduce((oldest, o) => (o.readyAgeMs > oldest.readyAgeMs ? o : oldest)).ticketId
@@ -909,6 +940,12 @@ export class GameClient {
           dishId: o.dishId,
           tableId: o.tableId,
           readyAgeMs: o.readyAgeMs,
+          // STORY-053. `kitchenStaging` only emits entries for `state === 'ready'` tickets, and
+          // every ticket in `selfReadyOrders` IS one, so this lookup always hits — the `?? `
+          // fallback is defensive only (never observed; kept so a future filter change on either
+          // side fails soft here instead of throwing).
+          staged: stagingByTicketId.get(o.ticketId)?.staged ?? false,
+          waitingOnCount: stagingByTicketId.get(o.ticketId)?.waitingOnCount ?? 0,
           isOldest: o.ticketId === oldestTicketId,
         })),
       );
@@ -1095,9 +1132,35 @@ export class GameClient {
       // own file-header comment on this exact type). Instead: a direct, ungated toast, with a
       // freshly-minted key every time so it is never suppressed as a "repeat" of anything.
       if (message.error === 'interact_rejected' && this.lastInteractAction === 'deliver') {
+        const reason = String(message.reason ?? 'unknown');
+        // STORY-053 AC6. `not_ready` is the one `resolveDeliver` reason worth naming a count
+        // for — see `PresentationEvent`'s own `waitingOnCount` field comment for the full
+        // reachability analysis (in short: today's `resolveDeliver` can only reach `not_ready`
+        // for an order that was ALREADY fully ready when claimed, or the defensive
+        // `!match.kitchen` guard, neither of which has still-cooking siblings to count — so this
+        // reads as 0/undefined every time it is exercised today, but is wired correctly for
+        // whenever that stops being true). `lastSnapshotOrders`/`lastSelfCarrying` are this
+        // handler's only source of "what was the owner carrying, for which table" — this is a
+        // SEPARATE message from `match_snapshot`, with no local `orders`/`self` of its own.
+        let waitingOnCount: number | undefined;
+        if (reason === 'not_ready') {
+          const carriedOrderId = this.lastSelfCarrying.find((orderId) =>
+            this.lastSnapshotOrders.some(
+              (o) => o.orderId === orderId && o.tableId === this.lastInteractTargetId,
+            ),
+          );
+          const staging = carriedOrderId
+            ? kitchenStaging(this.lastSnapshotOrders).find((s) => s.orderId === carriedOrderId)
+            : undefined;
+          if (staging && staging.waitingOnCount > 0) waitingOnCount = staging.waitingOnCount;
+        }
         const rejection: EmittedPresentationEvent = {
           key: `delivery-rejected:${this.status.playerId}:${Date.now()}`,
-          event: { type: 'delivery-rejected', reason: String(message.reason ?? 'unknown') },
+          event: {
+            type: 'delivery-rejected',
+            reason,
+            ...(waitingOnCount !== undefined ? { waitingOnCount } : {}),
+          },
         };
         this.patchStatus({ presentationEvents: [rejection] });
       }
