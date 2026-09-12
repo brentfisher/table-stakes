@@ -1,7 +1,7 @@
 ---
 id: STORY-048
 title: Menu stars — 3D dish showcase
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/048-recap-menu-stars-showcase
 worktree_path: /Users/brent/table-stakes-story-048
