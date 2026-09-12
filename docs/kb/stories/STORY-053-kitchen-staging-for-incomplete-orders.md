@@ -1,7 +1,7 @@
 ---
 id: STORY-053
 title: Kitchen staging — don't show an incomplete order's early dishes as neglected
-status: pr-opened
+status: merged
 prd_source: null
 branch: story/053-kitchen-staging-for-incomplete-orders
 worktree_path: /Users/brent/table-stakes-worktrees/story-053-kitchen-staging

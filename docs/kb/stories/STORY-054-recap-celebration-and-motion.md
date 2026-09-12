@@ -7,8 +7,56 @@ branch: null
 worktree_path: null
 base_branch: null
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  CORRECTION to this story's own AC2: "the staggered category-entrance animations STORY-047/048/
+  049/050 each use" DO NOT EXIST — confirmed by reading `app.css` directly. No `.recap-card`/
+  `.recap-content`/`.recap-hero` rule anywhere has an entrance animation; the AC's premise was
+  written against the design mockup's visual description before those stories actually shipped,
+  and none of them built one (only the mascot's looping idle bounce/sway and STORY-052's separate
+  `.recap-teaser-enter` fact-reveal exist today). "Replay Reveal" is meaningless with nothing to
+  replay, so this story must ALSO build a simple staggered entrance animation for the category
+  content cards (a `.recap-content-enter`-style keyframe, applied to `.recap-card`/similar on
+  mount) — a natural, necessary widening of scope, not a new feature invented beyond the ask.
+  CONFIRMED ALREADY TRUE (verify, don't rebuild): `useRecapMotion.ts` already seeds
+  `initialMotionEnabled()` from `prefers-reduced-motion` and already returns `[motionEnabled,
+  setMotionEnabled]` — `setMotionEnabled` is unused today specifically so this story can wire a
+  real toggle to it in one line. `.recap--motion-off *,*::before,*::after { animation: none
+  !important; }` already exists in `app.css` as the one blanket motion-kill rule — the mascot's
+  idle bounce/sway/tear-drip animations are ALREADY gated by this class (`recap-mascot--motion`
+  only applies when `motionEnabled`). Both ACs 3/4's "verify this already exists" framing is
+  correct — do not rebuild either.
+  MOTION TOGGLE: add a visible control (e.g. a button in `ResultsPanel.tsx`'s existing
+  `.recap-utility-bar`, alongside STORY-051's "Arrange" button and the "Rematch" button) calling
+  `setMotionEnabled`. `useRecapMotion()` is already called in `ResultsPanel.tsx` — just start
+  using the setter it already destructures (currently discarded via `const [motionEnabled] =
+  useRecapMotion()`).
+  ENTRANCE ANIMATION: a small new CSS keyframe (finite, no `infinite`) applied to the category
+  content on mount/category-switch — reuse `.recap-teaser-enter`'s pattern (`animation: X 420ms
+  ease both`) as the template, new keyframe name, applied at the `.recap-content`/`.recap-card`
+  level. Motion-off suppression falls out for free from the EXISTING blanket `.recap--motion-off`
+  rule — do not add a second gate.
+  WIN CELEBRATION: build with plain CSS/DOM (small `<div>`s + CSS keyframes/transforms for
+  particle bursts), matching `RecapMascot.tsx`'s own deliberate choice to use inline SVG/CSS
+  instead of a second Three.js/WebGL context — cite that file's header comment directly (it
+  explains why: no competing WebGL context with STORY-048's real 3D dish showcase, and it avoids
+  this environment's known `document.visibilityState === 'hidden'`-blocks-`requestAnimationFrame`
+  browser-automation verification gap, which a `requestAnimationFrame`-driven WebGL particle
+  system would hit the same way a Three.js one would). Must be GENUINELY FINITE: a fixed-duration
+  CSS animation (or a short `setTimeout`-bounded DOM particle lifecycle) that stops and removes
+  itself, never `animation-iteration-count: infinite`. Trigger: plays once, automatically, the
+  first time `outcome === 'win'` AND the highlights category is showing — track a "has played"
+  flag lifted into `ResultsPanel.tsx` (same lifted-state precedent STORY-050/051 already
+  established for their own session-only UI state) so switching tabs away and back does NOT
+  replay it; only the new "Replay Reveal" control force-replays both the entrance animation and
+  (on a win) the celebration together, by resetting a "play token"/incrementing a key rather than
+  re-deriving "has it played" logic twice.
+  SCOPE: no server change, no new shared/game-logic module, no wire-schema change — pure client
+  CSS/React work wiring an existing hook and adding finite CSS animations, hence
+  `is_architectural: false`. Does not touch `RecapMascot.tsx`'s own idle animations beyond what
+  `motionEnabled` already gates (already correct); does not touch STORY-052's `RecapTeaser.tsx`
+  (pre-`match_complete`, entirely separate from this post-reveal scope) or STORY-053's kitchen-
+  staging work (unrelated system).
 created: 2026-09-12
 updated: 2026-09-12
 ---
