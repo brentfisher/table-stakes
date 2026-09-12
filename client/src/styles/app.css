@@ -620,6 +620,43 @@ body {
 
 .recap-muted { color: var(--recap-muted); }
 
+/* --- Menu stars (STORY-048) — RecapMenuStars.tsx -------------------------------------------
+   Layout: a large featured dish + its facts side-by-side on top, the smaller selectable
+   supporting-dish row below — mirrors `.recap-highlights`'s two-column-then-full-width shape
+   rather than inventing a third grid convention. `.recap-menu-model*` sizes the plain 2D
+   `<canvas>` `FoodModelPreview.tsx` renders into (`.food-model-preview` itself is 100%/100%
+   of its parent — see that class above), since `food-preview-renderer.ts` reads
+   `canvas.clientWidth`/`clientHeight` every frame to size its render target. */
+.recap-menu-stars { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
+.recap-menu-stars--empty { grid-template-columns: 1fr; padding: 30px 6px; }
+@media (max-width: 760px) { .recap-menu-stars { grid-template-columns: 1fr; } }
+
+.recap-menu-model { border-radius: 8px; overflow: hidden; background: var(--recap-accent-bg); }
+.recap-menu-model--featured { height: 220px; margin: 4px 0 14px; }
+.recap-menu-model--supporting { height: 84px; margin-bottom: 8px; }
+
+.recap-menu-facts { display: flex; flex-direction: column; gap: 14px; }
+.recap-fact-name { margin: 0 0 2px; font-size: 16px; font-weight: 800; }
+.recap-fact-value { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: var(--recap-ink); }
+
+.recap-menu-supporting {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.recap-menu-supporting-card {
+  /* `.recap-card--supporting` (shared with RecapHighlights.tsx's non-interactive cards) gives
+     the box chrome; this class only resets the `<button>` defaults RecapHighlights never had to
+     undo, since AC2 needs these clickable (RecapHighlights's own equivalent cards are static). */
+  flex: 1 1 140px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.recap-menu-supporting-card:hover { border-color: var(--recap-accent); }
+
 /* --- Mascot (AC3) — RecapMascot.tsx --------------------------------------------------------- */
 .recap-mascot-svg { width: 96px; height: 104px; display: block; }
 .recap-mascot--motion.recap-mascot--win .recap-mascot-svg { animation: recap-mascot-bounce 1.1s ease-in-out infinite; }

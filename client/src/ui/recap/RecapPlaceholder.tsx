@@ -3,6 +3,12 @@
 // each replace their own case here with real content. Deliberately not a silent blank div: a
 // player who clicks "The numbers" mid-slice should see a stated placeholder, not wonder whether
 // the tab is broken.
+//
+// STORY-048 UPDATE: 'menu-stars' now routes to `RecapMenuStars.tsx` in `ResultsPanel.tsx`'s
+// category router and no longer reaches this component — its entry in `PLACEHOLDER_COPY` below
+// is kept (not deleted) only because `RecapCategory`/`RECAP_CATEGORIES` still include it and this
+// map's type is `Record<Exclude<RecapCategory, 'highlights'>, string>`; 'next-shift'/'numbers'
+// are the two that still land here until STORY-050/049.
 
 import { RECAP_CATEGORIES, type RecapCategory } from './recap-types';
 
