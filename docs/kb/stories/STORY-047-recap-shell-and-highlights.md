@@ -1,14 +1,40 @@
 ---
 id: STORY-047
 title: Recap shell and opening highlights
-status: pending
+status: in-progress
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
-branch: null
-worktree_path: null
-base_branch: null
+branch: story/047-recap-shell-and-highlights
+worktree_path: /Users/brent/table-stakes-story-047
+base_branch: master
 pr_url: null
-is_architectural: null
-approach_summary: null
+is_architectural: false
+approach_summary: >
+  Replaces `client/src/ui/ResultsPanel.tsx`'s single-scroll layout with a category-navigation
+  shell (`RecapCategory = 'highlights' | 'next-shift' | 'menu-stars' | 'numbers'`) and fills in
+  only the 'highlights' category for real (the other three render as an explicit placeholder
+  state STORY-048/049/050 replace). Highlights content is a direct restructuring of data
+  `ResultsPanel.tsx` already reads verbatim: outcome/score from `complete`/`selfResult.score`
+  vs `rivalResult.score` (gated on the existing `hasRival` check), best-seller spotlight with
+  co-best-seller tie labeling from `result.bestSellingDishes` (`.count` equality — no new
+  computation), and the lead takeaway from `result.managerLedger.insights[0]`. VISUAL-STYLE
+  DECISION THIS STORY MUST MAKE EXPLICITLY: `client/src/scenes/ResultsScene.ts` is today a
+  full-bleed DARK "curtain call" 3D backdrop (`SceneManager#setActiveScene('results')` swaps to
+  it), but the mockup's whole aesthetic is a BRIGHT white card-based UI with only a SMALL inset
+  3D mascot, not a full-screen dark stage — these visually conflict. Decide and document: either
+  (a) stop swapping to `ResultsScene` during results and render the new bright shell over the
+  default backdrop (or none), with the mascot in its own small canvas/viewport (the mockup's own
+  `scene.js`/`recap-scene.js` pattern — one WebGL canvas, scissored viewports per small showroom,
+  reusable here), or (b) keep `ResultsScene` but restyle it to sit correctly behind bright
+  foreground cards. Do not silently keep BOTH the old dark full-bleed stage AND the new bright
+  cards without addressing the clash. The mascot itself: the mockup's "tomato chef" is built from
+  Three.js PRIMITIVES in `recap-scene.js#createMascot` (sphere + cone hat + primitive eyes/limbs),
+  NOT a GLB asset — no new asset porting needed, a simple procedural equivalent (or even a
+  non-3D/CSS treatment) satisfies the AC, which only asks that win/loss/draw read "at a glance".
+  `is_architectural: false` — no new snapshot field, no new server message; this is the
+  foundation client component this PRD's other five stories build a section within or hook a
+  shared convention into (the category-navigation shape and a motion-toggle hook other stories
+  will use), so its data contracts (the `RecapCategory` union, how a "section" plugs in) should
+  be built generic from the start rather than a highlights-only special case retrofitted later.
 created: 2026-09-11
 updated: 2026-09-11
 ---
