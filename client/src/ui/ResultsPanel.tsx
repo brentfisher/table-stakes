@@ -44,6 +44,7 @@ import { formatPoints } from './recap/format';
 import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapMascot } from './recap/RecapMascot';
 import { RecapHighlights } from './recap/RecapHighlights';
+import { RecapMenuStars } from './recap/RecapMenuStars';
 import { RecapPlaceholder } from './recap/RecapPlaceholder';
 import { useRecapMotion } from './recap/useRecapMotion';
 import type { RecapCategory, RecapOutcome } from './recap/recap-types';
@@ -167,6 +168,10 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
           <div className="recap-content">
             {category === 'highlights' ? (
               <RecapHighlights result={selfResult} />
+            ) : category === 'menu-stars' ? (
+              // STORY-048. 'next-shift' and 'numbers' still fall through to the placeholder
+              // until STORY-050/049 replace them.
+              <RecapMenuStars result={selfResult} />
             ) : (
               <RecapPlaceholder category={category} />
             )}
