@@ -1,7 +1,7 @@
 // STORY-023 AC: "Settings exposes audio, fullscreen, reduced motion, and graphics-quality
-// preference controls; persisting them ... is in scope, wiring them into the renderer is not."
-// See `client/src/app/settings.ts` for the persistence half and why "wiring in" is deliberately
-// left for a later story. This is a modal overlay over `MainMenu`, same full-bleed-over-canvas
+// preference controls; persisting them ... is in scope." Audio changes are broadcast through
+// `client/src/app/settings.ts` and consumed by the in-match procedural mixer. This is a modal
+// overlay over `MainMenu`, same full-bleed-over-canvas
 // pattern `SetupScreen`/`ResultsPanel` already use for the game routes (`app.css`'s `.setup`/
 // `.results`) — here reused for a menu-level modal instead of a route-level one.
 
@@ -89,7 +89,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
             />
             Mute
           </label>
-          <p className="muted settings-note">No sound has shipped yet — this is saved for when it does.</p>
+          <p className="muted settings-note">Master volume applies immediately. During a shift, open Sound to mix piano, kitchen ambience, and game cues individually.</p>
         </section>
 
         <section className="settings-section">

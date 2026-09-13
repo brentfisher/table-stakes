@@ -1,17 +1,17 @@
 // STORY-023 AC: "Settings exposes audio, fullscreen, reduced motion, and graphics-quality
-// preference controls; persisting them (e.g. localStorage) is in scope, wiring them into the
-// renderer is not." This module is the persistence half only — plain load/save against
-// `localStorage`, no dependency on `GameClient`/`SceneManager`. A later story that actually
-// wires graphics quality or reduced motion into `SceneManager`/`RestaurantScene` reads these
-// same values; this story does not touch those files (Notes: "must not touch GameClient/
-// SceneManager internals").
+// preference controls; persisting them (e.g. localStorage) is in scope. Audio layer gains are
+// also broadcast here so the in-match procedural mixer can react without coupling React to the
+// renderer. Graphics quality and reduced motion remain save-only preferences for now.
 
 export type GraphicsQuality = 'low' | 'medium' | 'high';
 
 export interface Settings {
-  /** 0-100. Not routed to any audio system yet — there isn't one in the codebase to route to. */
+  /** Master and layer gains, expressed as percentages. */
   audioVolume: number;
   audioMuted: boolean;
+  audioMusicVolume: number;
+  audioAmbienceVolume: number;
+  audioEffectsVolume: number;
   /** Whether a match start should request fullscreen — the request itself (Fullscreen API) is
    * a browser affordance `SettingsPanel` can trigger directly without touching the renderer;
    * auto-requesting it ON MATCH START is the part left for a later story to wire in. */
@@ -28,6 +28,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   audioVolume: 80,
   audioMuted: false,
+  audioMusicVolume: 40,
+  audioAmbienceVolume: 45,
+  audioEffectsVolume: 75,
   fullscreenPreferred: false,
   // Respect the OS-level signal out of the box where we can read one; still just a stored
   // preference either way, per the AC's "wiring them into the renderer is not [in scope]".
@@ -50,7 +53,12 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>;
     // Merge over defaults rather than trusting the stored shape outright — a future story adding
     // a field must not crash on an older saved blob missing it.
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    for (const key of ['audioVolume', 'audioMusicVolume', 'audioAmbienceVolume', 'audioEffectsVolume'] as const) {
+      merged[key] = typeof merged[key] === 'number' && Number.isFinite(merged[key]) ? Math.max(0, Math.min(100, merged[key])) : DEFAULT_SETTINGS[key];
+    }
+    merged.audioMuted = merged.audioMuted === true;
+    return merged;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -64,4 +72,5 @@ export function saveSettings(settings: Settings): void {
     // Private-browsing storage quota or disabled localStorage — a lost preference is not worth
     // surfacing an error over; the next change attempts the write again.
   }
+  window.dispatchEvent(new CustomEvent('restaurant-settings-changed', { detail: settings }));
 }
