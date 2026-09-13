@@ -154,13 +154,11 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
   return (
     <div className="app">
       <div className="scene" ref={sceneRef} />
-      {/* STORY-016 PRD §14 "event banner top-centre with a district-level visual effect" — the
-          scene-wide light tint is `RestaurantScene#updateEventEffect`; this is the text half. */}
-      <EventBanner status={status} />
-      {/* STORY-029 PRD-027 §11 "Arcade toast: upper-center, below banner". Own scoped
-          `.arcade-toast*` CSS namespace — see `app.css`'s own comment on why it never touches
-          `.event-banner*`. */}
-      <ArcadeToast status={status} />
+      {/* A shared flow keeps simultaneous outside events and presentation toasts apart. */}
+      <div className="service-notifications" aria-label="Service notifications">
+        <EventBanner status={status} />
+        <ArcadeToast status={status} />
+      </div>
       {status?.serviceStationNotice ? <div className="service-station-confirmation" role="status">{status.serviceStationNotice}</div> : null}
       {/* See `SceneManager`'s own comment on `webglcontextlost` — not full-bleed like
           `ReconnectOverlay` below: the match/socket is unaffected, and the browser usually
