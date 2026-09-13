@@ -40,6 +40,8 @@ import { StationMenu } from '../ui/StationMenu';
 import { PeekReadout } from '../ui/PeekReadout';
 import type { InviteInfo } from '../ui/InvitePanel';
 import { navigate } from './router';
+import { RestaurantAudio } from '../audio/RestaurantAudio';
+import { AudioPanel } from '../ui/AudioPanel';
 
 /** STORY-034. Long enough to read "Connection lost" and why, short enough that sitting on a
  * dead-end screen doesn't feel stuck. `ReconnectOverlay`'s own Skip button bypasses this for
@@ -65,16 +67,19 @@ export interface GameViewProps {
 export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }: GameViewProps): JSX.Element {
   const sceneRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<GameClient | null>(null);
+  const [audio, setAudio] = useState<RestaurantAudio | null>(null);
   const [status, setStatus] = useState<GameClientStatus | null>(null);
 
   useEffect(() => {
     const container = sceneRef.current;
     if (!container) return undefined;
 
+    const soundtrack = new RestaurantAudio();
+    setAudio(soundtrack);
     const client = new GameClient(container);
     clientRef.current = client;
     // Status arrives on join and once per snapshot (~10 Hz), not per animation frame.
-    client.onStatus = (next) => setStatus({ ...next });
+    client.onStatus = (next) => { soundtrack.update(next); setStatus({ ...next }); };
 
     // `roomId` is the route param (`/game/:roomId`, `/results/:roomId`, `/lobby/:roomId`) —
     // `App.tsx` now redirects the old `/?room=<id>` link shape to `/game/<id>` before this
@@ -88,6 +93,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
     return () => {
       clientRef.current = null;
       client.dispose();
+      soundtrack.dispose();
     };
     // Deliberately run once per mount plus on a real roomId change — `inviteToken` is only
     // ever meaningful for the FIRST join of a given room (see `GameClient.start`'s own
@@ -154,6 +160,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
   return (
     <div className="app">
       <div className="scene" ref={sceneRef} />
+      <AudioPanel audio={audio} />
       {/* A shared flow keeps simultaneous outside events and presentation toasts apart. */}
       <div className="service-notifications" aria-label="Service notifications">
         <EventBanner status={status} />
