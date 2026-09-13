@@ -2564,5 +2564,20 @@ button.service-card-action { cursor:pointer; }
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  max-height: calc(100vh - 250px);
+  /* STORY-059: the reserved top band must cover the Command Center card's OWN top offset (16px)
+     plus its actual rendered height, not just an estimate of the height alone — CSS can't read a
+     sibling's live height for another `position:absolute` element, so this is a measured budget,
+     not a formula. At ~1429px wide the card runs ~234px tall (16px top + content), which briefly
+     left the overview's own top edge only ~16px below the card's bottom before this was widened
+     to 300px (real screenshot-verified headroom at that width). Not re-verified with a real
+     screenshot at wider viewports (browser-automation `resize_window` did not change this
+     environment's actual page viewport), but reasoned safe well past 1429px: in THIS combined
+     state the card's own width is overridden to `min(960px, 92vw)` below (reaches its 960px
+     ceiling at a ~1043px viewport) and its tallest text, `.command-metric > strong`, is
+     `font-size:clamp(24px, 2.25vw, 36px)` (reaches its 36px ceiling at a 1600px viewport) — so
+     nothing about the card's content keeps growing past ~1600px wide, meaning 300px should hold
+     at any wider desktop size too. Bump this number again if `.command-scorecard`'s content grows
+     (a new metric row, etc.), or if a screenshot at any width ever shows the overview's own
+     heading crowded against the card above it. */
+  max-height: calc(100vh - 300px);
 }
