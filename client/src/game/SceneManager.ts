@@ -2,6 +2,10 @@
 // rendering; React owns application UI. Nothing in here touches React state per frame.
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { configureRestaurantRenderer } from '../scenes/restaurant-rendering';
 import { RestaurantScene } from '../scenes/RestaurantScene';
 import { ResultsScene } from '../scenes/ResultsScene';
@@ -13,6 +17,9 @@ export class SceneManager {
   readonly results: ResultsScene;
   readonly cameraController: CameraController;
   private readonly renderer: THREE.WebGLRenderer;
+  private readonly composer: EffectComposer;
+  private readonly renderPass: RenderPass;
+  private readonly bloomPass: UnrealBloomPass;
   private readonly container: HTMLElement;
   private frame = 0;
   private lastFrameTime = 0;
@@ -73,6 +80,20 @@ export class SceneManager {
 
     const aspect = container.clientWidth / Math.max(1, container.clientHeight);
     this.cameraController = new CameraController(aspect);
+    this.composer = new EffectComposer(this.renderer);
+    this.renderPass = new RenderPass(this.active, this.cameraController.camera);
+    // A restrained threshold keeps practical lights and authored Glow materials luminous while
+    // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
+    // scene gains the warm AAA catchlight from the reference without becoming hazy.
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(container.clientWidth, container.clientHeight),
+      0.28,
+      0.48,
+      0.84,
+    );
+    this.composer.addPass(this.renderPass);
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(container);
@@ -84,12 +105,14 @@ export class SceneManager {
    * far cheaper than the branch to avoid it. */
   setActiveScene(phase: 'results' | 'other'): void {
     this.active = phase === 'results' ? this.results.scene : this.restaurant.scene;
+    this.renderPass.scene = this.active;
   }
 
   private handleResize(): void {
     const width = this.container.clientWidth;
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
     this.cameraController.setAspect(width / height);
   }
 
@@ -101,7 +124,7 @@ export class SceneManager {
       this.lastFrameTime = now;
       this.onFrame?.(dt);
       this.cameraController.update(dt);
-      this.renderer.render(this.active, this.cameraController.camera);
+      this.composer.render();
     };
     this.frame = requestAnimationFrame(loop);
   }
@@ -114,6 +137,7 @@ export class SceneManager {
     this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.restaurant.dispose();
     this.results.dispose();
+    this.composer.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);

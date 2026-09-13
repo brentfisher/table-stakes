@@ -275,3 +275,68 @@ export function setLabelSpriteText(sprite: THREE.Sprite, text: string): void {
   material.map = next;
   material.needsUpdate = true;
 }
+
+// Customer order cards use a darker glass treatment than wayfinding chips so they remain
+// readable over both the pale kitchen tile and the warm dining floor. The card is intentionally
+// a separate cached texture: changing the global chip treatment would reduce contrast for the
+// existing station/table labels.
+const orderTextureCache = new Map<string, THREE.CanvasTexture>();
+function orderTexture(text: string): THREE.CanvasTexture {
+  const cached = orderTextureCache.get(text);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = 560;
+  canvas.height = 170;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context unavailable');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.shadowColor = 'rgba(0,0,0,.4)';
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = 'rgba(11, 30, 45, .94)';
+  ctx.beginPath();
+  ctx.roundRect(10, 10, canvas.width - 20, canvas.height - 34, 24);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#f6c768';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.fillStyle = '#53dbb4';
+  ctx.fillRect(10, 10, 13, canvas.height - 34);
+  ctx.fillStyle = '#f6c768';
+  ctx.font = '800 22px system-ui, sans-serif';
+  ctx.fillText('ORDER IN', 42, 47);
+  let fontSize = 34;
+  ctx.fillStyle = '#fff9eb';
+  ctx.font = `800 ${fontSize}px system-ui, sans-serif`;
+  while (ctx.measureText(text).width > canvas.width - 84 && fontSize > 22) {
+    fontSize -= 1;
+    ctx.font = `800 ${fontSize}px system-ui, sans-serif`;
+  }
+  ctx.fillText(text, 42, 103);
+  ctx.fillStyle = '#fff9eb';
+  ctx.beginPath();
+  ctx.moveTo(canvas.width / 2 - 16, canvas.height - 25);
+  ctx.lineTo(canvas.width / 2, canvas.height - 4);
+  ctx.lineTo(canvas.width / 2 + 16, canvas.height - 25);
+  ctx.closePath();
+  ctx.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  orderTextureCache.set(text, texture);
+  return texture;
+}
+
+/** A high-contrast, gently glowing card for a customer who has placed an order. */
+export function createOrderLabelSprite(text: string, scale = 0.5): THREE.Sprite {
+  const material = new THREE.SpriteMaterial({
+    map: orderTexture(text),
+    color: 0xffffff,
+    depthTest: false,
+    transparent: true,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(scale * (560 / 170), scale, 1);
+  sprite.renderOrder = 11;
+  sprite.userData.baseScale = scale;
+  return sprite;
+}

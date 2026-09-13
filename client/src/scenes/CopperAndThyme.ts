@@ -66,6 +66,10 @@ export class CopperAndThyme {
             if (/Copper|Brass/.test(m.name)) { m.metalness = 0.78; m.roughness = 0.28; }
             if (/Forest/.test(m.name)) { m.color.setHex(0x496c50); m.roughness = 0.72; }
             if (/Steel/.test(m.name)) { m.metalness = 0.65; m.roughness = 0.36; }
+            if (/Glow/.test(m.name)) {
+              m.emissive.setHex(0xffb35c);
+              m.emissiveIntensity = 2.4;
+            }
           }
         }
       });
