@@ -16,7 +16,13 @@ const TICKETS = [
 
 function fixture() {
   const player = {
-    playerId: 'p1', position: { x: 2.5, y: 0, z: 2 }, lastInteractSequence: 0, pendingAction: null,
+    // STORY-057 moved `kitchen_command_board` off the pass ([2.5, 0, 2] -> [4, 0, 3.5], deeper
+    // into the kitchen zone — see `restaurant-layout.json`'s own comment on that entity) because
+    // it sat in the same row ready food appears in. This fixture player stands AT the board's
+    // real position, matching "a focus change at the physical pass board succeeds" below — kept
+    // in sync with the real entity, not an arbitrary in-range point, the same way `far`'s
+    // deliberately-out-of-range `{x: -50, z: -50}` below is deliberately far rather than close.
+    playerId: 'p1', position: { x: 4, y: 0, z: 3.5 }, lastInteractSequence: 0, pendingAction: null,
     setup: { menu: [{ dishId: 'smash_burger' }, { dishId: 'caesar_salad' }, { dishId: 'steak_frites' }], addons: [] },
   };
   const logs = [];
