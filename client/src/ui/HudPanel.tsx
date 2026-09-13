@@ -23,6 +23,7 @@
 // that AC's "and nothing the PRD does not list" forbids, even though the field itself happens
 // to be public on `restaurants[]`.
 
+import { CommandScorecard } from './CommandScorecard';
 import dishesData from '../../../shared/game-data/dishes.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
 import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
@@ -177,11 +178,13 @@ export function HudPanel({
 
   return (
     <>
-      <div className="restaurant-brand" aria-label="Copper and Thyme">
+      <div className={`restaurant-brand${inService ? ' restaurant-brand--service' : ''}`} aria-label="Copper and Thyme">
         <span className="restaurant-monogram">c&amp;t</span>
         <div><strong>COPPER &amp; THYME</strong><small>A LITTLE WORLD, MADE TO ORDER</small></div>
       </div>
-      <div className="service-card">
+      {inService && status ? <CommandScorecard status={status} /> : null}
+      {inService ? <div className="service-context-chip"><strong>RIVAL RESTAURANT</strong><span>{status?.market?.name ?? 'Service'} <b className={`status-${connection}`}>● {connection}</b></span><small>{formatCountdown(status?.timeRemainingMs ?? null)} · {PHASE_LABELS[phase ?? ''] ?? 'Service'}</small></div> : null}
+      <div className={`service-card${inService ? ' service-card--in-service' : ''}`}>
         <div className="service-card-metrics">
           <div><span>{inService ? 'SERVICE TIME' : 'THE NEXT SERVICE'}</span><strong>{inService ? formatCountdown(status?.timeRemainingMs ?? null) : 'Welcome in.'}</strong></div>
           <div><span>{inService ? 'REVENUE' : 'YOUR CREW'}</span><strong>{inService ? money(status?.revenue ?? null) : String(status?.playerCount ?? 0).padStart(2, '0')}</strong></div>
@@ -307,7 +310,7 @@ export function HudPanel({
           resolve to the same real, comparable fields. See this file's own header for why there
           is no single "score" number. */}
       {inService && self && rival ? (
-        <div className="hud-scoreboard">
+        <details className="hud-scoreboard"><summary>Rival scoreboard <span>＋</span></summary>
           <h2>Scoreboard</h2>
           <table>
             <thead>
@@ -360,7 +363,7 @@ export function HudPanel({
               ) : null}
             </div>
           ) : null}
-        </div>
+        </details>
       ) : null}
 
       {/* PRD §18 "Critical alerts" — already ranked (§18 priority order) and capped

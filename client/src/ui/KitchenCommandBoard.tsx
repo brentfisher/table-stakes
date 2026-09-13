@@ -1,3 +1,4 @@
+import { CommandScorecard } from './CommandScorecard';
 import commandData from '../../../shared/game-data/kitchen-command.json';
 import dishesData from '../../../shared/game-data/dishes.json';
 import eventsData from '../../../shared/game-data/events.json';
@@ -30,8 +31,9 @@ export function KitchenCommandBoard({
   const activeSelections = command.selectionsByFocus[command.activeFocusId] ?? 0;
 
   return <aside className="kitchen-command-board" aria-label="Kitchen command board">
-    <strong>KITCHEN COMMAND · {active?.name ?? command.activeFocusId}</strong>
-    <div className="kitchen-pressure-grid">
+    <CommandScorecard status={status} />
+    <details className="command-controls"><summary>Kitchen focus <span>{active?.name ?? command.activeFocusId} · Change strategy</span></summary>
+    <details className="command-diagnostics"><summary>Kitchen status &amp; menu availability</summary><div className="kitchen-pressure-grid">
       <span>QUEUES {command.stationQueues.map((item) => `${item.station.toUpperCase()} ${item.queued}`).join(' · ')}</span>
       <span>OLDEST READY {command.oldestReadyFoodMs > 0 ? `${Math.ceil(command.oldestReadyFoodMs / 1000)}s` : 'NONE'}</span>
       <span>AT-RISK GUESTS {command.atRiskGuests} · DIRECTED PICKS {activeSelections}</span>
@@ -56,17 +58,20 @@ export function KitchenCommandBoard({
         {worker.role.replace(/_/g, ' ')} · {worker.workerId.replace(/_/g, ' ')} · {worker.task ? `${worker.task.kind.replace(/_/g, ' ')} ${worker.task.station ?? ''}` : worker.needsHelp ? 'needs ingredient help' : 'idle'}
       </span>)}
     </div>
-    <div className="kitchen-focus-options">{commandData.focuses.map((focus) => <button
+    </details><div className="kitchen-focus-options">{commandData.focuses.map((focus) => <button
       key={focus.id}
+      aria-pressed={focus.id === command.activeFocusId}
+      title={`${focus.bestUse} ${focus.benefit} Trade-off: ${focus.downside}`}
       className={focus.id === command.activeFocusId ? 'is-active' : ''}
       disabled={focus.id === command.activeFocusId || command.cooldownForMs > 0}
       onClick={() => onFocus(focus.id)}
     >
       <strong>{focus.name}</strong>
-      <small>{focus.bestUse}</small>
+      <small className="focus-best-use">{focus.bestUse}</small>
       <small>{focus.benefit}</small>
-      <small>Trade-off: {focus.downside}</small>
+      <small className="focus-tradeoff">Trade-off: {focus.downside}</small>
     </button>)}</div>
     {command.cooldownForMs > 0 ? <small>Focus committed for {Math.ceil(command.cooldownForMs / 1000)}s</small> : null}
+    </details>
   </aside>;
 }
