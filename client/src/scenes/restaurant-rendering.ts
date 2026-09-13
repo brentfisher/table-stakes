@@ -7,7 +7,10 @@ export function configureRestaurantRenderer(renderer: THREE.WebGLRenderer, scene
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  // STORY-059: nudged down from 1.05 — a small overall darkening pass to go with the
+  // ambient/hemisphere cut in `RestaurantScene.ts`'s constructor, so the practical point lights
+  // and bloom read with more contrast against the base scene.
+  renderer.toneMappingExposure = 0.97;
   const generator = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   const environment = generator.fromScene(room, 0.04);

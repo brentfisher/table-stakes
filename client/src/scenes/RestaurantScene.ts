@@ -844,7 +844,16 @@ export class RestaurantScene {
   constructor(options: RestaurantSceneOptions = {}) {
     this.scene.background = new THREE.Color(0x0b1512);
 
-    this.ambient = new THREE.AmbientLight(0xffffff, 0.48);
+    // STORY-059: darken the flat/uniform base lighting for more contrast against the 3 practical
+    // `PointLight`s below (intensities 4.2/3.1/1.25) and the bloom pass meant to make them pop —
+    // was 0.48 day / (0.65 fixed) hemisphere; lowered ~1/3 so the practical lights read as a
+    // bigger jump off the base level instead of getting washed out by flat ambient fill.
+    // `keyLight` (the directional "sun", below) is left at its existing intensity — it already
+    // carries direction/shadow and isn't the flat contribution this ask is about; only
+    // ambient/hemisphere/exposure are darkened (screenshot-verified legible, see implementation
+    // notes). Night's own ambient is darkened by a similar proportion in `setNight()` below so day
+    // stays visibly brighter than night.
+    this.ambient = new THREE.AmbientLight(0xffffff, 0.32);
     this.scene.add(this.ambient);
 
     this.keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
@@ -853,10 +862,32 @@ export class RestaurantScene {
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
     this.keyLight.shadow.radius = 4;
-    Object.assign(this.keyLight.shadow.camera, { left: -18, right: 18, top: 20, bottom: -20, near: 1, far: 60 });
+    // STORY-059: this frustum used to be left:-18/right:18/top:20/bottom:-20. IMPORTANT: these
+    // bounds are in the shadow camera's OWN view space, not world x/z — `keyLight` sits at
+    // (-12, 18, -6) aiming at the origin, so its view basis is rotated off the world axes in
+    // plan (not axis-aligned). Working out the actual basis (z_cam = normalize(light - target),
+    // x_cam = normalize(worldUp × z_cam)) and projecting the real floor's 4 corners
+    // (`shared/game-data/restaurant-layout.json`'s `bounds`: x -9..9, z -12..12) onto it: the
+    // worst-case corners land at left/right ≈ ±14.8 (x_cam has a zero world-y component, so
+    // standing height never makes this worse) and top/bottom ≈ ±10.8 at floor level, growing to
+    // ≈ +13.7 at the top for a ~5m-tall prop — that 13.7 figure rests on an ASSUMED prop height,
+    // not a measured one, so top is given real margin past it rather than trimmed to match it
+    // exactly. (A first pass at ±11/top:14/bottom:-16 clipped the real floor's far corners on x —
+    // caught only by re-deriving this math, since the resulting shadow loss reads as the floor
+    // going flatter there, not as a visible hard edge.) Tightened to left:-16/right:16 (~1.2
+    // margin past the ±14.8 requirement), top:16 (~2.3 margin past the ~13.7 tall-prop estimate,
+    // rather than the ~0.3 a bare top:14 would leave), and bottom:-16 (generous margin toward the
+    // street/rival side — the rival's slab at `buildCompetitor()`'s z -20..-31 was never fully
+    // covered even by the OLD bottom:-20, so -16 here is not a new regression there). Net area
+    // 32×32=1024 vs the original 36×40=1440 — about 1.4x shadow-map texel density at the SAME
+    // 2048 resolution, a real if more modest win than a naive (and wrong) world-space reading of
+    // the old numbers would suggest. Visually confirmed no clipping at the kitchen's far back
+    // corners (pantry shelving, fridge/wash station) via the `restaurant-layout` harness.
+    Object.assign(this.keyLight.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 60 });
     this.keyLight.shadow.normalBias = 0.035;
     this.keyLight.shadow.bias = -0.0002;
-    this.scene.add(new THREE.HemisphereLight(0xc5dcf2, 0x695138, 0.65));
+    // STORY-059: was 0.65 — darkened alongside `ambient` above, same reasoning.
+    this.scene.add(new THREE.HemisphereLight(0xc5dcf2, 0x695138, 0.4));
     this.scene.add(this.keyLight);
     // Warm practical pools keep the stainless work line and dining room dimensional. They do
     // not cast additional shadows; the key light owns shadowing while these lights provide the
@@ -2724,7 +2755,10 @@ export class RestaurantScene {
   }
 
   setNight(night: boolean): void {
-    this.ambient.intensity = night ? 0.32 : 0.48;
+    // STORY-059: day ambient dropped 0.48→0.32 (see constructor); night's own value is lowered
+    // by roughly the same proportion (was 0.32, now 0.20) so night stays visibly darker than the
+    // new day baseline instead of the two converging.
+    this.ambient.intensity = night ? 0.2 : 0.32;
     this.keyLight.intensity = night ? 0.85 : 2.6;
     for (const light of this.practicalLights) {
       light.intensity = Number(light.userData.baseIntensity ?? light.intensity) * (night ? 0.72 : 1);

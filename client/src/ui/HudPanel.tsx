@@ -182,7 +182,17 @@ export function HudPanel({
         <span className="restaurant-monogram">c&amp;t</span>
         <div><strong>COPPER &amp; THYME</strong><small>A LITTLE WORLD, MADE TO ORDER</small></div>
       </div>
-      {inService && status ? <CommandScorecard status={status} /> : null}
+      {/* STORY-059: the Command Center used to render unconditionally for the whole service
+          phase, dominating the screen. Reuse the SAME Tab-toggle flag `TacticalOverviewPanel`
+          already uses (`status.showTacticalOverview`, set by `InputController#onToggleOverview`
+          via `GameClient.ts`, and force-closed on leaving service/final_rush) rather than
+          inventing a second Tab-bound flag — "minimize when not in use" = not rendered at all
+          when Tab isn't held open, exactly like `TacticalOverviewPanel` already behaves. The
+          always-on compact scoreboard below (`.service-card`, the `details` ledger, the
+          scoreboard/alerts) is untouched, so a player still has minimal service status without
+          Tab. `KitchenCommandBoard.tsx`'s own `CommandScorecard` usage (E-press near the physical
+          board) is a separate, already-correctly-gated render — left alone. */}
+      {inService && status && status.showTacticalOverview ? <CommandScorecard status={status} /> : null}
       {inService ? <div className="service-context-chip"><strong>RIVAL RESTAURANT</strong><span>{status?.market?.name ?? 'Service'} <b className={`status-${connection}`}>● {connection}</b></span><small>{formatCountdown(status?.timeRemainingMs ?? null)} · {PHASE_LABELS[phase ?? ''] ?? 'Service'}</small></div> : null}
       <div className={`service-card${inService ? ' service-card--in-service' : ''}`}>
         <div className="service-card-metrics">

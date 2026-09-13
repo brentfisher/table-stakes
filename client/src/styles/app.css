@@ -2527,6 +2527,61 @@ button.service-card-action { cursor:pointer; }
 @media(max-height:650px) and (min-width:701px) { .service-notifications { width:350px; } .app:has(.hud-alerts) .service-notifications { bottom:170px; } }
 @media(prefers-reduced-motion:reduce) { .command-metric progress::-webkit-progress-value { transition:none; } }
 
+/* STORY-059: `HudPanel.tsx`'s `.command-scorecard` and `TacticalOverviewPanel.tsx`'s
+   `.tactical-overview` now share the exact same `status.showTacticalOverview` toggle (that was
+   the whole point of the fix — see `HudPanel.tsx`'s own comment on why), so unlike before this
+   story, they can now be visible AT THE SAME TIME. Pre-existing standalone positioning —
+   `.command-scorecard` pinned top-right, `.tactical-overview` centered — collided badly: the
+   centered overview's right-hand value column landed directly under the top-right card. Give
+   them a stacked, non-overlapping layout ONLY in this combined state: the Command Center becomes
+   a compact top banner (its own `.command-objective-disclosure` detail hidden — that's the
+   tallest single element and it adds little beyond what `.tactical-overview`'s own
+   constraint-diagnosis columns already say), and the Tactical Overview anchors from the bottom
+   with its height capped to the remaining space, instead of being vertically centered and free
+   to grow into the reserved top band. Placed at the end of the stylesheet so it wins the cascade
+   over the earlier width/position rules at every breakpoint above (`.command-scorecard`'s own
+   `@media` overrides included) without needing `!important`.
+   IMPORTANT: `>` (direct-child), not a descendant combinator. `showKitchenCommandBoard` (E-press
+   near the physical board) and `showTacticalOverview` (Tab) are independent flags — a player can
+   have BOTH open at once (E at the board, then Tab) — and `KitchenCommandBoard.tsx` nests its own
+   `<CommandScorecard>` inside `<aside className="kitchen-command-board">`, which already applies
+   `position:relative` to that nested copy. `HudPanel.tsx` returns its `<CommandScorecard>` as a
+   direct child of `.app` (a fragment, not wrapped), so `>` selects ONLY that one and leaves the
+   nested kitchen-board copy exactly as `.kitchen-command-board .command-scorecard` already styles
+   it — a plain descendant selector here would out-specify that nested rule and visibly break the
+   E-press board's own card whenever Tab is also open. */
+.app:has(.tactical-overview) > .command-scorecard {
+  top: 16px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(960px, 92vw);
+  padding: 14px 22px;
+}
+.app:has(.tactical-overview) > .command-scorecard .command-objective-disclosure { display: none; }
+.app:has(.tactical-overview) .tactical-overview {
+  top: auto;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* STORY-059: the reserved top band must cover the Command Center card's OWN top offset (16px)
+     plus its actual rendered height, not just an estimate of the height alone — CSS can't read a
+     sibling's live height for another `position:absolute` element, so this is a measured budget,
+     not a formula. At ~1429px wide the card runs ~234px tall (16px top + content), which briefly
+     left the overview's own top edge only ~16px below the card's bottom before this was widened
+     to 300px (real screenshot-verified headroom at that width). Not re-verified with a real
+     screenshot at wider viewports (browser-automation `resize_window` did not change this
+     environment's actual page viewport), but reasoned safe well past 1429px: in THIS combined
+     state the card's own width is overridden to `min(960px, 92vw)` below (reaches its 960px
+     ceiling at a ~1043px viewport) and its tallest text, `.command-metric > strong`, is
+     `font-size:clamp(24px, 2.25vw, 36px)` (reaches its 36px ceiling at a 1600px viewport) — so
+     nothing about the card's content keeps growing past ~1600px wide, meaning 300px should hold
+     at any wider desktop size too. Bump this number again if `.command-scorecard`'s content grows
+     (a new metric row, etc.), or if a screenshot at any width ever shows the overview's own
+     heading crowded against the card above it. */
+  max-height: calc(100vh - 300px);
+}
+
 /* Restaurant sound: a quiet, stationary utility with no motion dependency. */
 .restaurant-audio { position: fixed; right: 20px; bottom: 20px; z-index: 70; font-family: inherit; color: #eee4cc; }
 .restaurant-audio-toggle { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid #907a47; border-radius: 9px; background: #152727f5; color: #eee4cc; box-shadow: 0 4px 18px #0005; cursor: pointer; font: inherit; font-size: 12px; }

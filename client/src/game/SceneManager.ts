@@ -47,9 +47,22 @@ export class SceneManager {
     this.results = results;
     this.active = this.restaurant.scene;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // STORY-059: `antialias: true` on the base renderer was pure wasted cost, not a real
+    // trade-off — this whole scene ALWAYS renders through `EffectComposer` below (`start()`
+    // calls `composer.render()`, never `renderer.render()` directly), and `EffectComposer`'s own
+    // render targets are plain `WebGLRenderTarget`s created with no multisample `samples` option
+    // (see its constructor: `new WebGLRenderTarget(width, height, { type: HalfFloatType })`).
+    // `RenderPass` draws the scene into that non-multisampled target, so the canvas's own MSAA
+    // (what `antialias: true` buys) was never actually applied to the composited output in the
+    // first place — this flag was silently inert the whole time. Turning it off is a free win,
+    // not a quality trade.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
     configureRestaurantRenderer(this.renderer, this.restaurant.scene);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // STORY-059: was capped at 2 — every rendering cost above (shadow map, bloom, base shading)
+    // scales with shaded pixel count, so 2x devicePixelRatio is 4x the fragment work of 1x on a
+    // Retina/HiDPI display. `food-preview-renderer.ts` already caps at 1.5 for this exact reason;
+    // match that precedent here rather than inventing a new number.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
 
@@ -85,15 +98,35 @@ export class SceneManager {
     // A restrained threshold keeps practical lights and authored Glow materials luminous while
     // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
     // scene gains the warm AAA catchlight from the reference without becoming hazy.
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth, container.clientHeight),
-      0.28,
-      0.48,
-      0.84,
+    // STORY-059: whatever `resolution` this is constructed with barely mattered pre-fix — see
+    // the comment right after `addPass` below on why `EffectComposer` immediately overrides it
+    // to its own FULL effective (pixelRatio-scaled) resolution regardless of what's passed here.
+    // The actual cost cut is in that later `bloomPass.setSize(...)` call: it deliberately passes
+    // HALF of `EffectComposer`'s effective resolution instead of the full amount `addPass` would
+    // otherwise leave in place. `UnrealBloomPass.setSize` then halves THAT again for its own
+    // internal 5-mip render-target chain (`resx = Math.round(width / 2)`), so the net effect is a
+    // real, if devicePixelRatio-dependent, reduction in the internal render targets' area versus
+    // the FULL effective resolution the old code was actually running at — not the "already
+    // half-size" a bare reading of the pre-story constructor argument would suggest (that halving
+    // never survived `addPass`). Stays visually identical either way because bloom is a soft,
+    // low-frequency effect by nature: the extra downsample is invisible once blurred back up.
+    // `strength`/`radius`/`threshold` (0.28/0.48/0.84) are UNCHANGED — those control the look,
+    // this and the devicePixelRatio cap below are the only pure cost cuts.
+    const bloomResolution = new THREE.Vector2(
+      (container.clientWidth * this.renderer.getPixelRatio()) / 2,
+      (container.clientHeight * this.renderer.getPixelRatio()) / 2,
     );
+    this.bloomPass = new UnrealBloomPass(bloomResolution, 0.28, 0.48, 0.84);
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
+    // `EffectComposer.addPass` immediately calls `pass.setSize(effectiveWidth, effectiveHeight)`
+    // on whatever's just been added — using the composer's FULL effective resolution, which
+    // would silently override the halved size passed to the constructor above the moment
+    // `addPass(this.bloomPass)` ran, before this class's own `ResizeObserver` ever fires. Re-set
+    // it explicitly right here so the cost cut is in effect from the very first rendered frame,
+    // not only after whatever async timing the initial resize observation happens to land on.
+    this.bloomPass.setSize(bloomResolution.x, bloomResolution.y);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(container);
@@ -113,6 +146,14 @@ export class SceneManager {
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
+    // STORY-059: `EffectComposer.setSize(width, height)` internally resizes every pass —
+    // `bloomPass` included — to `width * pixelRatio` x `height * pixelRatio` (its own
+    // "effective" resolution basis), NOT the raw CSS-pixel `width`/`height` passed in. Re-apply
+    // the halved resolution in that SAME basis (matching how it was constructed above) so a
+    // window resize doesn't silently undo — or under-cut, via a units mismatch — the bloom cost
+    // saving.
+    const pixelRatio = this.renderer.getPixelRatio();
+    this.bloomPass.setSize((width * pixelRatio) / 2, (height * pixelRatio) / 2);
     this.cameraController.setAspect(width / height);
   }
 
