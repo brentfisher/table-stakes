@@ -1,7 +1,7 @@
 ---
 id: STORY-055
 title: Fix results-screen outcome mismatch (loss heading, win somewhere else)
-status: pr-opened
+status: merged
 prd_source: null
 branch: story/055-results-outcome-mismatch
 worktree_path: /Users/brent/table-stakes-worktrees/story-055-results-outcome-mismatch
