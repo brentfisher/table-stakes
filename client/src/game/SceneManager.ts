@@ -47,11 +47,15 @@ export class SceneManager {
     this.results = results;
     this.active = this.restaurant.scene;
 
-    // STORY-059: native MSAA (`antialias: true`) and a full-resolution `UnrealBloomPass` were
-    // running together every frame — largely wasted cost, since the bloom pass's own blur
-    // already hides the AA seams it would otherwise smooth. Antialiasing now comes only from the
-    // composer's `OutputPass` + the softness of the bloom pass itself; see the bloom pass
-    // construction below for the matching resolution cut.
+    // STORY-059: `antialias: true` on the base renderer was pure wasted cost, not a real
+    // trade-off — this whole scene ALWAYS renders through `EffectComposer` below (`start()`
+    // calls `composer.render()`, never `renderer.render()` directly), and `EffectComposer`'s own
+    // render targets are plain `WebGLRenderTarget`s created with no multisample `samples` option
+    // (see its constructor: `new WebGLRenderTarget(width, height, { type: HalfFloatType })`).
+    // `RenderPass` draws the scene into that non-multisampled target, so the canvas's own MSAA
+    // (what `antialias: true` buys) was never actually applied to the composited output in the
+    // first place — this flag was silently inert the whole time. Turning it off is a free win,
+    // not a quality trade.
     this.renderer = new THREE.WebGLRenderer({ antialias: false });
     configureRestaurantRenderer(this.renderer, this.restaurant.scene);
     // STORY-059: was capped at 2 — every rendering cost above (shadow map, bloom, base shading)
@@ -94,23 +98,31 @@ export class SceneManager {
     // A restrained threshold keeps practical lights and authored Glow materials luminous while
     // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
     // scene gains the warm AAA catchlight from the reference without becoming hazy.
-    // STORY-059: `UnrealBloomPass` already halves whatever resolution it's given for its own
-    // internal mip chain (see its constructor), so passing the full container size here meant
-    // the blur chain's brightest render target was already running at half-container. Passing
-    // HALF the container size instead drops that internal target to a quarter of the container's
-    // area — ~4x less shader work for the whole 5-mip blur/composite chain — and the effect stays
-    // visually identical because bloom is a soft, low-frequency effect by nature: the extra
-    // downsample is invisible once blurred back up. `strength`/`radius`/`threshold`
-    // (0.28/0.48/0.84) are UNCHANGED — those control the look, this only cuts cost.
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth / 2, container.clientHeight / 2),
-      0.28,
-      0.48,
-      0.84,
+    // STORY-059: `UnrealBloomPass` already halves whatever `resolution` it's given for its own
+    // internal mip chain (see its constructor: `resx = Math.round(resolution.x / 2)`), so its
+    // brightest render target was already running at half of whatever we pass in. Passing HALF
+    // of `EffectComposer`'s own effective resolution (`container size * devicePixelRatio` — the
+    // SAME basis `EffectComposer.setSize` uses internally, see `handleResize` below) drops that
+    // internal target to a quarter of the composer's effective area — ~4x less shader work for
+    // the whole 5-mip blur/composite chain — and stays visually identical because bloom is a
+    // soft, low-frequency effect by nature: the extra downsample is invisible once blurred back
+    // up. `strength`/`radius`/`threshold` (0.28/0.48/0.84) are UNCHANGED — those control the
+    // look, this only cuts cost.
+    const bloomResolution = new THREE.Vector2(
+      (container.clientWidth * this.renderer.getPixelRatio()) / 2,
+      (container.clientHeight * this.renderer.getPixelRatio()) / 2,
     );
+    this.bloomPass = new UnrealBloomPass(bloomResolution, 0.28, 0.48, 0.84);
     this.composer.addPass(this.renderPass);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
+    // `EffectComposer.addPass` immediately calls `pass.setSize(effectiveWidth, effectiveHeight)`
+    // on whatever's just been added — using the composer's FULL effective resolution, which
+    // would silently override the halved size passed to the constructor above the moment
+    // `addPass(this.bloomPass)` ran, before this class's own `ResizeObserver` ever fires. Re-set
+    // it explicitly right here so the cost cut is in effect from the very first rendered frame,
+    // not only after whatever async timing the initial resize observation happens to land on.
+    this.bloomPass.setSize(bloomResolution.x, bloomResolution.y);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(container);
@@ -130,11 +142,14 @@ export class SceneManager {
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
-    // STORY-059: `EffectComposer.setSize` just reset every pass — including `bloomPass` — to the
-    // FULL container resolution (it calls `pass.setSize(width, height)` uniformly for all
-    // passes). Re-apply the halved resolution chosen at construction time so a window resize
-    // doesn't silently undo the bloom cost cut.
-    this.bloomPass.setSize(width / 2, height / 2);
+    // STORY-059: `EffectComposer.setSize(width, height)` internally resizes every pass —
+    // `bloomPass` included — to `width * pixelRatio` x `height * pixelRatio` (its own
+    // "effective" resolution basis), NOT the raw CSS-pixel `width`/`height` passed in. Re-apply
+    // the halved resolution in that SAME basis (matching how it was constructed above) so a
+    // window resize doesn't silently undo — or under-cut, via a units mismatch — the bloom cost
+    // saving.
+    const pixelRatio = this.renderer.getPixelRatio();
+    this.bloomPass.setSize((width * pixelRatio) / 2, (height * pixelRatio) / 2);
     this.cameraController.setAspect(width / height);
   }
 

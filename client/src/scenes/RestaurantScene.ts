@@ -862,18 +862,25 @@ export class RestaurantScene {
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
     this.keyLight.shadow.radius = 4;
-    // STORY-059: this frustum used to be left:-18/right:18/top:20/bottom:-20 — roughly DOUBLE the
-    // real playable floor (`shared/game-data/restaurant-layout.json`'s `bounds`: x -9..9, z
-    // -12..12, an 18x24 area), which wastes shadow-map texel density across empty space no
-    // gameplay ever occupies. Tightened to x -11..11 (2-unit margin past the x bounds for the
-    // host stand/wayfinding signage that sits right at the wall) and z +14/-16 (2-unit margin on
-    // the kitchen side at z=12, 4-unit margin on the street side at z=-12 since that's also the
-    // direction of the rival restaurant's slab/sign/tables, `buildCompetitor()`'s z -20..-31 —
-    // still not fully covered by this frustum, same as before this change, so tightening further
-    // here is not a NEW regression for the rival's own shadow coverage). At the SAME 2048
-    // resolution this reads sharper, not worse — confirmed via before/after screenshot in the
-    // STORY-059 implementation notes.
-    Object.assign(this.keyLight.shadow.camera, { left: -11, right: 11, top: 14, bottom: -16, near: 1, far: 60 });
+    // STORY-059: this frustum used to be left:-18/right:18/top:20/bottom:-20. IMPORTANT: these
+    // bounds are in the shadow camera's OWN view space, not world x/z — `keyLight` sits at
+    // (-12, 18, -6) aiming at the origin, so its view basis is rotated off the world axes in
+    // plan (not axis-aligned). Working out the actual basis (z_cam = normalize(light - target),
+    // x_cam = normalize(worldUp × z_cam)) and projecting the real floor's 4 corners
+    // (`shared/game-data/restaurant-layout.json`'s `bounds`: x -9..9, z -12..12) onto it: the
+    // worst-case corners land at left/right ≈ ±14.8 (x_cam has a zero world-y component, so
+    // standing height never makes this worse) and top/bottom ≈ ±10.8 at floor level, growing to
+    // ≈ +13.7 at the top for a ~5m-tall prop. (A first pass at ±11/top:14/bottom:-16 clipped the
+    // real floor's far corners on x — caught only by re-deriving this math, since the resulting
+    // shadow loss reads as the floor going flatter there, not as a visible hard edge.) Tightened
+    // to left:-16/right:16 (~1.2 margin past the ±14.8 requirement) and top:14/bottom:-16 (top
+    // has ~0.3 margin past the ~13.7 tall-prop case; bottom has generous margin toward the
+    // street/rival side — the rival's slab at `buildCompetitor()`'s z -20..-31 was never fully
+    // covered even by the OLD bottom:-20, so -16 here is not a new regression there). Net area
+    // 32×30=960 vs the original 36×40=1440 — about 1.5x shadow-map texel density at the SAME
+    // 2048 resolution, a real if more modest win than a naive (and wrong) world-space reading of
+    // the old numbers would suggest.
+    Object.assign(this.keyLight.shadow.camera, { left: -16, right: 16, top: 14, bottom: -16, near: 1, far: 60 });
     this.keyLight.shadow.normalBias = 0.035;
     this.keyLight.shadow.bias = -0.0002;
     // STORY-059: was 0.65 — darkened alongside `ambient` above, same reasoning.
