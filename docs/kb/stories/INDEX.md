@@ -57,3 +57,7 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-052 | [Pre-reveal teaser — publish results-phase data early and shorten the dark wait](STORY-052-recap-pre-reveal-teaser.md) | merged |
 | STORY-053 | [Kitchen staging — don't show an incomplete order's early dishes as neglected](STORY-053-kitchen-staging-for-incomplete-orders.md) | merged |
 | STORY-054 | [Win celebration, Replay Reveal, and the Motion control](STORY-054-recap-celebration-and-motion.md) | merged |
+| STORY-055 | [Fix results-screen outcome mismatch (loss heading, win somewhere else)](STORY-055-results-outcome-mismatch.md) | approved |
+| STORY-056 | [Table numbers only when delivering; a real complaint marker](STORY-056-table-number-visibility-and-complaint-marker.md) | approved |
+| STORY-057 | [Move the kitchen command board off the pass; expo rail becomes a back-wall display](STORY-057-kitchen-command-position-and-expo-rail-wall.md) | approved |
+| STORY-058 | [Setup ready-up countdown should tick from the start and run 10 seconds (dev/prototype pacing)](STORY-058-setup-ready-up-countdown.md) | approved |
