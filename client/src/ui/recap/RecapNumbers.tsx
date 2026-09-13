@@ -22,6 +22,7 @@ import type { MatchResult } from '../../../../shared/schemas/messages';
 import { formatMoney, formatMs } from './format';
 import { RecapScorecard } from './RecapScorecard';
 import type { TurningPoint } from './RecapScorecard';
+import type { RecapOutcome } from './recap-types';
 
 export interface RecapNumbersProps {
   result: MatchResult;
@@ -32,6 +33,9 @@ export interface RecapNumbersProps {
   /** Only used to label a turning point's leader "You" vs "Your rival" — see
    * `RecapScorecard.tsx`'s own comment on why this is a plain id compare, not new derivation. */
   selfId: string;
+  /** STORY-055. Passed straight through to `RecapScorecard` — see that file's own comment on
+   * why "Key turning points" needs the single authoritative outcome, not a second derivation. */
+  outcome: RecapOutcome;
 }
 
 export function RecapNumbers({
@@ -41,6 +45,7 @@ export function RecapNumbers({
   hasRival,
   turningPoints,
   selfId,
+  outcome,
 }: RecapNumbersProps): JSX.Element {
   const [scorecardOpen, setScorecardOpen] = useState(false);
 
@@ -153,6 +158,7 @@ export function RecapNumbers({
           hasRival={hasRival}
           turningPoints={turningPoints}
           selfId={selfId}
+          outcome={outcome}
           onClose={() => setScorecardOpen(false)}
         />
       ) : null}

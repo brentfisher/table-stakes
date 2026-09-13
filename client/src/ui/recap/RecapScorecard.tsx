@@ -26,8 +26,10 @@
 
 import { useEffect } from 'react';
 import type { MatchResult, MatchCompleteMessage } from '../../../../shared/schemas/messages';
+import { turningPointFavoredWinner } from '../../../../shared/game-logic/turning-point-outcome';
 import { formatMoney, formatMs, formatPercent, formatPoints } from './format';
 import { constraintLabel, eventTitle, kitchenFocus, segmentName, specialName, upgradeInfo, upgradeName } from './catalogue';
+import type { RecapOutcome } from './recap-types';
 
 export type TurningPoint = MatchCompleteMessage['turningPoints'][number];
 
@@ -38,6 +40,11 @@ export interface RecapScorecardProps {
   hasRival: boolean;
   turningPoints: TurningPoint[];
   selfId: string;
+  /** STORY-055. `ResultsPanel.tsx`'s single authoritative outcome, threaded down (not
+   * re-derived) so "Key turning points" can flag a point whose momentary leader ISN'T who the
+   * match actually favored — see this file's own "Key turning points" comment below and
+   * `turning-point-outcome.js`'s header for the bug this closes. */
+  outcome: RecapOutcome;
   onClose: () => void;
 }
 
@@ -60,6 +67,7 @@ export function RecapScorecard({
   hasRival,
   turningPoints,
   selfId,
+  outcome,
   onClose,
 }: RecapScorecardProps): JSX.Element {
   useEffect(() => {
@@ -232,23 +240,58 @@ export function RecapScorecard({
               rival), so a co-op match gets its own honest "no rival" line rather than reusing
               the "nothing swung" wording, which would misleadingly imply a rival existed but
               stayed close the whole match. */}
+          {/* STORY-055: TWO separate ambiguities were found and reproduced here (see this
+              story's KB "Implementation notes" for the forced-score repro):
+              (1) these points are ranked by SWING MAGNITUDE, not chronologically and not by
+                  which side actually went on to win (`narrative.js`'s own `computeTurningPoints`
+                  header) — a single lopsided early swing can easily outrank the smaller swings
+                  that actually decided the match, landing as the FIRST, most prominent bullet
+                  under a "You lost" heading.
+              (2) `swing`/`leaderRestaurantId` are a WINDOWED DELTA — "who gained more parties
+                  than the other DURING THIS ONE WINDOW" (`computeTurningPoints`: `swing =
+                  margin - previousMargin`, the CHANGE in cumulative margin across the window) —
+                  never a standing lead. The pre-fix "pulled ahead by N parties" wording asserted
+                  a standing lead that was never computed; a restaurant can gain ground in one
+                  window while trailing the entire match. Wording below says "won N more parties
+                  than ... during/in ...", never "ahead"/"led", so it can't be misread as either
+                  a standing lead OR the final outcome.
+              This intro sentence (ranking) and each bullet's own caveat (via
+              `turningPointFavoredWinner`, direction-vs-outcome) are what keep this section from
+              reading as a second, contradicting verdict. */}
           {!hasRival ? (
             <p className="recap-muted">No rival to compare against this shift.</p>
           ) : turningPoints.length > 0 ? (
-            <ol className="recap-scorecard-turning-points">
-              {turningPoints.map((point) => (
-                <li key={point.atMs}>
-                  {point.leaderRestaurantId === selfId ? 'You' : 'Your rival'} pulled ahead by {point.swing}{' '}
-                  {point.swing === 1 ? 'party' : 'parties'}
-                  {point.eventId
-                    ? ` during the ${eventTitle(point.eventId)} event`
-                    : point.phase
-                      ? ` in ${point.phase === 'final_rush' ? 'the final rush' : 'service'}`
-                      : ''}
-                  .
-                </li>
-              ))}
-            </ol>
+            <>
+              <p className="recap-muted recap-scorecard-turning-points-note">
+                The biggest single swings in the party tally during the match — ranked by size, not by
+                which one decided the final result above.
+              </p>
+              <ol className="recap-scorecard-turning-points">
+                {turningPoints.map((point) => {
+                  const leaderIsSelf = point.leaderRestaurantId === selfId;
+                  const favoredWinner = turningPointFavoredWinner(leaderIsSelf, outcome);
+                  return (
+                    <li key={point.atMs} className={favoredWinner ? '' : 'recap-scorecard-turning-point--against-outcome'}>
+                      {leaderIsSelf ? 'You' : 'Your rival'} won {point.swing} more {point.swing === 1 ? 'party' : 'parties'} than{' '}
+                      {leaderIsSelf ? 'your rival' : 'you'}
+                      {point.eventId
+                        ? ` during the ${eventTitle(point.eventId)} event`
+                        : point.phase
+                          ? ` in ${point.phase === 'final_rush' ? 'the final rush' : 'service'}`
+                          : ''}
+                      {/* Only stated when it's NOT true — a swing that already favored the
+                          eventual winner needs no caveat, and stating "this favored the winner"
+                          on every agreeing point would bury the one piece of information that
+                          actually matters here (STORY-055 AC4: reworded/visually distinguished,
+                          not removed). Never says "the lead didn't hold" — this was a window, not
+                          a standing lead, so nothing here ever claimed to "hold" in the first
+                          place. */}
+                      {favoredWinner ? '.' : ' — but the match still ended the other way.'}
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
           ) : (
             <p className="recap-muted">No single moment swung this match enough to call out.</p>
           )}

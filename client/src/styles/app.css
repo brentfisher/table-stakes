@@ -595,6 +595,10 @@ body {
 .recap-score-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--recap-muted); }
 .recap-score-value { font-size: 26px; font-weight: 800; }
 .recap-score-vs { color: var(--recap-muted); font-size: 12px; }
+/* STORY-055. The "why did a tied score still produce a winner" note — small and muted like the
+   rest of this card's supporting text, not alarming (it explains a legitimate PRD §11 rule, not
+   a problem), but present so the identical numbers above are never left unexplained. */
+.recap-score-tiebreak-note { margin: 6px 0 0; font-size: 11px; color: var(--recap-muted); }
 
 /* --- Category nav (AC1) --------------------------------------------------------------------
    A plain tab strip, driven by `RECAP_CATEGORIES` — see `RecapCategoryNav.tsx`'s own comment
@@ -872,6 +876,17 @@ body {
 .recap-scorecard-detail h4:first-of-type { margin-top: 12px; }
 .recap-scorecard-turning-points, .recap-scorecard-specials, .recap-scorecard-plain-list { margin: 0; padding-left: 18px; }
 .recap-scorecard-turning-points li, .recap-scorecard-specials li, .recap-scorecard-plain-list li { margin-bottom: 6px; }
+/* STORY-055. Visual distinction (not just wording) for a turning point whose windowed swing
+   direction did NOT favor the side that went on to win the match — `--recap-loss` is already
+   this screen's own "went the other way" color (the loss heading/mascot use it), so reusing it
+   here reads as "this one's caveat", not a brand-new color meaning to learn. Named
+   `--against-outcome`, not `--reversed`: this is a swing whose DIRECTION disagreed with the
+   final winner, never a "lead" that "reversed" — `swing` was never a standing lead to begin with
+   (see `RecapScorecard.tsx`'s own comment on this bullet). `.recap-scorecard-turning-points-note`
+   sits directly above the list, explaining up front that this ranking is by swing size, not by
+   outcome. */
+.recap-scorecard-turning-points-note { margin: 0 0 8px; font-style: italic; }
+.recap-scorecard-turning-point--against-outcome { color: var(--recap-loss); }
 .recap-scorecard-dominant { display: flex; justify-content: space-between; margin: 6px 0; font-size: 13px; }
 .recap-scorecard-dominant span { color: var(--recap-muted); }
 
