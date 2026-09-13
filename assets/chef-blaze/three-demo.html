@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chef Blaze · Turnaround Viewer</title>
+<style>
+:root{color-scheme:dark;--ink:#f7f3eb;--muted:#9aa7b8;--blue:#42a7ff;--orange:#ff9e4a;--panel:rgba(7,14,29,.78)}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020713;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+canvas{display:block;position:fixed;inset:0}.hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(18px,3vw,42px)}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}.eyebrow{letter-spacing:.22em;text-transform:uppercase;font-size:11px;color:#7ec8ff;font-weight:800}.title{font-size:clamp(24px,4vw,46px);line-height:1;margin:8px 0 0;font-weight:850;letter-spacing:-.04em;text-shadow:0 0 28px rgba(75,171,255,.25)}.sub{margin-top:10px;color:var(--muted);font-size:13px;max-width:400px}.badge{border:1px solid rgba(130,196,255,.35);background:rgba(15,31,58,.62);padding:10px 14px;border-radius:999px;color:#a9d9ff;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:800;white-space:nowrap;backdrop-filter:blur(12px)}
+.bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.card{pointer-events:auto;max-width:min(620px,100%);border:1px solid rgba(132,182,232,.23);background:linear-gradient(130deg,rgba(12,25,48,.88),rgba(5,12,26,.68));box-shadow:0 20px 70px rgba(0,0,0,.35),inset 0 1px rgba(255,255,255,.06);border-radius:18px;padding:16px 18px;backdrop-filter:blur(18px)}.label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#8fa7c0;font-weight:800}.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.clip{border:1px solid rgba(139,186,234,.25);background:rgba(255,255,255,.04);color:#dce9f5;border-radius:10px;padding:10px 12px;font:inherit;font-size:12px;font-weight:750;cursor:pointer;transition:.2s transform,.2s border-color,.2s background}.clip:hover{transform:translateY(-2px);border-color:rgba(92,190,255,.7)}.clip.active{background:linear-gradient(135deg,#17518a,#12305d);border-color:#4db5ff;box-shadow:0 0 18px rgba(50,165,255,.25)}.meta{margin-top:12px;display:flex;align-items:center;gap:10px;color:#b9c6d6;font-size:12px}.toggle{pointer-events:auto;border:0;border-radius:10px;background:#f1b56f;color:#211208;font-weight:900;padding:10px 14px;cursor:pointer}.hint{color:#7990aa;font-size:11px}
+.gallery{pointer-events:auto;display:flex;gap:7px;align-items:center}.gallery a{display:block;width:62px;height:48px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.18);opacity:.74;transition:.2s opacity,.2s transform}.gallery a:hover{opacity:1;transform:translateY(-2px)}.gallery img{width:100%;height:100%;object-fit:cover}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#020713;z-index:5;color:#a9d9ff;letter-spacing:.18em;text-transform:uppercase;font-size:12px}#loading.hide{display:none}
+@media(max-width:700px){.top{flex-direction:column}.badge{align-self:flex-start}.bottom{flex-direction:column;align-items:stretch}.gallery{display:none}.card{width:100%}}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.180.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.180.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="loading">Loading Chef Blaze</div>
+<div class="hud">
+  <div class="top"><div><div class="eyebrow">Table Stakes · Character Lab</div><div class="title">CHEF BLAZE</div><div class="sub">Polished turnaround rebuild · arcade-ready glTF 2.0</div></div><div class="badge">32-bone rig · 4 clips · 1.87 m</div></div>
+  <div class="bottom"><div class="card"><div class="label">Animation deck</div><div class="controls"><button class="clip active" data-clip="ChefBlaze_Idle">Idle</button><button class="clip" data-clip="ChefBlaze_Walk_InPlace">Walk in place</button><button class="clip" data-clip="ChefBlaze_Run_InPlace">Run in place</button><button class="clip" data-clip="ChefBlaze_Slide_DirectionChange">Slide / turn</button></div><div class="meta"><button class="toggle" id="toggle">Pause</button><span id="status">ChefBlaze_Idle · looping</span><span class="hint">Drag to orbit · wheel to zoom</span></div></div><div class="gallery"><a href="previews/chef-blaze-front.png" target="_blank"><img src="previews/chef-blaze-front.png" alt="Front preview"></a><a href="previews/chef-blaze-threequarter.png" target="_blank"><img src="previews/chef-blaze-threequarter.png" alt="Three-quarter preview"></a><a href="previews/chef-blaze-side.png" target="_blank"><img src="previews/chef-blaze-side.png" alt="Side preview"></a><a href="previews/chef-blaze-back.png" target="_blank"><img src="previews/chef-blaze-back.png" alt="Back preview"></a></div></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x020713); scene.fog=new THREE.Fog(0x020713,7,15);
+const camera=new THREE.PerspectiveCamera(33,innerWidth/innerHeight,.1,100); camera.position.set(2.7,-5.7,1.7);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.18; document.body.appendChild(renderer.domElement);
+const composer=new EffectComposer(renderer); composer.addPass(new RenderPass(scene,camera)); const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.42,.55,.82); composer.addPass(bloom);
+const controls=new OrbitControls(camera,renderer.domElement); controls.target.set(0,0,1); controls.enableDamping=true; controls.minDistance=3; controls.maxDistance=9; controls.maxPolarAngle=Math.PI*.53;
+scene.add(new THREE.HemisphereLight(0x9fc9ff,0x101622,2.0)); const key=new THREE.DirectionalLight(0xffc187,4.2); key.position.set(3,-4,6); key.castShadow=true; key.shadow.mapSize.set(1024,1024); scene.add(key); const rim=new THREE.PointLight(0x397dff,20,8,2); rim.position.set(-3,2,2.8); scene.add(rim); const warm=new THREE.PointLight(0xff4d35,15,5,2); warm.position.set(2,-1,1.2); scene.add(warm);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(5.5,96),new THREE.MeshStandardMaterial({color:0x07152c,roughness:.28,metalness:.2})); floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor); const ring=new THREE.Mesh(new THREE.RingGeometry(1.05,1.08,96),new THREE.MeshBasicMaterial({color:0x2787ff,transparent:true,opacity:.16,side:THREE.DoubleSide})); ring.rotation.x=-Math.PI/2; ring.position.y=.012; scene.add(ring);
+let model,mixer,active,playing=true; const clock=new THREE.Clock(); const loader=new GLTFLoader();
+loader.load('./ChefBlaze.glb',gltf=>{model=gltf.scene; model.position.y=.02; model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true; if(o.material){o.material.envMapIntensity=1.15}}}); scene.add(model); mixer=new THREE.AnimationMixer(model); const map=Object.fromEntries(gltf.animations.map(c=>[c.name,c])); window.__clips=map; play('ChefBlaze_Idle'); document.querySelector('#loading').classList.add('hide');},undefined,e=>{document.querySelector('#loading').textContent='Could not load ChefBlaze.glb';console.error(e)});
+function play(name){if(!mixer||!window.__clips?.[name])return; const clip=window.__clips[name]; const next=mixer.clipAction(clip); next.reset(); next.enabled=true; next.setLoop(name==='ChefBlaze_Slide_DirectionChange'?THREE.LoopOnce:THREE.LoopRepeat,name==='ChefBlaze_Slide_DirectionChange'?1:Infinity); next.clampWhenFinished=name==='ChefBlaze_Slide_DirectionChange'; if(active) next.crossFadeFrom(active,.18,true); next.play(); active=next; playing=true; document.querySelector('#toggle').textContent='Pause'; document.querySelector('#status').textContent=name+(name.includes('Slide')?' · one shot':' · looping'); document.querySelectorAll('.clip').forEach(b=>b.classList.toggle('active',b.dataset.clip===name));}
+document.querySelectorAll('.clip').forEach(b=>b.addEventListener('click',()=>play(b.dataset.clip))); document.querySelector('#toggle').addEventListener('click',()=>{if(!active)return; playing=!playing; playing?active.play():active.paused=true; document.querySelector('#toggle').textContent=playing?'Pause':'Play';});
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});
+function tick(){requestAnimationFrame(tick); const dt=clock.getDelta(); if(mixer&&playing)mixer.update(dt); ring.rotation.z+=dt*.22; controls.update(); composer.render()} tick();
+</script>
+</body>
+</html>

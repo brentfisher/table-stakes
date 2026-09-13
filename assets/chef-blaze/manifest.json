@@ -1,0 +1,43 @@
+{
+  "asset": "ChefBlaze",
+  "version": "turnaround-rebuild-1.0.0",
+  "source": "fresh Blender scene authored through the local Blender MCP server",
+  "authoritativeReference": "target-turnaround.png",
+  "failedReferencePolicy": "The prior low-poly reference is not shipped; it remains isolated in REF_FailedLowPoly_DoNotUse in the .blend.",
+  "runtime": {
+    "file": "ChefBlaze.glb",
+    "heightMeters": 1.87,
+    "units": "meters",
+    "upAxis": "+Z in Blender / +Y in glTF",
+    "forwardAxis": "-Y in Blender",
+    "fps": 30,
+    "meshObjects": 93,
+    "curveDetails": 8,
+    "sourceVertices": 35110,
+    "triangulatedFaceEstimate": 69868,
+    "bones": 32,
+    "externalTextures": false
+  },
+  "collections": [
+    "ChefBlaze_GEO",
+    "ChefBlaze_RIG",
+    "ChefBlaze_MAT",
+    "ChefBlaze_ANIM",
+    "ChefBlaze_COLLIDERS",
+    "REF_AuthoritativeTurnaround",
+    "REF_FailedLowPoly_DoNotUse"
+  ],
+  "animations": [
+    {"name":"ChefBlaze_Idle","start":1,"end":75,"loop":true,"rootMotion":"in-place"},
+    {"name":"ChefBlaze_Walk_InPlace","start":1,"end":30,"loop":true,"rootMotion":"in-place"},
+    {"name":"ChefBlaze_Run_InPlace","start":1,"end":30,"loop":true,"rootMotion":"in-place"},
+    {"name":"ChefBlaze_Slide_DirectionChange","start":1,"end":20,"loop":false,"rootMotion":"in-place"}
+  ],
+  "previews": [
+    "previews/chef-blaze-front.png",
+    "previews/chef-blaze-threequarter.png",
+    "previews/chef-blaze-side.png",
+    "previews/chef-blaze-back.png"
+  ],
+  "viewer": "three-demo.html"
+}

@@ -1,0 +1,65 @@
+{
+  "scene": "Chef Blaze \u00b7 Turnaround Rebuild",
+  "height_m": 1.8726819418370724,
+  "bounds_min": [
+    -0.4333621859550476,
+    -0.40879756212234497,
+    0.011679921299219131
+  ],
+  "bounds_max": [
+    0.43336227536201477,
+    0.2452785074710846,
+    1.8843618631362915
+  ],
+  "mesh_count": 93,
+  "curve_count": 8,
+  "verts": 35110,
+  "tris_estimate": 69868,
+  "bones": 32,
+  "actions": [
+    [
+      "ChefBlaze_Idle",
+      1,
+      75,
+      true
+    ],
+    [
+      "ChefBlaze_Run_InPlace",
+      1,
+      30,
+      true
+    ],
+    [
+      "ChefBlaze_Slide_DirectionChange",
+      1,
+      20,
+      false
+    ],
+    [
+      "ChefBlaze_Walk_InPlace",
+      1,
+      30,
+      true
+    ]
+  ],
+  "materials": [
+    "Boot_Sole_Rubber",
+    "Boots_Black",
+    "ChefHat_White",
+    "Eyes_Brown",
+    "Eyes_Pupil",
+    "Eyes_White",
+    "FacialHair_Black",
+    "Jacket_Buttons",
+    "Jacket_Seams",
+    "Jacket_White",
+    "Mouth",
+    "Pants_Black",
+    "Pants_Flames_Orange",
+    "Pants_Flames_Red",
+    "Pants_Flames_Yellow",
+    "Scarf_Red",
+    "Skin",
+    "Skin_Highlight"
+  ]
+}
