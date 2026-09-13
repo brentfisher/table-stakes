@@ -47,9 +47,18 @@ export class SceneManager {
     this.results = results;
     this.active = this.restaurant.scene;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // STORY-059: native MSAA (`antialias: true`) and a full-resolution `UnrealBloomPass` were
+    // running together every frame — largely wasted cost, since the bloom pass's own blur
+    // already hides the AA seams it would otherwise smooth. Antialiasing now comes only from the
+    // composer's `OutputPass` + the softness of the bloom pass itself; see the bloom pass
+    // construction below for the matching resolution cut.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
     configureRestaurantRenderer(this.renderer, this.restaurant.scene);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // STORY-059: was capped at 2 — every rendering cost above (shadow map, bloom, base shading)
+    // scales with shaded pixel count, so 2x devicePixelRatio is 4x the fragment work of 1x on a
+    // Retina/HiDPI display. `food-preview-renderer.ts` already caps at 1.5 for this exact reason;
+    // match that precedent here rather than inventing a new number.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
 
@@ -85,8 +94,16 @@ export class SceneManager {
     // A restrained threshold keeps practical lights and authored Glow materials luminous while
     // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
     // scene gains the warm AAA catchlight from the reference without becoming hazy.
+    // STORY-059: `UnrealBloomPass` already halves whatever resolution it's given for its own
+    // internal mip chain (see its constructor), so passing the full container size here meant
+    // the blur chain's brightest render target was already running at half-container. Passing
+    // HALF the container size instead drops that internal target to a quarter of the container's
+    // area — ~4x less shader work for the whole 5-mip blur/composite chain — and the effect stays
+    // visually identical because bloom is a soft, low-frequency effect by nature: the extra
+    // downsample is invisible once blurred back up. `strength`/`radius`/`threshold`
+    // (0.28/0.48/0.84) are UNCHANGED — those control the look, this only cuts cost.
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(container.clientWidth, container.clientHeight),
+      new THREE.Vector2(container.clientWidth / 2, container.clientHeight / 2),
       0.28,
       0.48,
       0.84,
@@ -113,6 +130,11 @@ export class SceneManager {
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
+    // STORY-059: `EffectComposer.setSize` just reset every pass — including `bloomPass` — to the
+    // FULL container resolution (it calls `pass.setSize(width, height)` uniformly for all
+    // passes). Re-apply the halved resolution chosen at construction time so a window resize
+    // doesn't silently undo the bloom cost cut.
+    this.bloomPass.setSize(width / 2, height / 2);
     this.cameraController.setAspect(width / height);
   }
 
