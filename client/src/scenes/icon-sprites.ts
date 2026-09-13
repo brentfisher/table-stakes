@@ -145,6 +145,115 @@ export function createLabelSprite(text: string, colorHex: number, scale = 0.5): 
   return sprite;
 }
 
+// --- STORY-057: large 2D dish pictures for the kitchen order queue board ("expo rail") --------
+//
+// Report: "the expo rail shows the items when you click it. I would rather the entire back wall
+// have 2d pictures of the dishes we need to make largely" — corrected premise (see
+// `RestaurantScene.ts#upsertQueueBoardDish`'s own header): the board already had an ALWAYS-VISIBLE
+// display, just a small one built from `buildDishProxy`'s real-scale 3D models (5x2 grid on a
+// 3.4-unit board). This replaces that grid with big, flat, at-a-glance-legible 2D cards — same
+// "rasterize once per distinct key, cache forever, never re-draw on a hot path" discipline every
+// other function in this file already documents, keyed by `dishId` (a fixed ~8-entry catalogue,
+// `shared/game-data/dishes.json`) rather than by an arbitrary string, since a dish's picture never
+// changes shape once drawn.
+//
+// NOT AN ELABORATE ILLUSTRATION PIPELINE (deliberately, per this story's own scope note): no art
+// asset exists for any dish as a 2D image (checked `shared/game-data/dishes.json` — no icon/image
+// field; `FoodModels.ts`/`food-preview-renderer.ts` are both 3D-model-only, the former loading
+// GLBs, the latter turntable-previewing them into a DOM canvas via a shared WebGL context — neither
+// produces a flat picture usable as a texture here). So each card is drawn from data already on
+// hand: a per-dish accent color (`DISH_PICTURE_ACCENTS` below, `RestaurantScene.ts`) tinting a
+// circular "plate" with the dish's initials, plus its full name — "a colored shape + a short
+// label/glyph", the story's own explicit bar, not a hand-illustrated icon set.
+const dishPictureTextureCache = new Map<string, THREE.CanvasTexture>();
+const DISH_PICTURE_WIDTH = 300;
+const DISH_PICTURE_HEIGHT = 360;
+
+/** `name`/`accentHex` are read only on first draw for a given `dishId` — see the cache-forever
+ * comment above. `dishId` alone is the cache key (not `name`, unlike `labelTexture`) because the
+ * catalogue is fixed and small; keying by `dishId` also means a future dish with a name collision
+ * against an existing one (unlikely, but `labelTexture`'s own key IS its text) can never share a
+ * mis-drawn texture. */
+function dishPictureTexture(dishId: string, name: string, accentHex: number): THREE.CanvasTexture {
+  const cached = dishPictureTextureCache.get(dishId);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = DISH_PICTURE_WIDTH;
+  canvas.height = DISH_PICTURE_HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D canvas context unavailable');
+
+  ctx.clearRect(0, 0, DISH_PICTURE_WIDTH, DISH_PICTURE_HEIGHT);
+
+  // Card backing — one neutral cream tone for every dish (not tinted per-dish), so the accent
+  // circle below is the one thing that varies and reads as "this dish's own color" rather than
+  // competing with a colored card edge.
+  ctx.fillStyle = '#faf3e6';
+  ctx.strokeStyle = '#2a2620';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.roundRect(6, 6, DISH_PICTURE_WIDTH - 12, DISH_PICTURE_HEIGHT - 12, 22);
+  ctx.fill();
+  ctx.stroke();
+
+  // The "picture": a big colored disc (the plate/dish silhouette, simplified to its most legible
+  // shape at a glance-from-across-the-kitchen distance) plus a 1-2 letter monogram baked in
+  // white ink — same white-ink-on-color-fill idea `glyphTexture` already uses, just bigger.
+  ctx.fillStyle = `#${accentHex.toString(16).padStart(6, '0')}`;
+  ctx.beginPath();
+  ctx.arc(DISH_PICTURE_WIDTH / 2, 150, 108, 0, Math.PI * 2);
+  ctx.fill();
+
+  const initials = name
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 86px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initials, DISH_PICTURE_WIDTH / 2, 154);
+
+  // Full dish name below the disc — same shrink-to-fit loop `labelTexture` uses, so a longer
+  // name (e.g. "Chicken Sandwich") never clips past the card's own edge.
+  ctx.fillStyle = '#241f18';
+  let fontSize = 38;
+  ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+  const upperName = name.toUpperCase();
+  while (ctx.measureText(upperName).width > DISH_PICTURE_WIDTH - 28 && fontSize > 18) {
+    fontSize -= 1;
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+  }
+  ctx.fillText(upperName, DISH_PICTURE_WIDTH / 2, DISH_PICTURE_HEIGHT - 44);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  dishPictureTextureCache.set(dishId, texture);
+  return texture;
+}
+
+/** A new sprite instance for one dish's big picture card — `scale` sets the card's HEIGHT in
+ * world units, width follows the texture's own portrait aspect ratio (same convention
+ * `createLabelSprite` uses). Unlike `createGlyphSprite`/`createLabelSprite`, color is baked
+ * into the texture itself (each dish's accent is permanent, not a per-instance tint), so the
+ * sprite material's own `.color` is left at its default white — there is nothing to recolor
+ * per instance the way a badge sprite's severity color changes. */
+export function createDishPictureSprite(dishId: string, name: string, accentHex: number, scale = 1.6): THREE.Sprite {
+  const material = new THREE.SpriteMaterial({
+    map: dishPictureTexture(dishId, name, accentHex),
+    depthTest: false, // same "always readable, never clipped" choice `createGlyphSprite` documents
+    transparent: true,
+  });
+  const sprite = new THREE.Sprite(material);
+  const aspect = DISH_PICTURE_WIDTH / DISH_PICTURE_HEIGHT;
+  sprite.scale.set(scale * aspect, scale, 1);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
 /** STORY-053. Swaps a `createLabelSprite` sprite's TEXT in place, for the rare label whose text
  * changes after creation — `RestaurantScene#upsertReadyDish`'s staged "WAITING ON N" chip is the
  * first one: a sibling ticket finishing lowers N over a single ticket's own on-pass lifetime,

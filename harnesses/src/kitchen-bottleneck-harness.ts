@@ -49,6 +49,7 @@ import {
   type WorkerRenderState,
   type ReadyDishRenderState,
   type CarriedDishRenderState,
+  type QueueBoardDishRenderState,
 } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
 import { STATE_COLORS } from '../../client/src/game/state-colors';
@@ -266,6 +267,14 @@ function createKitchenBottleneckHarness(): SceneHarness {
   /** STORY-030. Which ready-dish ticket ids `syncScene` rendered last frame — see that method's
    * own comment on why this harness diffs by hand instead of through `EntityViewRegistry`. */
   let lastReadyDishIds = new Set<string>();
+  /** STORY-057. Same by-hand diff as `lastReadyDishIds`, for the expo rail's big 2D dish
+   * pictures (`queueBoardDishRenderStates`/`RestaurantScene#upsertQueueBoardDish`) — this story's
+   * new large-picture display had ZERO harness coverage before (STORY-043's own board went in
+   * without one), so this wiring is what lets the "measure, don't assert" house convention apply
+   * to Part 2 at all: this harness's EXISTING queued-ticket buttons (spawn single/light/rush,
+   * station backlog) already produce exactly the add/reorder/clear traffic the expo rail needs to
+   * demonstrate, so no NEW button was needed — only this render/diff wiring. */
+  let lastQueueBoardDishIds = new Set<string>();
   let harnessElapsedSeconds = 0;
 
   let tickets = new Map<string, MockTicket>();
@@ -656,6 +665,23 @@ function createKitchenBottleneckHarness(): SceneHarness {
     }));
   }
 
+  /** STORY-057. The expo rail's own render-state list, one entry per currently-QUEUED ticket
+   * (across every station, matching the real `queuedTicketsAcrossStations`'s scope — this harness
+   * has no stations-vs-restaurant-wide distinction, `tickets` already spans all 4). Ranked by
+   * `queuedAtMs` ascending (oldest-queued first) — a deliberate SIMPLIFICATION of the real
+   * `worker-system.js#compareTickets` (queue-age BUCKET, then patience-risk tiebreak), not a
+   * reimplementation of it: this harness exists to exercise the RENDERING (cards appear, reorder,
+   * disappear), not to reproduce the exact priority algorithm a second time — see this file's own
+   * header ("NO LIVE SIMULATION IMPORTED"). Good enough to demonstrate every AC that matters here:
+   * a new ticket appends, a completed ticket vanishes, and finishing an earlier ticket shifts
+   * every later one up a rank. */
+  function queueBoardDishRenderStates(): QueueBoardDishRenderState[] {
+    const queued = [...tickets.values()]
+      .filter((t) => t.state === 'queued')
+      .sort((a, b) => a.queuedAtMs - b.queuedAtMs);
+    return queued.map((t, rank) => ({ ticketId: t.ticketId, dishId: t.dishId, rank }));
+  }
+
   /** STORY-031. `owner.carryingTicketIds` resolved to render slots, the same cross-reference
    * `GameClient.ts` does against real `orders[]` — here against this harness's own `tickets` map. */
   function ownerCarrySlots(): CarriedDishRenderState[] {
@@ -745,6 +771,18 @@ function createKitchenBottleneckHarness(): SceneHarness {
       if (!readyIds.has(id)) scene.removeReadyDish(id);
     }
     lastReadyDishIds = readyIds;
+
+    // STORY-057. Same present/remove diff as the ready-dish block above, for the expo rail's
+    // big 2D dish pictures.
+    const queueBoardIds = new Set<string>();
+    for (const state of queueBoardDishRenderStates()) {
+      queueBoardIds.add(state.ticketId);
+      scene.upsertQueueBoardDish(state);
+    }
+    for (const id of lastQueueBoardDishIds) {
+      if (!queueBoardIds.has(id)) scene.removeQueueBoardDish(id);
+    }
+    lastQueueBoardDishIds = queueBoardIds;
 
     for (const station of STATIONS) {
       const badge = brokenBadges.get(station);
@@ -845,6 +883,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       restockCompletions = [];
       repairCompletions = [];
       lastReadyDishIds = new Set();
+      lastQueueBoardDishIds = new Set();
       harnessElapsedSeconds = 0;
       lastDeliveryFeedback = 'none yet';
       carryCapacityMock = 1;
@@ -1237,6 +1276,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       workers = new Map();
       owner = { spawned: false, busyRemainingMs: null, currentAction: null, carryingTicketIds: [], repairTargetStation: null, actionTargetStation: null };
       lastReadyDishIds = new Set();
+      lastQueueBoardDishIds = new Set();
     },
   };
 }
