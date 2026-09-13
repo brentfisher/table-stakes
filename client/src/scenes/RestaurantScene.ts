@@ -253,6 +253,38 @@ const CARRY_TARGET_RING_OUTER = 1.15;
 const CARRY_TARGET_ARROW_Y = 1.6;
 const CARRY_TARGET_CHIP_Y = 2.05;
 
+/** STORY-056 "handle complaint - I can't tell they're angry, make the entire table have a red
+ * marker and it be very visible above the customers". Two numbers matter here:
+ *  - The floor ring is deliberately BIGGER than `CARRY_TARGET_RING_*` above (1.2-1.45 vs 0.95-
+ *    1.15) so it visibly encircles the whole 1.8m table (the report's "entire table"), and — if a
+ *    delivery happens to be inbound to the SAME unhappy table at the same time — the two rings sit
+ *    concentric, blue delivery ring inside red complaint ring, distinguishable by color and
+ *    radius rather than one obscuring the other.
+ *  - The glyph sits at y=3.0, clear of BOTH the 4-state table badge (`createGlyphSprite`, scale
+ *    0.45 at y=1.7 → spans 1.475-1.925) and the carry-target chip (`CARRY_TARGET_CHIP_Y` 2.05,
+ *    label-sprite scale 0.68 → spans 1.71-2.39): at scale 1.0 this glyph spans 2.5-3.5, well above
+ *    both, so all three can be visible on the same table at once without touching. This is the
+ *    same PURELY VERTICAL "stack it higher, don't compete with the existing anchor" device
+ *    `STATION_WAITING_ANCHOR` already uses above `STATION_QUEUE_ANCHOR`/`STATION_SHORTAGE_ANCHOR`
+ *    (see that block's own comment) — reused here rather than inventing a horizontal-offset
+ *    vocabulary this file doesn't otherwise use for table-anchored sprites.
+ *
+ * COLOR: `STATE_COLORS.critical` (0xe0402f), not `.bottleneck` (0xe0812f, actually orange despite
+ * this story's own approach_summary mislabeling it "the existing red tone `dirty` already uses" —
+ * `dirty` uses `.bottleneck`, and `.bottleneck`'s own doc comment in `state-colors.ts` says
+ * "Orange"). The report's literal ask was "a RED marker", and `.critical` is this file's one
+ * actually-red §14 hex. It is also the semantically correct pick, not just the visually correct
+ * one: `patienceColorBand`'s `critical` band (the patience ring's reddest state, `upsertCustomer`)
+ * and `party.everUnhappy` flip at the EXACT SAME threshold — `UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD`
+ * — per `customer-system.js`'s own derivation. So a diner's patience ring turning this same red is
+ * the direct visual precursor to this marker appearing; reusing `.bottleneck` would have severed
+ * that continuity for no reason beyond a mistaken cross-reference in the approach_summary.
+ */
+const COMPLAINT_RING_INNER = 1.2;
+const COMPLAINT_RING_OUTER = 1.45;
+const COMPLAINT_GLYPH_Y = 3.0;
+const COMPLAINT_GLYPH_SCALE = 1.0;
+
 // --- STORY-030: PRD §5.2/§10.1 dish-specific ready-food proxies at the service pass ----------
 //
 // Supersedes STORY-016's single generic `foodReadyIcon` glyph sprite (removed by this story —
@@ -674,6 +706,11 @@ export class RestaurantScene {
    * targeted by a carried order, keyed by `tableId` and built lazily — see `updateCarryTargets`'s
    * own comment on why markers are hidden, not destroyed, when a table stops being targeted. */
   private readonly carryTargets = new Map<string, THREE.Group>();
+  /** STORY-056. One marker (floor ring + oversized glyph above the diners' heads) per table with
+   * an unresolved complaint (`CustomerSnapshot.unhappy`), keyed by `tableId` and built lazily —
+   * same "hide, never destroy, when no longer active" discipline as `carryTargets` above, since a
+   * complaint can be handled and a new one can start at the same table later in the same match. */
+  private readonly complaintMarkers = new Map<string, THREE.Group>();
   constructor(options: RestaurantSceneOptions = {}) {
     this.scene.background = new THREE.Color(0x0b1512);
 
@@ -882,8 +919,20 @@ export class RestaurantScene {
 
   private buildWayfinding(): void {
     for (const entity of this.layout.entities) {
-      const label = entity.type === 'table' ? formatTableChip(entity.id)
-        : entity.type === 'station' ? entity.station!.toUpperCase()
+      // STORY-056. Reported: "instead of listing the table numbers, only show them when you are
+      // delivering food" — this loop used to unconditionally attach a permanent `formatTableChip`
+      // placard ("T04") to EVERY table, for the life of the scene. That duplicated (and
+      // permanently pre-empted) `buildCarryTargetMarker`/`updateCarryTargets` below, which already
+      // shows the identical chip, plus a ring and arrow, ONLY while a player is actively carrying
+      // an order bound for that table — exactly "only show when delivering". Tables are the only
+      // entity type this affects: station/pass/other wayfinding labels below are unrelated to the
+      // complaint and stay exactly as they were. (Verified no HUD/alert code elsewhere assumes a
+      // table's number is permanently visible in the 3D scene — `hud-alerts.js` and
+      // `ArcadeToast.tsx` both carry `tableId` as structured data/HUD text, never as a lookup
+      // against an in-world placard, and no other code reaches into the scene by
+      // `label_${tableId}`.)
+      if (entity.type === 'table') continue;
+      const label = entity.type === 'station' ? entity.station!.toUpperCase()
         : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
             upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
             kitchen_command_board: 'RUSH THE PASS',
@@ -891,14 +940,11 @@ export class RestaurantScene {
             // outstanding tickets on, in priority order, for whoever's free to grab the next one.
             kitchen_order_queue_board: 'EXPO RAIL' } as Record<string, string>)[entity.id];
       if (!label) continue;
-      // Bumped 1.6x from 0.42 — these wayfinding placards (table numbers, station names,
-      // PICKUP/PANTRY/UPGRADES/etc.) were reported hard to read from the normal play camera.
-      const sprite = createLabelSprite(label, entity.type === 'table' ? 0xf0d7a0 : 0xd4e7dd, 0.68);
+      // Bumped 1.6x from 0.42 — these wayfinding placards (station names, PICKUP/PANTRY/
+      // UPGRADES/etc.) were reported hard to read from the normal play camera.
+      const sprite = createLabelSprite(label, 0xd4e7dd, 0.68);
       sprite.name = `label_${entity.id}`;
-      // Table ids sit alongside the tabletop, leaving the existing state badge above it. Y
-      // nudged up slightly to match the larger chip so it still clears the tabletop surface.
-      sprite.position.set(0, entity.type === 'table' ? 0.22 : 0.19,
-        entity.type === 'table' ? -1.7 : entity.type === 'station' ? -1.25 : -0.85);
+      sprite.position.set(0, 0.19, entity.type === 'station' ? -1.25 : -0.85);
       this.scene.getObjectByName(entity.id)?.add(sprite);
 
       // Reported: the command-post labels (UPGRADES/WELCOME/SERVICE/RUSH THE PASS) weren't
@@ -2121,6 +2167,106 @@ export class RestaurantScene {
     }
   }
 
+  /** STORY-056. Builds one complaint marker as a child of the table's own mesh — same
+   * `this.scene.getObjectByName(tableId)` anchor `updateTableBadges`/`buildCarryTargetMarker`
+   * already use, so it moves for free with the table (tables never move mid-match in this MVP,
+   * same defensive note those two give). Deliberately NOT a re-tint of the existing 4-state badge
+   * glyph (`createGlyphSprite` at 0.45 scale): this is a distinct visual DEVICE — a large red ring
+   * around the whole table plus an even larger glyph floating well above every other per-table
+   * sprite (see `COMPLAINT_RING_*`/`COMPLAINT_GLYPH_*`'s own comment for the exact numbers and why
+   * they clear the 4-state badge and the carry-target chip) — so an unresolved complaint reads as
+   * a fundamentally different kind of signal, not a red variant of "order taken". Uses
+   * `STATE_COLORS.critical` — see `COMPLAINT_RING_*`/`COMPLAINT_GLYPH_*`'s own comment for why
+   * that, not `.bottleneck`, is this file's actual red and the semantically correct pick.
+   */
+  private buildComplaintMarker(tableId: string): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `complaint_marker_${tableId}`;
+
+    // Floor ring — same "ring beneath the entity" device as the carry-target/ready-dish/patience
+    // rings, but bigger and fully opaque (not the carry ring's 0.85) so it reads at a glance even
+    // WITHOUT the per-frame pulse below — same "a screenshot still shows it" reasoning
+    // `upsertReadyDish`'s static isOldest size/opacity boost gives (see that method's own comment).
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(COMPLAINT_RING_INNER, COMPLAINT_RING_OUTER, 32),
+      new THREE.MeshBasicMaterial({
+        color: STATE_COLORS.critical,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 1,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.025;
+    ring.name = 'complaint_ring';
+    group.add(ring);
+
+    // The "very visible above the customers" glyph. `!` is a symbol none of the four badge
+    // glyphs (O/F/$/X) use, at more than double their scale, floating well above every other
+    // per-table sprite — legible from the normal play camera distance without walking up to it.
+    const glyph = createGlyphSprite('!', STATE_COLORS.critical, COMPLAINT_GLYPH_SCALE);
+    glyph.position.y = COMPLAINT_GLYPH_Y;
+    glyph.name = 'complaint_glyph';
+    group.add(glyph);
+
+    return group;
+  }
+
+  /** STORY-056. `customers` must already be filtered to THIS restaurant — same requirement
+   * `updateTableBadges`'s own comment gives, and this is always called right alongside it from
+   * `updateFloorState` with the same already-filtered array. Markers are HIDDEN, never destroyed,
+   * once built (`updateCarryTargets`'s own precedent) — a complaint can be handled and a new one
+   * can start at the same table later in the same match, and hiding avoids rebuilding the same
+   * geometry/texture repeatedly. This is the ONE place `party.unhappy` is read for rendering — it
+   * flips to false the instant the complaint is handled or the party leaves (`customer-system.js`
+   * derivation cited in this story's approach_summary), and since this runs every snapshot off the
+   * live `customers` array, the marker clears on that same snapshot — no stale marker outlives the
+   * flag. */
+  private updateComplaintMarkers(customers: CustomerSnapshot[]): void {
+    const unhappyTableIds = new Set(
+      customers.filter((c) => c.unhappy && c.tableId).map((c) => c.tableId as string),
+    );
+    for (const tableId of unhappyTableIds) {
+      let marker = this.complaintMarkers.get(tableId);
+      if (!marker) {
+        const tableMesh = this.scene.getObjectByName(tableId);
+        // Defensive, same reasoning `updateCarryTargets` gives: every id here comes from this
+        // restaurant's own live `customers[]`, so `tableMesh` should never be missing. Skip
+        // rather than cache under a scene-root fallback — an un-parented marker would never be
+        // visible under the table anyway, and caching it here would permanently short-circuit the
+        // `!marker` check above on a transient lookup miss.
+        if (!tableMesh) continue;
+        marker = this.buildComplaintMarker(tableId);
+        tableMesh.add(marker);
+        this.complaintMarkers.set(tableId, marker);
+      }
+      marker.visible = true;
+    }
+    for (const [tableId, marker] of this.complaintMarkers) {
+      if (!unhappyTableIds.has(tableId)) marker.visible = false;
+    }
+  }
+
+  /** Per-frame half of the complaint marker, same split `updateCarryTargetAnimations`/
+   * `updateReadyDishAnimations` make: the marker is already fully legible at rest (see
+   * `buildComplaintMarker`'s own comment), this only adds a pulse on top for extra urgency. Only
+   * currently-visible markers are touched. */
+  updateComplaintMarkerAnimations(elapsedSeconds: number): void {
+    for (const marker of this.complaintMarkers.values()) {
+      if (!marker.visible) continue;
+      const ring = marker.getObjectByName('complaint_ring') as THREE.Mesh | undefined;
+      if (ring) {
+        const pulse = 1 + Math.sin(elapsedSeconds * 4) * 0.12;
+        ring.scale.set(pulse, pulse, 1);
+      }
+      const glyph = marker.getObjectByName('complaint_glyph') as THREE.Sprite | undefined;
+      if (glyph) {
+        const pulse = 1 + Math.sin(elapsedSeconds * 4 + Math.PI / 2) * 0.1;
+        glyph.scale.set(COMPLAINT_GLYPH_SCALE * pulse, COMPLAINT_GLYPH_SCALE * pulse, 1);
+      }
+    }
+  }
+
   /** Keep the same dish identity visible through the whole service path: pass, hands, table.
    * Delivered orders remain public until payment settles, so this projection naturally keeps
    * plates present while diners eat and removes them when the table visit finishes. */
@@ -2274,6 +2420,9 @@ export class RestaurantScene {
     const selfCustomers = params.customers.filter((c) => c.restaurantId === params.selfRestaurantId);
 
     this.updateTableBadges(self?.tables ?? [], selfCustomers);
+    // STORY-056. Reads the SAME already-filtered `selfCustomers` array `updateTableBadges` just
+    // used — see `updateComplaintMarkers`'s own comment on why this always runs alongside it.
+    this.updateComplaintMarkers(selfCustomers);
     this.updateTableDishes(selfOrders);
     this.updateStationIndicators(selfOrders, self?.shortages ?? []);
     this.updateRivalActivity(rival);
@@ -2344,6 +2493,7 @@ export class RestaurantScene {
     this.readyBellSparks.length = 0;
     this.carriedDishes.clear();
     this.carryTargets.clear();
+    this.complaintMarkers.clear();
     this.scene.clear();
   }
 }

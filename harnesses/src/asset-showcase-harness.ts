@@ -209,6 +209,10 @@ const DISH_VARIANT_DEFS: { id: string; label: string }[] = [
   { id: 'table_meal_delivered', label: 'On table — meal delivered' },
   { id: 'table_paying', label: 'On table — paying' },
   { id: 'table_dirty', label: 'On table — dirty (cleanup)' },
+  // STORY-056. Deliberately combined with a delivered meal (state 'EATING') rather than an empty
+  // table, so this one showcase entry also demonstrates the AC that the complaint marker and the
+  // existing 4-state badge coexist without either obscuring the other.
+  { id: 'table_unhappy', label: 'On table — unresolved complaint (meal delivered + unhappy)' },
   { id: 'pass_ready_fresh', label: 'At the pass — ready, fresh' },
   { id: 'pass_ready_stale', label: 'At the pass — ready, stale' },
   { id: 'pass_ready_staged', label: 'At the pass — staged (order not fully off the line)' },
@@ -594,17 +598,22 @@ function createAssetShowcaseHarness(): SceneHarness {
         } else if (id.startsWith('table_')) {
           const tableId = layoutTableIds()[0];
           const dirty = id === 'table_dirty';
+          const unhappy = id === 'table_unhappy';
           const stateByBadge: Record<string, CustomerState> = {
             table_order_taken: 'ORDERING',
             table_meal_delivered: 'EATING',
             table_paying: 'PAYING',
+            // STORY-056. EATING (not SEATED/ORDERING) so this entry shows the complaint marker
+            // layered over the 'meal_delivered' badge, not an empty/order_taken table — the
+            // coexistence case this story's AC explicitly calls out.
+            table_unhappy: 'EATING',
           };
-          const showsMeal = id === 'table_meal_delivered' || id === 'table_paying';
+          const showsMeal = id === 'table_meal_delivered' || id === 'table_paying' || unhappy;
           applyFloorState({
             selfOverrides: {
               tables: defaultTables().map((t) => (t.id === tableId ? { ...t, occupiedBy: dirty ? null : 'showcase_customer', dirty } : t)),
             },
-            customers: dirty ? [] : [mockDiningCustomer('showcase_customer', { tableId, state: stateByBadge[id] })],
+            customers: dirty ? [] : [mockDiningCustomer('showcase_customer', { tableId, state: stateByBadge[id], unhappy })],
             orders: showsMeal
               ? [mockOrder('showcase_table_order', DISHES[0].id, { state: 'delivered', tableId })]
               : [],
@@ -615,10 +624,15 @@ function createAssetShowcaseHarness(): SceneHarness {
               ? "'Dirty' is a cleanup state, not an order state — it is included here because it " +
                 "is the table's 4th real badge and the natural end of a dish's lifecycle at the " +
                 'table.'
-              : showsMeal
-                ? 'The delivered dish uses the same authored model shown at the pass and in the ' +
-                  'carry socket, with the table badge still showing meal/payment state.'
-                : 'The table badge shows that an order was taken; its dish appears here after delivery.',
+              : unhappy
+                ? 'STORY-056: the red ring + oversized "!" glyph is `CustomerSnapshot.unhappy`, ' +
+                  "rendered independently of and layered with the existing 'meal_delivered' badge " +
+                  "(the O/F/$/X glyph at table-height) — different facts, so both stay visible " +
+                  'at once without either obscuring the other.'
+                : showsMeal
+                  ? 'The delivered dish uses the same authored model shown at the pass and in the ' +
+                    'carry socket, with the table badge still showing meal/payment state.'
+                  : 'The table badge shows that an order was taken; its dish appears here after delivery.',
           ];
         } else if (id === 'pass_ready_fresh' || id === 'pass_ready_stale') {
           const stale = id === 'pass_ready_stale';
