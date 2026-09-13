@@ -1,7 +1,7 @@
 ---
 id: STORY-057
 title: Move the kitchen command board off the pass; expo rail becomes a back-wall display
-status: pr-opened
+status: merged
 prd_source: null
 branch: story/057-kitchen-command-position-and-expo-rail-wall
 worktree_path: /Users/brent/table-stakes-worktrees/story-057-kitchen-command-position-and-expo-rail-wall

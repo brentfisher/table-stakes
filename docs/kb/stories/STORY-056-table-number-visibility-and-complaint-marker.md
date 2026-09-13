@@ -1,7 +1,7 @@
 ---
 id: STORY-056
 title: Table numbers only when delivering; a real complaint marker
-status: pr-opened
+status: merged
 prd_source: null
 branch: story/056-table-number-visibility-and-complaint-marker
 worktree_path: /Users/brent/table-stakes-worktrees/story-056-table-number-visibility-and-complaint-marker
