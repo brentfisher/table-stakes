@@ -244,7 +244,15 @@ function dishPictureTexture(dishId: string, name: string, accentHex: number): TH
 export function createDishPictureSprite(dishId: string, name: string, accentHex: number, scale = 1.6): THREE.Sprite {
   const material = new THREE.SpriteMaterial({
     map: dishPictureTexture(dishId, name, accentHex),
-    depthTest: false, // same "always readable, never clipped" choice `createGlyphSprite` documents
+    // Deliberately NOT `depthTest: false` (unlike `createGlyphSprite`/`createLabelSprite`, small
+    // badges that must never hide behind a table/station they sit flush against). These are ~10
+    // much bigger cards mounted with real standoff in front of their own panel
+    // (`QUEUE_BOARD_SLOT_Z`, `RestaurantScene.ts`) — `depthTest: false` was tried first and caught
+    // in review: it painted a mispositioned row of cards over the floor tiles and pantry shelving
+    // behind them instead of revealing the bug, and would keep painting every card over anything
+    // between it and the camera (a worker walking past the board) even once positioned correctly.
+    // Normal depth testing still draws each card in front of its own panel (the panel is BEHIND
+    // it, at a smaller local z) while letting nearer geometry occlude a card correctly.
     transparent: true,
   });
   const sprite = new THREE.Sprite(material);

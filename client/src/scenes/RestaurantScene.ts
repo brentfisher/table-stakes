@@ -375,28 +375,45 @@ const QUEUE_BOARD_COLUMNS = 5;
 const QUEUE_BOARD_SLOT_X_RANGE = 4.0;
 /** STORY-057. NOT simply the old [1.3, 0.6] scaled by the height ratio — measured instead
  * (`new THREE.Box3().setFromObject(mesh)` in a throwaway console probe against the real running
- * scene, then reverted), because that scaling approach turns out to rest on a false premise: this
- * board's mesh (like every `this.box(...)`-built entity) has its OWN local origin at its
- * GEOMETRIC CENTER (`BoxGeometry` is center-pivoted) while `buildEntities` sets `mesh.position` to
- * the entity's layout position VERBATIM (y always 0 in `restaurant-layout.json`) — so in world
- * space the board's box spans `-height/2` to `+height/2`, e.g. this story's 4.4-tall board
- * measured `minY=-2.2, maxY=2.2` exactly, confirmed empirically, not assumed. The OLD board (1.8
- * tall, so -0.9..0.9) had its own `QUEUE_BOARD_ROW_Y[0]` at 1.3 — ALREADY outside that range by
- * 0.4, meaning STORY-043's top row of small 3D dish models already floated above the board's own
- * physical top edge; scaling that up would have floated this story's top row even further outside
- * the panel (proportionally the same overshoot, absolutely larger). Chosen fresh instead, so both
- * rows of the new, much bigger `QUEUE_BOARD_PICTURE_SCALE`-tall cards sit INSIDE the panel's real
- * -2.2..2.2 span with real margins: row 1 (top) center 1.05 -> card spans 0.2..1.9 (0.3 clear of
- * the +2.2 top edge); row 2 (bottom) center -0.95 -> card spans -1.8..-0.1 (0.4 clear of the -2.2
- * bottom edge); the two rows themselves are 0.3 apart (row 1's 0.2 floor to row 2's -0.1 ceiling)
- * — comfortably non-overlapping. */
-const QUEUE_BOARD_ROW_Y = [1.05, -0.95] as const;
+ * scene, then reverted), because that scaling approach rested on a false premise, caught TWICE:
+ *
+ * First pass (WRONG, caught by review before merging): assumed a bare `this.box(...)` mesh here
+ * spans `-height/2..+height/2` in world space (since `BoxGeometry` is center-pivoted and
+ * `buildEntities` sets `mesh.position` to the entity's layout position verbatim, y always 0) —
+ * measured `minY=-2.2, maxY=2.2` for the 4.4-tall board and picked row centers `[1.05, -0.95]`
+ * against THAT span. That measurement was real, but the FIX should have been to stop the board
+ * straddling the floor, not to fit cards into the straddle — `buildEntity`'s
+ * `kitchen_order_queue_board` case now wraps the panel mesh in a `THREE.Group` specifically so
+ * `buildEntities`' position-clobber lands on the GROUP (to the entity's real x/0/z) while the
+ * CHILD panel mesh keeps its own `position.y = height/2` (see that case's own comment) — so the
+ * panel genuinely spans world y **0..4.4**, sitting on the floor. The row centers below are
+ * against THIS corrected span.
+ *
+ * Second pass (current): two 1.7-tall (`QUEUE_BOARD_PICTURE_SCALE`) cards inside 0..4.4 with real
+ * margins — row 1 (top) center 3.25 -> card spans 2.4..4.1 (0.3 clear of the 4.4 top edge); row 2
+ * (bottom) center 1.25 -> card spans 0.4..2.1 (0.4 clear of the y=0 FLOOR, not a made-up "bottom
+ * edge" — this is the number that matters, since the earlier pass's row 2 span, -1.8..-0.1, was
+ * entirely BELOW y=0, i.e. under the floor, invisible on its own merits and only ever visible
+ * because `createDishPictureSprite`'s `depthTest: false` painted it over the floor mesh); the two
+ * rows are 0.3 apart (row 1's 2.4 floor to row 2's 2.1 ceiling). Re-verified in the browser after
+ * the fix: both rows render ON the dark panel, not on the white floor tiles. */
+const QUEUE_BOARD_ROW_Y = [3.25, 1.25] as const;
 /** Local-space Z offset in front of the board's own (now 0.3-deep, was 0.22) box (`buildEntity`),
- * just enough clearance that a card's flat sprite never z-fights the board mesh behind it. Sprites
- * have no depth themselves (unlike the old 3D `buildDishProxy` models), so this only needs to
- * clear the board's own face, not a proxy's full geometry — kept close to the old 0.55 rather than
- * enlarged, since there is no longer a 3D model depth to clear. */
-const QUEUE_BOARD_SLOT_Z = 0.4;
+ * just enough clearance that a card's flat sprite never z-fights the board mesh behind it.
+ *
+ * NEGATIVE, not +0.55 like the old value this replaces — found the hard way. The old
+ * `buildDishProxy` 3D models sat at +0.55 and were clearly visible; keeping that same SIGN for
+ * this story's flat sprites (at +0.4) rendered nothing at all once `createDishPictureSprite`
+ * used normal depth testing (see that function's own comment on why `depthTest: false` was
+ * rejected) — the cards were there (confirmed by temporarily re-enabling `depthTest: false`,
+ * which painted them back on screen regardless of what was in front) but fully occluded BEHIND
+ * the panel's own mesh from the camera's side. A solid 3D model has real thickness, so part of it
+ * can still poke out past the panel's face toward the camera even with the "wrong"-sign center
+ * offset — a flat, zero-thickness sprite card cannot. Flipping the sign to -0.4 (confirmed in the
+ * browser, `?harness=kitchen-bottleneck`: cards render on the panel's own face, in front of it,
+ * correctly occluded by nearer geometry) is the actual "toward the camera" direction for this
+ * board's local frame. */
+const QUEUE_BOARD_SLOT_Z = -0.4;
 /** World-space HEIGHT of one dish picture card (`createDishPictureSprite`'s `scale`), sized to
  * comfortably fill one grid cell without touching its neighbor: at `QUEUE_BOARD_COLUMNS` = 5
  * across `QUEUE_BOARD_SLOT_X_RANGE` * 2 = 8.0 world units, adjacent column centers are 2.0 apart;
@@ -407,18 +424,22 @@ const QUEUE_BOARD_PICTURE_SCALE = 1.7;
 
 /** STORY-057. `buildWayfinding`'s "EXPO RAIL" text label and its "E" command-post badge use ONE
  * fixed pair of y-offsets (0.19/1.75) shared by every command post — fine for the boards that
- * DIDN'T grow (both offsets sit comfortably outside e.g. `host_stand`'s 1.1-tall box either way),
- * but this board's own top edge moved from 0.9 to 2.2 while those offsets stayed put — 1.75 now
- * falls INSIDE the new picture grid's own top row (spans 0.2-1.9, per `QUEUE_BOARD_ROW_Y`'s own
- * comment), and 0.19 sits right at that row's bottom edge — both would visually sit ON TOP OF a
- * dish card rather than clear of the board, confirmed in the browser (`?harness=kitchen-
- * bottleneck`, "Spawn rush (8 tickets)": the "E" badge rendered stamped over the middle card).
- * So this ONE entity gets its own pair, lifted clear of the grid's real top edge (2.2) with the
- * same margins the shared pair uses relative to its own (smaller) boards — label first (0.34 half-
- * height + 0.2 clearance above 2.2 = 2.74, rounded 2.75), badge above that (0.475 half-size + 0.2
- * clearance above the label's own top edge (2.75+0.34=3.09) = 3.765, rounded 3.8). */
-const QUEUE_BOARD_LABEL_Y = 2.75;
-const QUEUE_BOARD_BADGE_Y = 3.8;
+ * DIDN'T grow (both offsets sit comfortably outside e.g. `host_stand`'s 1.1-tall box either way,
+ * which spans world y 0..1.1 the same corrected way this board's own case now does), but this
+ * board's own top edge is now 4.4 (was 0.9) while those offsets stayed put — both would sit deep
+ * inside the picture grid rather than above the board at all. Confirmed in the browser
+ * (`?harness=kitchen-bottleneck`, "Spawn rush (8 tickets)"): before this constant existed, the "E"
+ * badge (at the shared y=1.75) rendered stamped on top of the middle picture card. So this ONE
+ * entity gets its own pair, lifted clear of the panel's real top edge (4.4, corrected — see
+ * `QUEUE_BOARD_ROW_Y`'s own comment on the two-pass fix that established this number) with the
+ * same margins the shared pair's OWN relationship uses — label first (0.34 half-height + 0.2
+ * clearance above 4.4 = 4.94, rounded 4.95), badge above that (0.475 half-size + 0.2 clearance
+ * above the label's own top edge (4.95+0.34=5.29) = 5.965, rounded 6.0). Re-verified in the
+ * browser after the panel-height correction: both still float cleanly above the whole grid, and
+ * clear of the room's roofline (the `COPPER & THYME` title sprite sits at y=3.6 at a different
+ * x/z — checked this badge's own screenshot doesn't clip through any visible ceiling/wall). */
+const QUEUE_BOARD_LABEL_Y = 4.95;
+const QUEUE_BOARD_BADGE_Y = 6.0;
 
 function queueBoardSlotPosition(slot: number): { x: number; y: number } {
   const column = slot % QUEUE_BOARD_COLUMNS;
@@ -1339,8 +1360,33 @@ export class RestaurantScene {
       // z=12 far boundary (a 1.05 gap the other direction), so the bigger panel introduces no new
       // physical overlap regardless of its x-span overlapping pantry's x range, since their z
       // spans never touch.
-      case 'kitchen_order_queue_board':
-        return this.box(9, 4.4, 0.3, 0x3a4652);
+      //
+      // CORRECTION (found by re-measuring in the browser after the first version of this story's
+      // own commit, via the same `Box3` probe `QUEUE_BOARD_ROW_Y`'s comment describes): a BARE
+      // `this.box(...)` mesh here would NOT sit on the floor. `box()` sets `mesh.position.y =
+      // height/2` internally, but `buildEntities` (the one caller of `buildEntity`) immediately
+      // overwrites the returned object's OWN `.position` with the entity's literal layout
+      // position (y always 0) — so a bare box mesh renders symmetric around y=0, i.e. HALF BELOW
+      // THE FLOOR. Every other `this.box(...)`-returning case in this file has this same quirk
+      // (harmless for them — short fixtures like `host_stand`/`upgrade_terminal` sinking ~0.5
+      // units into the floor is not visually obvious at this game's camera angle), but at THIS
+      // board's new 4.4 height it is not harmless: without a fix, the entire bottom half (world y
+      // -2.2..0) would be underground, and `QUEUE_BOARD_ROW_Y`'s bottom row would render UNDER
+      // THE FLOOR, invisible except that `createDishPictureSprite`'s `depthTest: false` was
+      // painting it over the floor anyway (confirmed: a screenshot showed the bottom row sitting
+      // on the WHITE FLOOR TILES near the stove, not on the dark panel). Fixed by wrapping the
+      // panel mesh in a `THREE.Group`: `buildEntities` overwrites the GROUP's position (to the
+      // entity's real x/0/z, i.e. ground level), but the CHILD mesh keeps its own local
+      // `position.y = height/2` untouched (nothing overwrites a child's position) — so the panel
+      // now genuinely spans world y 0..4.4, sitting on the floor like the "back wall" the report
+      // asked for actually should. `QUEUE_BOARD_ROW_Y`/`QUEUE_BOARD_LABEL_Y`/`QUEUE_BOARD_BADGE_Y`
+      // below are all written against this corrected 0..4.4 span, not the old (wrong) -2.2..2.2 —
+      // see those constants' own comments.
+      case 'kitchen_order_queue_board': {
+        const group = new THREE.Group();
+        group.add(this.box(9, 4.4, 0.3, 0x3a4652));
+        return group;
+      }
       case 'queue':
         return this.box(3.4, 0.06, 1.2, 0x2f3843);
       default:
