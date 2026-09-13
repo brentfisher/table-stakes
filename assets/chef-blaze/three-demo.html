@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chef Blaze · Three.js preview</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #030716; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .hud { position: fixed; left: 24px; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #2a3a66; border-radius: 16px; background: rgba(7, 15, 37, .78); backdrop-filter: blur(16px); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+    .brand { margin-right: auto; letter-spacing: .14em; font-size: 12px; font-weight: 700; color: #ffd275; text-transform: uppercase; }
+    button { border: 1px solid #37528c; border-radius: 10px; padding: 9px 13px; color: #f5f7ff; background: #111e40; font: inherit; cursor: pointer; }
+    button:hover, button.active { border-color: #ff9838; background: #3b2440; box-shadow: 0 0 18px rgba(255, 125, 45, .38); }
+    .hint { color: #9eafd5; font-size: 12px; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <div class="brand">Chef Blaze · character preview</div>
+    <button data-clip="ChefBlaze_Idle" class="active">Idle</button>
+    <button data-clip="ChefBlaze_Walk_InPlace">Walk</button>
+    <button data-clip="ChefBlaze_Run_InPlace">Run</button>
+    <button data-clip="ChefBlaze_Slide_DirectionChange">Slide</button>
+    <span class="hint">drag to orbit · wheel to zoom</span>
+  </div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#030716');
+    scene.fog = new THREE.Fog('#030716', 7, 14);
+    const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, .1, 100);
+    camera.position.set(2.6, 1.75, 4.7);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.05, 0); controls.enableDamping = true; controls.minDistance = 2.7; controls.maxDistance = 7;
+
+    scene.add(new THREE.HemisphereLight(0x9eb8ff, 0x101526, 1.6));
+    const key = new THREE.DirectionalLight(0xffcf9a, 4.2); key.position.set(3, 5, 4); key.castShadow = true; scene.add(key);
+    const rim = new THREE.PointLight(0xff5530, 18, 7, 2); rim.position.set(-2, 2.7, -1.6); scene.add(rim);
+    const fill = new THREE.PointLight(0x416dff, 13, 7, 2); fill.position.set(2, 1.5, 2.5); scene.add(fill);
+    const ground = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 2.05, .16, 64), new THREE.MeshStandardMaterial({ color: 0x111b3b, roughness: .3, metalness: .45 }));
+    ground.position.y = -.08; ground.receiveShadow = true; scene.add(ground);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .7, .55, .82);
+    composer.addPass(bloom);
+
+    let mixer; const actions = new Map(); let current;
+    const loader = new GLTFLoader();
+    loader.load('./ChefBlaze.glb', gltf => {
+      const hero = gltf.scene; hero.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      scene.add(hero); mixer = new THREE.AnimationMixer(hero);
+      gltf.animations.forEach(clip => actions.set(clip.name, mixer.clipAction(clip)));
+      play('ChefBlaze_Idle');
+    });
+    function play(name) {
+      const next = actions.get(name); if (!next) return;
+      if (current) current.fadeOut(.18); next.reset().fadeIn(.18).play(); current = next;
+      document.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.clip === name));
+    }
+    document.querySelectorAll('button').forEach(b => b.addEventListener('click', () => play(b.dataset.clip)));
+    const clock = new THREE.Clock();
+    function frame() { requestAnimationFrame(frame); const dt = clock.getDelta(); if (mixer) mixer.update(dt); controls.update(); composer.render(); }
+    frame();
+    addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); });
+  </script>
+</body>
+</html>

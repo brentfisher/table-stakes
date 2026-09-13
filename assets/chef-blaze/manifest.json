@@ -1,0 +1,31 @@
+{
+  "character": "Chef Blaze",
+  "format": "glTF 2.0 binary",
+  "runtimeAsset": "ChefBlaze.glb",
+  "sourceAsset": "ChefBlaze_Master.blend",
+  "units": "meters",
+  "heightMeters": 1.9,
+  "upAxis": "Y",
+  "blenderForwardAxis": "-Y",
+  "fps": 30,
+  "rootMotion": "in-place",
+  "collections": [
+    "ChefBlaze_GEO",
+    "ChefBlaze_RIG",
+    "ChefBlaze_MAT",
+    "ChefBlaze_ANIM",
+    "ChefBlaze_COLLIDERS",
+    "REF_Attached"
+  ],
+  "animations": [
+    { "name": "ChefBlaze_Idle", "start": 1, "end": 90, "loop": true },
+    { "name": "ChefBlaze_Walk_InPlace", "start": 1, "end": 30, "loop": true },
+    { "name": "ChefBlaze_Run_InPlace", "start": 1, "end": 24, "loop": true },
+    { "name": "ChefBlaze_Slide_DirectionChange", "start": 1, "end": 18, "loop": false }
+  ],
+  "previews": [
+    "previews/chef-blaze-front.png",
+    "previews/chef-blaze-side.png",
+    "previews/chef-blaze-back.png"
+  ]
+}
