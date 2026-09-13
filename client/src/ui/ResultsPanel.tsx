@@ -43,7 +43,7 @@ import { useState } from 'react';
 import type { GameClientStatus } from '../game/GameClient';
 import { botProfileLabel } from './bot-profiles';
 import { isScored } from './recap/match-result';
-import { formatPoints } from './recap/format';
+import { formatPoints, tieBreakCriterionLabel } from './recap/format';
 import { RecapArrangeBoard } from './recap/RecapArrangeBoard';
 import { RecapCategoryNav } from './recap/RecapCategoryNav';
 import { RecapCelebration } from './recap/RecapCelebration';
@@ -264,6 +264,33 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                     <strong className="recap-score-value">{formatPoints(rivalResult.score)}</strong>
                   </div>
                 </div>
+                {/* STORY-055. Found live: a real dev-bot match reached this exact card showing
+                    "53.8 vs 53.8" under a decisive "You won" heading, with no explanation —
+                    `tieBreakDecided` (PRD §11 "state tie-break resolution explicitly rather than
+                    silently") was on the wire the whole time but no component ever read it. Only
+                    ever set when the two composite scores were EXACTLY equal (`messages.d.ts`'s
+                    own comment), so this note appearing is itself proof the two numbers above
+                    ARE the same fact, not a second contradicting one — the tie-break, not the
+                    score, is what decided the heading.
+                    A SECOND, narrower case caught in review rather than shipped silently: two
+                    UNEQUAL raw scores can still both round to the same `formatPoints` string
+                    (e.g. 700.04 vs 700.06, both "700.0") — `tieBreakDecided` stays null there
+                    (the chain never runs; `determineWinner` already had a strict, unrounded
+                    winner), so the branch above alone would leave this card showing an
+                    apparently-tied score with NO note at all under a decisive heading, which
+                    reads worse than no note ever existing (a player who has seen the exact-tie
+                    note once reads its absence as "these must really differ"). Checked against
+                    the FORMATTED strings, not the raw scores — this is a display-level fact, not
+                    a data one, so it must fire on exactly the condition a viewer can see. */}
+                {complete.tieBreakDecided ? (
+                  <p className="recap-score-tiebreak-note">
+                    Scores tied exactly — decided by {tieBreakCriterionLabel(complete.tieBreakDecided.criterion)}.
+                  </p>
+                ) : selfResult.score !== rivalResult.score && formatPoints(selfResult.score) === formatPoints(rivalResult.score) ? (
+                  <p className="recap-score-tiebreak-note">
+                    Too close to call at this precision — {selfResult.score > rivalResult.score ? 'you' : 'your rival'} finished ahead by less than 0.1.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -324,6 +351,10 @@ export function ResultsPanel({ status, onRematch }: ResultsPanelProps): JSX.Elem
                     rivalTitle={rivalTitle}
                     hasRival={hasRival && !!rivalResult && isScored(rivalResult)}
                     turningPoints={complete.turningPoints}
+                    // STORY-055. The SAME `outcome` value driving the heading/mascot/arcade
+                    // stage above — see `RecapScorecard.tsx`'s own comment on why "Key turning
+                    // points" needs this rather than a second derivation.
+                    outcome={outcome}
                     // STORY-049. `selfId` is guaranteed non-null in this branch: `selfResult`
                     // (checked in the outer `if` above) is only ever looked up via
                     // `selfId ? complete.results[selfId] : undefined`, so a truthy `selfResult`
