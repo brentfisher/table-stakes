@@ -1,7 +1,7 @@
 ---
 id: STORY-054
 title: Win celebration, Replay Reveal, and the Motion control
-status: pr-opened
+status: merged
 prd_source: /Users/brent/table-stakes/docs/PRD-recap-screen-redesign.md
 branch: story/054-recap-celebration-and-motion
 worktree_path: /Users/brent/table-stakes-worktrees/story-054-recap-celebration-and-motion

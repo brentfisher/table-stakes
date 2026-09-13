@@ -56,4 +56,4 @@ Statuses refreshed 2026-09-04 against master `5989635` (21 PRs merged), STORY-01
 | STORY-051 | [Arrange board — reorderable recap sections](STORY-051-recap-arrange-board.md) | merged |
 | STORY-052 | [Pre-reveal teaser — publish results-phase data early and shorten the dark wait](STORY-052-recap-pre-reveal-teaser.md) | merged |
 | STORY-053 | [Kitchen staging — don't show an incomplete order's early dishes as neglected](STORY-053-kitchen-staging-for-incomplete-orders.md) | merged |
-| STORY-054 | [Win celebration, Replay Reveal, and the Motion control](STORY-054-recap-celebration-and-motion.md) | pr-opened |
+| STORY-054 | [Win celebration, Replay Reveal, and the Motion control](STORY-054-recap-celebration-and-motion.md) | merged |
