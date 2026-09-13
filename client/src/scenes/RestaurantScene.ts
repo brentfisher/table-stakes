@@ -33,7 +33,7 @@ import {
   CUSTOMER_SEGMENT_COLORS,
   CUSTOMER_SEGMENT_COLOR_FALLBACK,
 } from '../game/state-colors';
-import { createGlyphSprite, createLabelSprite, setGlyphSpriteColor, setLabelSpriteText } from './icon-sprites';
+import { createGlyphSprite, createLabelSprite, createOrderLabelSprite, setGlyphSpriteColor, setLabelSpriteText } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 
 export interface OwnerRenderState {
@@ -645,6 +645,7 @@ export class RestaurantScene {
   private readonly competitor: THREE.Group;
   private readonly keyLight: THREE.DirectionalLight;
   private readonly ambient: THREE.AmbientLight;
+  private readonly practicalLights: THREE.PointLight[] = [];
   private readonly ambientBaseColor = 0xffffff;
 
   // --- STORY-016: 3D visual state language --------------------------------------------------
@@ -728,6 +729,21 @@ export class RestaurantScene {
     this.keyLight.shadow.bias = -0.0002;
     this.scene.add(new THREE.HemisphereLight(0xc5dcf2, 0x695138, 0.65));
     this.scene.add(this.keyLight);
+    // Warm practical pools keep the stainless work line and dining room dimensional. They do
+    // not cast additional shadows; the key light owns shadowing while these lights provide the
+    // amber bounce that the bloom pass can catch on the scene's authored Glow surfaces.
+    for (const lightSpec of [
+      { color: 0xffad58, intensity: 4.2, distance: 13, position: [-2, 5.8, 4] as const },
+      { color: 0xffd38a, intensity: 3.1, distance: 11, position: [4.5, 4.6, -1.5] as const },
+      { color: 0x78c9ff, intensity: 1.25, distance: 10, position: [-6, 3.6, -4] as const },
+    ]) {
+      const light = new THREE.PointLight(lightSpec.color, lightSpec.intensity, lightSpec.distance, 2);
+      light.position.set(lightSpec.position[0], lightSpec.position[1], lightSpec.position[2]);
+      light.userData.baseIntensity = lightSpec.intensity;
+      this.practicalLights.push(light);
+      this.scene.add(light);
+    }
+    this.scene.fog = new THREE.FogExp2(0x0b1512, 0.018);
 
     this.buildZones();
     this.buildEntities();
@@ -1972,10 +1988,11 @@ export class RestaurantScene {
     if (state.orderLabel) {
       if (existingOrderLabel?.userData.text !== state.orderLabel) {
         existingOrderLabel?.parent?.remove(existingOrderLabel);
-        const label = createLabelSprite(`WANTS ${state.orderLabel}`, STATE_COLORS.opportunity, 0.38);
+        const label = createOrderLabelSprite(state.orderLabel, 0.5);
         label.name = 'order_label';
         label.userData.text = state.orderLabel;
-        label.position.set(0, 1.35, 0);
+        label.position.set(0, 1.92, 0);
+        label.userData.orderPhase = (state.customerId.length % 11) * 0.31;
         group.add(label);
       }
     } else if (existingOrderLabel) {
@@ -2015,6 +2032,14 @@ export class RestaurantScene {
       const amplitude = amplitudeByBand[band] ?? 0;
       const body = group.getObjectByName('body');
       if (!body) continue;
+      const orderLabel = group.getObjectByName('order_label') as THREE.Sprite | undefined;
+      if (orderLabel) {
+        const phase = Number(orderLabel.userData.orderPhase ?? 0);
+        orderLabel.position.y = 1.92 + Math.sin(elapsedSeconds * 2.4 + phase) * 0.035;
+        const base = Number(orderLabel.userData.baseScale ?? 0.5);
+        const pulse = 1 + Math.sin(elapsedSeconds * 2.4 + phase) * 0.018;
+        orderLabel.scale.set(base * (560 / 170) * pulse, base * pulse, 1);
+      }
       if (amplitude === 0) {
         body.rotation.z = 0;
         body.position.y = 0;
@@ -2465,6 +2490,9 @@ export class RestaurantScene {
   setNight(night: boolean): void {
     this.ambient.intensity = night ? 0.32 : 0.48;
     this.keyLight.intensity = night ? 0.85 : 2.6;
+    for (const light of this.practicalLights) {
+      light.intensity = Number(light.userData.baseIntensity ?? light.intensity) * (night ? 0.72 : 1);
+    }
     this.scene.background = new THREE.Color(night ? 0x07110e : 0x0b1512);
   }
 
