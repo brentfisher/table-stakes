@@ -1277,6 +1277,10 @@ export class GameClient {
     this.scene.restaurant.updateReadyBellAnimation(this.elapsedSeconds);
     // STORY-031 PRD §5.3 — the destination-table marker's pulse/bob, same per-frame split.
     this.scene.restaurant.updateCarryTargetAnimations(this.elapsedSeconds);
+    // STORY-056 — the complaint marker's ring/glyph pulse, same per-frame split; the marker is
+    // already legible at rest (see `buildComplaintMarker`'s own comment), this is only the
+    // urgency accent on top.
+    this.scene.restaurant.updateComplaintMarkerAnimations(this.elapsedSeconds);
     // Smooths worker positions between ~10Hz snapshots — see updateWorkerAnimations's own
     // comment on why workers need this and owners don't.
     this.scene.restaurant.updateWorkerAnimations();
