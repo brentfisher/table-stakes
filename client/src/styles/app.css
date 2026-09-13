@@ -2533,17 +2533,24 @@ button.service-card-action { cursor:pointer; }
    story, they can now be visible AT THE SAME TIME. Pre-existing standalone positioning —
    `.command-scorecard` pinned top-right, `.tactical-overview` centered — collided badly: the
    centered overview's right-hand value column landed directly under the top-right card. Give
-   them a stacked, non-overlapping layout ONLY in this combined state (their independent
-   positioning elsewhere — e.g. `.kitchen-command-board .command-scorecard`'s own E-press
-   overlay — is untouched): the Command Center becomes a compact top banner (its own
-   `.command-objective-disclosure` detail hidden — that's the tallest single element and it adds
-   little beyond what `.tactical-overview`'s own constraint-diagnosis columns already say), and
-   the Tactical Overview anchors from the bottom with its height capped to the remaining space,
-   instead of being vertically centered and free to grow into the reserved top band. Placed at
-   the end of the stylesheet so it wins the cascade over the earlier width/position rules at
-   every breakpoint above (`.command-scorecard`'s own `@media` overrides included) without
-   needing `!important`. */
-.app:has(.tactical-overview) .command-scorecard {
+   them a stacked, non-overlapping layout ONLY in this combined state: the Command Center becomes
+   a compact top banner (its own `.command-objective-disclosure` detail hidden — that's the
+   tallest single element and it adds little beyond what `.tactical-overview`'s own
+   constraint-diagnosis columns already say), and the Tactical Overview anchors from the bottom
+   with its height capped to the remaining space, instead of being vertically centered and free
+   to grow into the reserved top band. Placed at the end of the stylesheet so it wins the cascade
+   over the earlier width/position rules at every breakpoint above (`.command-scorecard`'s own
+   `@media` overrides included) without needing `!important`.
+   IMPORTANT: `>` (direct-child), not a descendant combinator. `showKitchenCommandBoard` (E-press
+   near the physical board) and `showTacticalOverview` (Tab) are independent flags — a player can
+   have BOTH open at once (E at the board, then Tab) — and `KitchenCommandBoard.tsx` nests its own
+   `<CommandScorecard>` inside `<aside className="kitchen-command-board">`, which already applies
+   `position:relative` to that nested copy. `HudPanel.tsx` returns its `<CommandScorecard>` as a
+   direct child of `.app` (a fragment, not wrapped), so `>` selects ONLY that one and leaves the
+   nested kitchen-board copy exactly as `.kitchen-command-board .command-scorecard` already styles
+   it — a plain descendant selector here would out-specify that nested rule and visibly break the
+   E-press board's own card whenever Tab is also open. */
+.app:has(.tactical-overview) > .command-scorecard {
   top: 16px;
   right: auto;
   left: 50%;
@@ -2551,7 +2558,7 @@ button.service-card-action { cursor:pointer; }
   width: min(960px, 92vw);
   padding: 14px 22px;
 }
-.app:has(.tactical-overview) .command-scorecard .command-objective-disclosure { display: none; }
+.app:has(.tactical-overview) > .command-scorecard .command-objective-disclosure { display: none; }
 .app:has(.tactical-overview) .tactical-overview {
   top: auto;
   bottom: 16px;

@@ -870,17 +870,20 @@ export class RestaurantScene {
     // (`shared/game-data/restaurant-layout.json`'s `bounds`: x -9..9, z -12..12) onto it: the
     // worst-case corners land at left/right ≈ ±14.8 (x_cam has a zero world-y component, so
     // standing height never makes this worse) and top/bottom ≈ ±10.8 at floor level, growing to
-    // ≈ +13.7 at the top for a ~5m-tall prop. (A first pass at ±11/top:14/bottom:-16 clipped the
-    // real floor's far corners on x — caught only by re-deriving this math, since the resulting
-    // shadow loss reads as the floor going flatter there, not as a visible hard edge.) Tightened
-    // to left:-16/right:16 (~1.2 margin past the ±14.8 requirement) and top:14/bottom:-16 (top
-    // has ~0.3 margin past the ~13.7 tall-prop case; bottom has generous margin toward the
+    // ≈ +13.7 at the top for a ~5m-tall prop — that 13.7 figure rests on an ASSUMED prop height,
+    // not a measured one, so top is given real margin past it rather than trimmed to match it
+    // exactly. (A first pass at ±11/top:14/bottom:-16 clipped the real floor's far corners on x —
+    // caught only by re-deriving this math, since the resulting shadow loss reads as the floor
+    // going flatter there, not as a visible hard edge.) Tightened to left:-16/right:16 (~1.2
+    // margin past the ±14.8 requirement), top:16 (~2.3 margin past the ~13.7 tall-prop estimate,
+    // rather than the ~0.3 a bare top:14 would leave), and bottom:-16 (generous margin toward the
     // street/rival side — the rival's slab at `buildCompetitor()`'s z -20..-31 was never fully
     // covered even by the OLD bottom:-20, so -16 here is not a new regression there). Net area
-    // 32×30=960 vs the original 36×40=1440 — about 1.5x shadow-map texel density at the SAME
+    // 32×32=1024 vs the original 36×40=1440 — about 1.4x shadow-map texel density at the SAME
     // 2048 resolution, a real if more modest win than a naive (and wrong) world-space reading of
-    // the old numbers would suggest.
-    Object.assign(this.keyLight.shadow.camera, { left: -16, right: 16, top: 14, bottom: -16, near: 1, far: 60 });
+    // the old numbers would suggest. Visually confirmed no clipping at the kitchen's far back
+    // corners (pantry shelving, fridge/wash station) via the `restaurant-layout` harness.
+    Object.assign(this.keyLight.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 60 });
     this.keyLight.shadow.normalBias = 0.035;
     this.keyLight.shadow.bias = -0.0002;
     // STORY-059: was 0.65 — darkened alongside `ambient` above, same reasoning.

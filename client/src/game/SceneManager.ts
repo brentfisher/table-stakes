@@ -98,16 +98,20 @@ export class SceneManager {
     // A restrained threshold keeps practical lights and authored Glow materials luminous while
     // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
     // scene gains the warm AAA catchlight from the reference without becoming hazy.
-    // STORY-059: `UnrealBloomPass` already halves whatever `resolution` it's given for its own
-    // internal mip chain (see its constructor: `resx = Math.round(resolution.x / 2)`), so its
-    // brightest render target was already running at half of whatever we pass in. Passing HALF
-    // of `EffectComposer`'s own effective resolution (`container size * devicePixelRatio` — the
-    // SAME basis `EffectComposer.setSize` uses internally, see `handleResize` below) drops that
-    // internal target to a quarter of the composer's effective area — ~4x less shader work for
-    // the whole 5-mip blur/composite chain — and stays visually identical because bloom is a
-    // soft, low-frequency effect by nature: the extra downsample is invisible once blurred back
-    // up. `strength`/`radius`/`threshold` (0.28/0.48/0.84) are UNCHANGED — those control the
-    // look, this only cuts cost.
+    // STORY-059: whatever `resolution` this is constructed with barely mattered pre-fix — see
+    // the comment right after `addPass` below on why `EffectComposer` immediately overrides it
+    // to its own FULL effective (pixelRatio-scaled) resolution regardless of what's passed here.
+    // The actual cost cut is in that later `bloomPass.setSize(...)` call: it deliberately passes
+    // HALF of `EffectComposer`'s effective resolution instead of the full amount `addPass` would
+    // otherwise leave in place. `UnrealBloomPass.setSize` then halves THAT again for its own
+    // internal 5-mip render-target chain (`resx = Math.round(width / 2)`), so the net effect is a
+    // real, if devicePixelRatio-dependent, reduction in the internal render targets' area versus
+    // the FULL effective resolution the old code was actually running at — not the "already
+    // half-size" a bare reading of the pre-story constructor argument would suggest (that halving
+    // never survived `addPass`). Stays visually identical either way because bloom is a soft,
+    // low-frequency effect by nature: the extra downsample is invisible once blurred back up.
+    // `strength`/`radius`/`threshold` (0.28/0.48/0.84) are UNCHANGED — those control the look,
+    // this and the devicePixelRatio cap below are the only pure cost cuts.
     const bloomResolution = new THREE.Vector2(
       (container.clientWidth * this.renderer.getPixelRatio()) / 2,
       (container.clientHeight * this.renderer.getPixelRatio()) / 2,
