@@ -9,6 +9,7 @@ import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
 import { DEFAULT_CAMERA, PEEK_CAMERA } from './CameraController';
 import { PEEK_CAMERA_TARGET_Z } from '../../../shared/constants/tuning';
+import type { PhasePreset } from '../../../shared/constants/tuning';
 import type {
   BotSnapshotEntry,
   CustomerSnapshot,
@@ -190,6 +191,10 @@ export interface GameClientStatus {
    */
   sharedRestaurant: boolean;
   seed: string | null;
+  /** Off the `joined` message, once. Lets the HUD scale an urgency threshold against the
+   * phase's own real length (`PHASE_DURATIONS_MS[phasePreset][matchPhase]`) instead of a flat
+   * second count that would fire too early under `prototype`/`smoke` and too late under `full`. */
+  phasePreset: PhasePreset | null;
   playerCount: number;
   serverTime: number;
   matchPhase: MatchPhase | null;
@@ -433,6 +438,7 @@ export class GameClient {
     restaurantId: null,
     sharedRestaurant: false,
     seed: null,
+    phasePreset: null,
     playerCount: 0,
     serverTime: 0,
     matchPhase: null,
@@ -659,9 +665,7 @@ export class GameClient {
     // STORY-015 §8 "Tab: tactical overview panel". `InputController` already gates WHEN this
     // fires (`setTacticalOverviewEnabled`, updated below on every phase change); this is only
     // the toggle itself.
-    this.input.onToggleOverview = () => {
-      this.patchStatus({ showTacticalOverview: !this.status.showTacticalOverview });
-    };
+    this.input.onToggleOverview = () => this.toggleTacticalOverview();
     // STORY-034. `Q`, held — the keyboard equivalent of the HUD's own Peek button
     // (`setPeeking`'s own comment). Both drive the exact same status field, so holding the
     // button and holding Q compose correctly (releasing one while still holding the other keeps
@@ -742,6 +746,7 @@ export class GameClient {
         roomId: String(message.roomId),
         playerId: String(message.playerId),
         seed: String(message.seed),
+        phasePreset: (message.phasePreset as PhasePreset | undefined) ?? null,
         reconnecting: false,
       });
       return;
@@ -1190,6 +1195,16 @@ export class GameClient {
   /** PRD §12 room-flow step 7 / §5 "ready up". Accepted by the server in lobby and setup. */
   setReady(ready = true): void {
     this.network.sendReady(ready);
+  }
+
+  /**
+   * PRD §8 "Tab: tactical overview panel". Client-only state, same field `Tab`
+   * (`InputController#onToggleOverview`) already drives — a dedicated method so a mouse-clickable
+   * on-screen affordance (the HUD's overview toggle handle) and the keyboard shortcut compose
+   * through one place, same reasoning `setPeeking`'s own comment gives for the peek button.
+   */
+  toggleTacticalOverview(): void {
+    this.patchStatus({ showTacticalOverview: !this.status.showTacticalOverview });
   }
 
   /**

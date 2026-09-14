@@ -2242,7 +2242,70 @@ button.service-card-action { cursor:pointer; }
 .service-card-action span { font-size:26px; font-weight:400; }
 .service-card-action kbd { border:1px solid #647354; padding:3px 7px; border-radius:3px; }
 .service-card p { margin:16px 0 0; text-align:center; font-size:11px; color:#cbd0be; }
+/* Reported: the pre-service card ("Welcome in.") never showed a countdown at all, and the
+   ready-up control gave no sense that time was passing. `preServiceCountdownMs` (HudPanel.tsx)
+   now fills that metric slot whenever the phase actually has a deadline (not `lobby`, which has
+   none — Match#timeRemainingMs), and `--service-card-countdown-pct` (also set inline, only when
+   the phase's total length is known) drives a shrinking fill on the ready-up button itself —
+   STORY-058's own AC named this exact device family (a fill/progress treatment on the control a
+   player actually uses) over inventing a new one. `--urgent` reuses the SAME attention-pulse
+   `.interact-prompt--deliver` already uses (`deliver-prompt-pulse`, below) rather than a new
+   animation, swapped to `--bad` (this is time running out, not a waiting-for-input prompt). */
+.service-card-action { position:relative; overflow:hidden; }
+.service-card-action::before {
+  content:'';
+  position:absolute; inset:0;
+  width:var(--service-card-countdown-pct, 100%);
+  background:#c7935f4d;
+  transition:width 1s linear;
+  pointer-events:none;
+}
+.service-card--urgent .service-card-metrics > div:first-child strong { color:var(--bad); }
+.service-card--urgent .service-card-action { animation:service-card-urgent-pulse 1.1s ease-in-out infinite; }
+/* Same spreading-ring shape/timing as `deliver-prompt-pulse` above, in `--bad` instead of
+   `--warn` — a distinct keyframe rather than a shared one because that one's colors are
+   hardcoded per-stop, not variable-driven, so reusing it here would still pulse amber. */
+@keyframes service-card-urgent-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #c75f5f80; }
+  50% { box-shadow: 0 0 0 10px #c75f5f00; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .service-card--urgent .service-card-action { animation:none; }
+}
 .hud.hud-details { top:122px; left:32px; min-width:190px; max-width:340px; max-height:calc(100vh - 220px); overflow:auto; background:rgba(20,35,28,.96); border-color:#3d4c3d; border-radius:12px; pointer-events:auto; padding:12px 16px; font-size:12px; }
+/* Reported: the Command Center overlay ("dominates the screen" once open) had no discoverable
+   affordance at all while closed — a player who never happened to press Tab had no on-screen
+   hint it existed. A drawer handle fixed to the right edge, always present during service,
+   independent of whether the overlay is open: an arrow that flips to point back the other way,
+   plus the literal bound key, so this reads as a toggle rather than a random label. */
+.overview-toggle {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px 12px 14px;
+  border: 1px solid #8ac9ff60;
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  background: rgba(15, 28, 40, .82);
+  color: #d9ecff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  box-shadow: -4px 0 16px #0005;
+}
+.overview-toggle:hover { background: rgba(20, 38, 54, .92); border-color: #8ac9ffa0; }
+.overview-toggle-arrow { font-size: 15px; line-height: 1; transform: rotate(180deg); transition: transform .2s ease; }
+.overview-toggle--open .overview-toggle-arrow { transform: rotate(0deg); }
+.overview-toggle kbd { writing-mode: horizontal-tb; border: 1px solid #8ac9ff60; border-radius: 3px; padding: 2px 5px; background: #0d1c28; }
+@media(max-width:700px) { .overview-toggle { padding: 9px 7px 9px 10px; font-size: 10px; } }
 .hud-details summary { cursor:pointer; display:flex; justify-content:space-between; gap:20px; list-style:none; color:#c8bb94; font-size:11px; letter-spacing:1px; }
 .hud-details[open] summary { margin-bottom:14px; }
 .scope-note { display:none; }
@@ -2602,3 +2665,38 @@ button.service-card-action { cursor:pointer; }
 .restaurant-audio :focus-visible { outline: 2px solid #ffcf70; outline-offset: 4px; }
 .restaurant-audio-mixer .restaurant-audio-note { margin-bottom: 0; font-size: 10px; }
 @media (max-width: 640px) { .restaurant-audio { right: 10px; bottom: 10px; } .restaurant-audio-mixer { max-height: calc(100dvh - 110px); overflow: auto; } }
+
+/* Reported: pressing Tab "dominates the screen" and two DIFFERENT overlays end up layered on
+   top of each other unreadably. Two distinct problems, two fixes, both placed at the end of the
+   sheet (same STORY-059 technique above) so they win the cascade over the earlier declarations
+   without `!important`.
+
+   1. TRANSPARENCY. `.command-scorecard`/`.tactical-overview` were both effectively ~85-95%
+      opaque, reading as opaque walls over the 3D floor rather than an overlay on top of it.
+      Dropped meaningfully further — still legible (`backdrop-filter: blur` already does the
+      contrast work), but the restaurant behind is now actually visible through them.
+
+   2. THE Z-INDEX COLLISION. `.outside-event-stack` (z-index:10, `bottom:190px`) and
+      `.service-notifications` (z-index:10, `bottom:38px`) were both authored before
+      `.tactical-overview` could ever render this large or this low on screen (STORY-059 widened
+      it to `bottom:16px` with `max-height:calc(100vh - 300px)` — see that story's own comment).
+      Neither was revisited, so both now render ON TOP of the Tactical Overview's own content
+      (z-index:4) whenever Tab is open, exactly as reported. Rather than re-deriving a stacked
+      layout for a THIRD independent absolutely-positioned element, hide both while the combined
+      overlay is open: `.outside-event-stack`'s active/upcoming events are already restated in
+      `.tactical-overview`'s own "Events" section (`TacticalOverviewPanel.tsx`), so nothing is
+      lost, only de-duplicated; `.service-notifications`' ready-ticket staleness nudges are a
+      "come back to the floor" prompt that can wait the few seconds a player spends deliberately
+      stepped back reviewing strategy — the same tradeoff `TacticalOverviewPanel.tsx`'s own header
+      names for opening it at all. */
+/* `>` not a descendant combinator — same reasoning as STORY-059's own identical guard above:
+   `KitchenCommandBoard.tsx` nests its own `<CommandScorecard>` inside `.kitchen-command-board`,
+   which is not what this fix is about and already positions/sizes itself correctly. */
+.app:has(.tactical-overview) > .command-scorecard {
+  background: linear-gradient(120deg, rgba(26, 43, 57, .55), rgba(10, 23, 36, .5));
+}
+.app:has(.tactical-overview) .tactical-overview { background: rgba(12, 15, 19, .62); }
+.app:has(.tactical-overview) .outside-event-stack,
+.app:has(.tactical-overview) .service-notifications {
+  display: none;
+}

@@ -32,6 +32,16 @@ const clientBuildDir = join(here, '../public/client-build');
 app.use(express.static(clientBuildDir));
 
 /**
+ * The dev harnesses, built (`npm run build:harnesses`) and served under this one origin
+ * alongside the client, so `npm start`/Docker reaches them at `/harnesses/` without a second
+ * process on port 5174. `harnesses/vite.config.ts` sets `base: '/harnesses/'` for exactly this
+ * — its own asset paths are rooted here, not `/`. `express.static` 404s (falls through) when
+ * `harnesses/dist` doesn't exist, e.g. a `dev:server`-only run that never built harnesses — this
+ * route degrades to the client's SPA fallback below rather than failing to boot.
+ */
+app.use('/harnesses', express.static(join(here, '../../harnesses/dist')));
+
+/**
  * STORY-023/024. `router.ts`'s client-side routes (`/join/:token`, `/lobby/:roomId`,
  * `/game/:roomId`, etc.) have no matching file under `client-build/` — a fresh tab opening one
  * of them is exactly a guest's FIRST request, not a follow-up to an already-loaded app, so there

@@ -107,10 +107,15 @@ export class RestaurantAudio {
       this.beat++; this.nextBeat += 60 / 78 / 2;
     }
     if (ctx.currentTime >= this.nextFoley) {
-      this.tone(82, ctx.currentTime + 0.03, 0.22, 0.028, this.room!, true);
-      this.tone(89, ctx.currentTime + 0.17, 0.17, 0.018, this.room!, true);
-      if (this.cooking) this.tone(45, ctx.currentTime + 0.31, 0.18, 0.045, this.room!, true);
-      this.nextFoley = ctx.currentTime + (this.cooking ? 3.8 : 7) + Math.random() * 2;
+      // Reported: this reads as silent against the effects-bus cues (the 'earned' cue alone is
+      // roughly 5x louder per partial and fires on a bright, unmissable chord) — not a "never
+      // runs" bug (the schedule below is unconditional whenever `this.active`), just tuned too
+      // quiet and too sparse (every 7-10s idle) to register as an ambient presence at all.
+      // Raised levels and shortened the gap; still well under the effects bus, deliberately.
+      this.tone(82, ctx.currentTime + 0.03, 0.22, 0.08, this.room!, true);
+      this.tone(89, ctx.currentTime + 0.17, 0.17, 0.05, this.room!, true);
+      if (this.cooking) this.tone(45, ctx.currentTime + 0.31, 0.18, 0.09, this.room!, true);
+      this.nextFoley = ctx.currentTime + (this.cooking ? 2.2 : 4) + Math.random() * 1.5;
     }
   }
   cue(cue: AudioCue): void {
