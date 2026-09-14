@@ -1,6 +1,10 @@
-# table-stakes
+# Table Stakes
 
-### *Rival Restaurant* — run the floor, and beat the restaurant next door for the same customers.
+### Run the floor. Win the crowd. Beat the restaurant next door.
+
+<p align="center">
+  <img src="docs/pr-screenshots/main-menu-neon-sign.jpg" alt="The Table Stakes main menu, with its animated neon restaurant sign" width="820">
+</p>
 
 A real-time, head-to-head restaurant-management game. Two players each run their own restaurant
 in a shared district: a timed setup phase (menu, prices, inventory, staffing, one policy)
@@ -8,11 +12,9 @@ precedes a real-time service phase where each player embodies the owner on the f
 parties, expediting the kitchen, and reacting to whatever the shift throws at them, while a
 shared pool of customers decides, table by table, who's actually worth walking into.
 
-Full specification: `PRD_ Rival Restaurant — Competitive Service Manage.pdf`.
-
-<p align="center">
-  <img src="docs/pr-screenshots/story-059-scene-after.jpg" alt="Copper &amp; Thyme restaurant at service, night lighting" width="820">
-</p>
+Full specification: `PRD_ Rival Restaurant — Competitive Service Manage.pdf` (*Rival Restaurant*
+was the PRD's working title; the shipped game is branded **Table Stakes**, as seen in the menu
+above).
 
 ## Status
 
@@ -31,9 +33,13 @@ restaurant than the PRD's target range — see `docs/kb/conventions.md`'s Open B
 |:---:|:---:|
 | ![Choosing three mains on the ready-up menu, with a live 3D dish preview](docs/pr-screenshots/story-038-three-stage-ready-up.png) | ![A restaurant mid-Final-Rush, HUD and scoreboard visible](docs/pr-screenshots/copper-and-thyme-main-service.png) |
 
-| Management layer | |
+| Night service | Management layer |
 |:---:|:---:|
-| ![The Manager's Ledger diagnosing the current service pressure](docs/pr-screenshots/story-037-managers-ledger.png) | ![The Kitchen Command board comparing ticket priority under six different focuses](docs/pr-screenshots/story-036-kitchen-command-board.png) |
+| ![Copper & Thyme restaurant at service, night lighting](docs/pr-screenshots/story-059-scene-after.jpg) | ![The Manager's Ledger diagnosing the current service pressure](docs/pr-screenshots/story-037-managers-ledger.png) |
+
+| Kitchen command |
+|:---:|
+| ![The Kitchen Command board comparing ticket priority under six different focuses](docs/pr-screenshots/story-036-kitchen-command-board.png) |
 
 ## Layout
 
@@ -207,3 +213,7 @@ The main game and all development harnesses load the adapted Copper & Thyme rest
 See [scene integration and authoring](docs/kb/copper-and-thyme-integration.md) for export steps,
 asset provenance, runtime behavior and visual checks. In Restaurant Layout, toggle
 **Copper & Thyme artwork** to compare it with the procedural fallback.
+
+## License
+
+All rights reserved — see [`LICENSE`](LICENSE). This is not open-source software.
