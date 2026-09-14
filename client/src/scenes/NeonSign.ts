@@ -114,7 +114,7 @@ export class NeonRestaurantSign {
     this.options = {
       reducedMotion: options.reducedMotion ?? false,
       sparks: options.sparks ?? true,
-      bloom: options.bloom ?? 0.6,
+      bloom: options.bloom ?? 0.4,
     };
     this.nextBurst = nextSparkDelay();
 

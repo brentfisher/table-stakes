@@ -37,6 +37,7 @@ import { readFileSync } from 'node:fs';
 import {
   OWNER_TASK_DURATIONS_MS,
   OWNER_TASK_SPEED_ADVANTAGE,
+  OWNER_INTERACT_RANGE,
   OWNER_CARRY_CAPACITY,
   OWNER_SPRINT_MAX_MS,
   OWNER_SPRINT_COOLDOWN_MS,
@@ -45,6 +46,7 @@ import {
   WORKER_RESTOCK_THRESHOLD_UNITS,
   WORKER_TASK_DURATIONS_MS,
   STARTING_INVENTORY_MAX_UNITS_PER_INGREDIENT,
+  SERVICE_PASS_REACH_HALF_WIDTH,
 } from '../shared/constants/tuning.js';
 
 const results = [];
@@ -535,6 +537,46 @@ function cookProbe(id) {
     'the second plate stays on the pass, available to a worker or a later pickup',
     match.kitchen.readyOrders('p1').length === 1,
     `readyOrders=${match.kitchen.readyOrders('p1').length}`,
+  );
+}
+
+// =============================================================================================
+// 4b. pickup reaches the FULL WIDTH of the pass, not just its center anchor — reported bug fix.
+// Ready-dish proxies render across the whole counter (`RestaurantScene.ts`'s
+// `READY_DISH_SLOT_X_RANGE`, `SERVICE_PASS_REACH_HALF_WIDTH`'s own comment), so `pickup`'s range
+// check is a rectangle over the counter's width/depth, not a circle from its single anchor.
+// =============================================================================================
+{
+  const match = cookProbe('m_pass_width');
+  const passEntity = ENTITY_BY_ID.get('service_pass');
+  const [passX, , passZ] = passEntity.position;
+
+  plantReadyOrder(match, { customerId: 'party_probe_width', tableId: 'table_1' });
+  match.players.get('p1').position = { x: passX + SERVICE_PASS_REACH_HALF_WIDTH, y: 0, z: passZ };
+  const farEnd = interact(match, 'p1', 'service_pass', 'pickup');
+  check(
+    'pickup succeeds at the counter\'s far end, not just its center anchor',
+    farEnd.ok === true && match.players.get('p1').carrying.length === 1,
+    JSON.stringify(farEnd),
+  );
+  match.players.get('p1').pendingAction = null;
+  match.players.get('p1').carrying = [];
+
+  plantReadyOrder(match, { customerId: 'party_probe_width_b', tableId: 'table_2' });
+  match.players.get('p1').position = { x: passX + SERVICE_PASS_REACH_HALF_WIDTH + 1, y: 0, z: passZ };
+  const pastEnd = interact(match, 'p1', 'service_pass', 'pickup');
+  check(
+    'pickup is still rejected past the counter\'s actual width, not unbounded',
+    pastEnd.ok === false && pastEnd.reason === 'out_of_range',
+    JSON.stringify(pastEnd),
+  );
+
+  match.players.get('p1').position = { x: passX, y: 0, z: passZ + OWNER_INTERACT_RANGE + 1 };
+  const tooDeep = interact(match, 'p1', 'service_pass', 'pickup');
+  check(
+    'pickup is rejected standing far in front of/behind the counter, even at its center x',
+    tooDeep.ok === false && tooDeep.reason === 'out_of_range',
+    JSON.stringify(tooDeep),
   );
 }
 

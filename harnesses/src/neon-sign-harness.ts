@@ -22,11 +22,11 @@ export const neonSignHarness: SceneHarness = (() => {
       const panel = new DevControls('Neon sign controls');
       container.append(viewport, panel.element);
 
-      sign = new NeonRestaurantSign(viewport, { sparks: true, bloom: 0.6, reducedMotion: false });
+      sign = new NeonRestaurantSign(viewport, { sparks: true, bloom: 0.4, reducedMotion: false });
       const activeSign = sign;
 
       panel.addToggle('Sparks', true, (value) => activeSign.configure({ sparks: value }));
-      panel.addSlider('Bloom', { min: 0, max: 1.5, step: 0.05, value: 0.6 }, (value) => activeSign.configure({ bloom: value }));
+      panel.addSlider('Bloom', { min: 0, max: 1.5, step: 0.05, value: 0.4 }, (value) => activeSign.configure({ bloom: value }));
       panel.addToggle('Reduced motion', false, (value) => activeSign.configure({ reducedMotion: value }));
       panel.addSeparator();
       panel.addButton('Trigger spark burst', () => activeSign.spark(60));

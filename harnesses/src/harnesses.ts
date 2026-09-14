@@ -21,6 +21,7 @@ import { arcadeFoodHarness } from './arcade-food-harness';
 import { managerLedgerHarness } from './manager-ledger-harness';
 import { readyUpMenuHarness } from './ready-up-menu-harness';
 import { neonSignHarness } from './neon-sign-harness';
+import { audioEffectsHarness } from './audio-effects-harness';
 import type { SceneHarness } from './harness-shell';
 
 export const harnesses: SceneHarness[] = [
@@ -38,4 +39,5 @@ export const harnesses: SceneHarness[] = [
   managerLedgerHarness,
   readyUpMenuHarness,
   neonSignHarness,
+  audioEffectsHarness,
 ];
