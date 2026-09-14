@@ -91,7 +91,7 @@ function createRestaurantLayoutHarness(): SceneHarness {
       });
       panel.addToggle('Debug grid', false, (v) => scene?.setDebugGrid(v));
       panel.addToggle('Competitor visible', true, (v) => scene?.setCompetitorVisible(v));
-      panel.addToggle('Night lighting', false, (v) => scene?.setNight(v));
+      const setNightToggle = panel.addToggle('Night lighting', false, (v) => scene?.setNight(v));
       panel.addToggle('Kitchen zone', true, (v) => { if (kitchen) kitchen.visible = v; });
       panel.addToggle('Dining zone', true, (v) => { if (dining) dining.visible = v; });
       panel.addToggle('Spawn staff', false, (v) => { if (staff) staff.visible = v; });
@@ -115,15 +115,33 @@ function createRestaurantLayoutHarness(): SceneHarness {
       let orbiting = false;
       panel.addToggle('Owner walks a circle', false, (v) => { orbiting = v; });
 
-      panel.addSlider('Camera height', { min: 6, max: 34, step: 0.5, value: DEFAULT_CAMERA.height },
+      const setCameraHeight = panel.addSlider('Camera height', { min: 6, max: 34, step: 0.5, value: DEFAULT_CAMERA.height },
         (v) => camera?.setSettings({ height: v }));
-      panel.addSlider('Camera distance', { min: 4, max: 34, step: 0.5, value: DEFAULT_CAMERA.distance },
+      const setCameraDistance = panel.addSlider('Camera distance', { min: 4, max: 34, step: 0.5, value: DEFAULT_CAMERA.distance },
         (v) => camera?.setSettings({ distance: v }));
-      panel.addSlider('Camera angle', { min: -Math.PI, max: Math.PI, step: 0.02, value: DEFAULT_CAMERA.angle },
+      const setCameraAngle = panel.addSlider('Camera angle', { min: -Math.PI, max: Math.PI, step: 0.02, value: DEFAULT_CAMERA.angle },
         (v) => camera?.setSettings({ angle: v }));
-      panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: DEFAULT_CAMERA.fov },
+      const setCameraFov = panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: DEFAULT_CAMERA.fov },
         (v) => camera?.setSettings({ fov: v }));
       panel.addButton('Reset camera', () => camera?.setSettings({ ...DEFAULT_CAMERA }));
+
+      // Reported: "make a toggle for lighting and the night view of cameras" — one-click
+      // combination of `setNight(true)` with a camera framing suited to showing it off, rather
+      // than making someone flip the lighting checkbox and then hand-tune all four sliders to
+      // find a flattering angle. Lower and closer than `DEFAULT_CAMERA` so the neon/glow sources
+      // (pass, signage) read larger in frame — a plain "reuse the day angle" preset would just
+      // show the same footprint, darker, not really "a night VIEW". Purely additive: the
+      // existing checkbox/sliders are untouched and still independently usable.
+      const NIGHT_CAMERA = { height: 10, distance: 12, angle: DEFAULT_CAMERA.angle, fov: 42 };
+      panel.addButton('Night view', () => {
+        scene?.setNight(true);
+        setNightToggle(true);
+        camera?.setSettings(NIGHT_CAMERA);
+        setCameraHeight(NIGHT_CAMERA.height);
+        setCameraDistance(NIGHT_CAMERA.distance);
+        setCameraAngle(NIGHT_CAMERA.angle);
+        setCameraFov(NIGHT_CAMERA.fov);
+      });
 
       const fpsReadout = panel.addReadout('FPS');
 

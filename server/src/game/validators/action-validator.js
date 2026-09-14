@@ -48,6 +48,7 @@ import {
   OWNER_TASK_DURATIONS_MS,
   OWNER_CARRY_CAPACITY,
   WORKER_RESTOCK_THRESHOLD_UNITS,
+  SERVICE_PASS_REACH_HALF_WIDTH,
 } from '../../../../shared/constants/tuning.js';
 import { STATIONS } from '../../../../shared/schemas/messages.js';
 import layout from '../../../../shared/game-data/restaurant-layout.json' with { type: 'json' };
@@ -185,6 +186,22 @@ function requireRange(player, position, label) {
   return null;
 }
 
+const SERVICE_PASS_ENTITY = ENTITY_BY_ID.get('service_pass');
+
+/** See `SERVICE_PASS_REACH_HALF_WIDTH`'s own comment (`shared/constants/tuning.js`) for why
+ * `pickup` needs a rectangle, not `requireRange`'s circle: the counter ready-dishes render
+ * across is wide, and a circle centered on its single anchor point left the far ends
+ * unreachable. `InteractionController.ts#pickupCandidate` mirrors this exactly, so the client
+ * prompt and this authority never disagree about where `pickup` is legal. */
+function requireServicePassRange(player, label) {
+  if (!SERVICE_PASS_ENTITY) return fail('interact_rejected', 'no_such_target', label);
+  const [passX, , passZ] = SERVICE_PASS_ENTITY.position;
+  const withinWidth = Math.abs(player.position.x - passX) <= SERVICE_PASS_REACH_HALF_WIDTH;
+  const withinDepth = Math.abs(player.position.z - passZ) <= OWNER_INTERACT_RANGE;
+  if (!withinWidth || !withinDepth) return fail('interact_rejected', 'out_of_range', label);
+  return null;
+}
+
 function resolveCookOrPlate(match, restaurantId, player, targetId, action) {
   if (!isStationId(targetId)) return fail('interact_rejected', 'no_such_target', targetId);
   const station = stationNameOf(targetId);
@@ -211,7 +228,7 @@ function resolveCookOrPlate(match, restaurantId, player, targetId, action) {
 
 function resolvePickup(match, restaurantId, player, targetId) {
   if (targetId !== 'service_pass') return fail('interact_rejected', 'no_such_target', targetId);
-  const outOfRange = requireRange(player, staticTargetPosition(targetId), targetId);
+  const outOfRange = requireServicePassRange(player, targetId);
   if (outOfRange) return outOfRange;
 
   // STORY-012. `match.upgrades` is undefined before `service` first ticks (defensive, exactly

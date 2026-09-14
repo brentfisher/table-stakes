@@ -121,6 +121,22 @@ export function SettingsPanel({ onClose }: { onClose: () => void }): JSX.Element
         </section>
 
         <section className="settings-section">
+          <h3>Camera</h3>
+          <label className="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={settings.wideCameraView}
+              onChange={(event) => patch({ wideCameraView: event.target.checked })}
+            />
+            Wide camera view
+          </label>
+          <p className="muted settings-note">
+            The default in-match camera is a closer, more embodied view. This restores the
+            original wider overview framing. Applies at the start of your next match.
+          </p>
+        </section>
+
+        <section className="settings-section">
           <h3>Menu sign</h3>
           <label className="settings-checkbox">
             <input

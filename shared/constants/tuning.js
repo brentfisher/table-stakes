@@ -901,6 +901,22 @@ export const OWNER_INTERACT_RANGE = 2.2;
 export const OWNER_DELIVERY_RANGE = 3.1;
 
 /**
+ * Reported: "if the dishes for a table are ready, you should be able to pick up any of them ...
+ * it seems like you need to go to one spot to grab all the dishes." Root cause: `service_pass`
+ * is a single 16-unit-wide counter (`RestaurantScene.ts`'s `buildEntity` case), and ready-dish
+ * proxies render spread across its FULL width — `READY_DISH_SLOT_X_RANGE` (world x -6.5..6.5,
+ * same value as this constant, kept in sync by comment since one is a render-only client
+ * constant and this one is shared wire-validated tuning) — but `pickup`'s interact range was a
+ * single `OWNER_INTERACT_RANGE` (2.2) circle centered on the counter's own anchor point (x=0).
+ * A dish rendered at the counter's far end sat visually right in front of the player while the
+ * SERVER still rejected `pickup` as `out_of_range` unless they walked all the way back to x=0 —
+ * "one spot" for every dish, regardless of which one was actually closest. `InteractionController
+ * .ts#pickupCandidate` and `action-validator.js#resolvePickup` both check this as a RECTANGLE
+ * (within this half-width in x, within `OWNER_INTERACT_RANGE` in z of the counter's own z), not a
+ * circle — the counter is wide, not a point, so the reachable zone should be too. */
+export const SERVICE_PASS_REACH_HALF_WIDTH = 6.5;
+
+/**
  * The owner's per-action duration, derived from the worker's — never a second set of numbers,
  * for the same reason `WORKER_MOVE_SPEED` is derived rather than tuned: the differential is the
  * thing under test, and two free numbers would let it drift silently. See

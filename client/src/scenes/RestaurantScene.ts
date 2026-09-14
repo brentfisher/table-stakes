@@ -1150,8 +1150,24 @@ export class RestaurantScene {
         this.scene.getObjectByName(entity.id)?.add(badge);
       }
     }
+    // Reported: "the expo rail has the icons overlap the board and you can't see them at times."
+    // Root cause — this sign and `kitchen_order_queue_board` (STORY-057's back-wall expo rail,
+    // `restaurant-layout.json` position [-3, 0, 10.8]) occupy overlapping world space: the
+    // board's card grid spans world x -7..1, y 0..4.4 (`QUEUE_BOARD_ROW_Y`'s top row centers at
+    // y=3.25), plus its own "EXPO RAIL" label/badge up to y=6.0 (`QUEUE_BOARD_LABEL_Y`/
+    // `QUEUE_BOARD_BADGE_Y`) — this sign's OLD y=3.6 sat squarely inside that top row's band, at
+    // an x/z close enough to the board's face to land in the same screen region from the default
+    // camera angle. `createLabelSprite` renders with `depthTest: false` (a deliberate choice for
+    // small always-on-top badges — see that function's own header), so whenever the two
+    // overlapped on screen this sign always won, painting over whichever dish card sat behind it
+    // — "can't see them AT TIMES" because the collision is only visible once the board actually
+    // has cards queued there. Raised well clear of the board's tallest element (badge at y=6.0)
+    // rather than shifted in x/z, since re-deriving a camera-projection offset is more fragile
+    // than a comfortable, direct vertical margin. Re-verified in the browser
+    // (`?harness=kitchen-bottleneck`, "Spawn rush (8 tickets)"): no overlap with any card/badge
+    // at this height, at the width this board's grid actually uses.
     const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 1.3);
-    title.position.set(0, 3.6, 11.8);
+    title.position.set(0, 7.2, 11.8);
     title.name = 'restaurant_identity';
     this.scene.add(title);
     const rival = createLabelSprite('RIVAL', 0xf0c2ad, 1.15);

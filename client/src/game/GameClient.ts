@@ -7,7 +7,8 @@ import { StateInterpolator, type PlayerState } from './StateInterpolator';
 import { EntityViewRegistry } from './EntityViewRegistry';
 import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
-import { DEFAULT_CAMERA, PEEK_CAMERA } from './CameraController';
+import { DEFAULT_CAMERA, WIDE_CAMERA, PEEK_CAMERA } from './CameraController';
+import { loadSettings } from '../app/settings';
 import { PEEK_CAMERA_TARGET_Z } from '../../../shared/constants/tuning';
 import type { PhasePreset } from '../../../shared/constants/tuning';
 import type {
@@ -426,6 +427,12 @@ export class GameClient {
   private readonly registry = new EntityViewRegistry();
   private readonly scene: SceneManager;
   private readonly interaction = new InteractionController();
+  /** `Settings.wideCameraView` (`app/settings.ts`), read once at construction — Settings is only
+   * reachable from the main menu, never mid-match, so there is no live-update case to handle
+   * (unlike `NeonSignHero`'s menu-only settings, which ARE visible alongside Settings at the same
+   * time). `setPeeking`'s own `DEFAULT_CAMERA` reset reads this too, so releasing Peek returns to
+   * whichever baseline this match actually started with, not always the zoomed-in default. */
+  private readonly baseCamera = loadSettings().wideCameraView ? WIDE_CAMERA : DEFAULT_CAMERA;
 
   private sinceInputSend = 0;
   /** STORY-016. Accumulated seconds, fed to `RestaurantScene#updateCustomerAnimations` every
@@ -551,6 +558,9 @@ export class GameClient {
 
   constructor(container: HTMLElement) {
     this.scene = new SceneManager(container);
+    // `CameraController`'s own constructor default is `DEFAULT_CAMERA` — only need to override
+    // it here when the player asked for the wide framing instead.
+    if (this.baseCamera !== DEFAULT_CAMERA) this.scene.cameraController.setSettings(this.baseCamera);
     // Keep the authored restaurant isolated until the player explicitly holds Peek.
     this.scene.restaurant.setCompetitorVisible(false);
     this.input = new InputController(window);
@@ -1227,7 +1237,13 @@ export class GameClient {
    */
   setPeeking(peeking: boolean): void {
     this.patchStatus({ peeking });
-    this.scene.cameraController.setSettings(peeking ? PEEK_CAMERA : DEFAULT_CAMERA);
+    // `PEEK_CAMERA` only overrides `distance` on top of `DEFAULT_CAMERA`'s height/angle/fov —
+    // rederive that same override on top of THIS match's actual baseline (`this.baseCamera`),
+    // so a wide-camera player's Peek pulls back from their own wider framing, not always the
+    // zoomed-in default's height/angle/fov with only the distance swapped.
+    this.scene.cameraController.setSettings(
+      peeking ? { ...this.baseCamera, distance: PEEK_CAMERA.distance } : this.baseCamera,
+    );
     this.scene.restaurant.setDistrictVisible(peeking);
     this.scene.restaurant.setCompetitorVisible(peeking);
   }

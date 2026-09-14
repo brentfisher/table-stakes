@@ -202,6 +202,7 @@ export declare const WORKER_RESTOCK_THRESHOLD_UNITS: number;
 
 export declare const OWNER_INTERACT_RANGE: number;
 export declare const OWNER_DELIVERY_RANGE: number;
+export declare const SERVICE_PASS_REACH_HALF_WIDTH: number;
 
 export interface OwnerActionBaseDurationsMs {
   activate_special: number;

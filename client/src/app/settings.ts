@@ -18,6 +18,12 @@ export interface Settings {
   fullscreenPreferred: boolean;
   reducedMotion: boolean;
   graphicsQuality: GraphicsQuality;
+  /** STORY-014 (main game camera, `CameraController.ts`). Reported the default framing as "too
+   * far away" — the default was zoomed in; this restores the ORIGINAL wide/overview framing for
+   * anyone who preferred it, read once at `GameClient` construction (`WIDE_CAMERA` vs
+   * `DEFAULT_CAMERA`), not live-applied mid-match — Settings is only reachable from the main
+   * menu, same reasoning `graphicsQuality`'s own comment gives for staying read-once. */
+  wideCameraView: boolean;
   /** STORY-032. The main-menu neon sign (`NeonSign.ts`) is the one renderer that DOES read this
    * module today — `reducedMotion` above turns off its sparks/parallax, same as the OS-level
    * preference it defaults from. Everything else in this file is still save-only. */
@@ -40,7 +46,8 @@ export const DEFAULT_SETTINGS: Settings = {
       : false,
   graphicsQuality: 'medium',
   menuSignSparks: true,
-  menuSignBloom: 0.6,
+  menuSignBloom: 0.4,
+  wideCameraView: false,
 };
 
 const STORAGE_KEY = 'rivalRestaurant.settings.v1';

@@ -15,7 +15,28 @@ export interface CameraSettings {
 // Framed around the actual restaurant rather than the surrounding street. The owner can still
 // see the whole dining room and kitchen, while dishes, customers, and task labels read without
 // needing an overview toggle.
+//
+// Reported: "the restaurant layout is too far away with the camera" — the wide, high-angle shot
+// this constant used to describe (height 21, distance 24) read as an overview rather than a
+// third-person view the player felt embodied in; the owner's own movement barely displaced the
+// frame at that distance, which is also most of why panning didn't read as "the camera follows
+// you" even though `update()`'s smoothed-target lerp below already does exactly that on every
+// frame. Pulled in ~30% (same angle/fov, so the floor plan's proportions on screen are unchanged,
+// just larger) rather than re-deriving new ones freehand. The OLD numbers are preserved verbatim
+// as `WIDE_CAMERA` below, a `Settings.wideCameraView` toggle away, for anyone who preferred the
+// original overview framing.
 export const DEFAULT_CAMERA: CameraSettings = {
+  height: 15,
+  distance: 17,
+  angle: Math.PI - 0.70,
+  fov: 37.5,
+};
+
+/** The pre-zoom framing, verbatim — see `DEFAULT_CAMERA`'s own comment. Selected at
+ * `GameClient` construction time from `Settings.wideCameraView` (`app/settings.ts`); not a
+ * live-swappable profile like `PEEK_CAMERA`, since Settings is only reachable from the main
+ * menu, never mid-match. */
+export const WIDE_CAMERA: CameraSettings = {
   height: 21,
   distance: 24,
   angle: Math.PI - 0.70,

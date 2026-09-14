@@ -21,7 +21,7 @@
 
 import dishesData from '../../../shared/game-data/dishes.json';
 import layoutData from '../../../shared/game-data/restaurant-layout.json';
-import { OWNER_DELIVERY_RANGE, OWNER_INTERACT_RANGE } from '../../../shared/constants/tuning';
+import { OWNER_DELIVERY_RANGE, OWNER_INTERACT_RANGE, SERVICE_PASS_REACH_HALF_WIDTH } from '../../../shared/constants/tuning';
 import type { CustomerSnapshot, InteractAction, OrderSnapshot, RestaurantSnapshot } from '../../../shared/schemas/messages';
 // STORY-053. `pickupCandidate` below used to re-derive "every ticket on this order is
 // ready/cancelled" independently (a THIRD expression of `order-system.js#allTicketsOffTheLine`'s
@@ -116,6 +116,21 @@ export class InteractionController {
     if (!entity) return false;
     const radius = entity.interactionRadius ?? OWNER_INTERACT_RANGE;
     return distanceXZ(position, this.entityVec(entity)) <= radius;
+  }
+
+  /** See `SERVICE_PASS_REACH_HALF_WIDTH`'s own comment (`shared/constants/tuning.js`) for why
+   * `pickup` needs a rectangle, not `inRange`'s circle: ready-dish proxies render across the
+   * counter's full width (`RestaurantScene.ts`'s `READY_DISH_SLOT_X_RANGE`), so a circle
+   * centered on the counter's single anchor point left the far ends visually reachable but
+   * server-rejected. `action-validator.js#requireServicePassRange` mirrors this exactly. */
+  private nearServicePass(position: Vec3): boolean {
+    const entity = ENTITY_BY_ID.get('service_pass');
+    if (!entity) return false;
+    const [passX, , passZ] = entity.position;
+    return (
+      Math.abs(position.x - passX) <= SERVICE_PASS_REACH_HALF_WIDTH &&
+      Math.abs(position.z - passZ) <= OWNER_INTERACT_RANGE
+    );
   }
 
   /**
@@ -215,7 +230,7 @@ export class InteractionController {
   private pickupCandidate(position: Vec3): InteractionPrompt | null {
     // STORY-012. `OWNER_CARRY_CAPACITY` baseline unless a Serving Tray upgrade raised it.
     if (this.carrying.length >= this.carryCapacity) return null;
-    if (!this.inRange(position, 'service_pass')) return null;
+    if (!this.nearServicePass(position)) return null;
     // A party's order can decompose into several tickets (one per dish) sharing one `orderId`,
     // and `order-system.js#readyOrders` — the pool the real `pickup` interact reads — only
     // offers an order once EVERY ticket on it is `ready` (or `cancelled`); STORY-031's
