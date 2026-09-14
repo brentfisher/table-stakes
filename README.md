@@ -1,16 +1,39 @@
 # table-stakes
 
-**Rival Restaurant** — a real-time, head-to-head restaurant-management game. Two players run
-adjacent restaurants competing for one shared pool of customers: a strategic setup phase
-(menu, prices, inventory, staffing) followed by a real-time service phase where each player
-embodies the owner on the restaurant floor.
+### *Rival Restaurant* — run the floor, and beat the restaurant next door for the same customers.
+
+A real-time, head-to-head restaurant-management game. Two players each run their own restaurant
+in a shared district: a timed setup phase (menu, prices, inventory, staffing, one policy)
+precedes a real-time service phase where each player embodies the owner on the floor — seating
+parties, expediting the kitchen, and reacting to whatever the shift throws at them, while a
+shared pool of customers decides, table by table, who's actually worth walking into.
 
 Full specification: `PRD_ Rival Restaurant — Competitive Service Manage.pdf`.
 
-> **Status: Milestone 0 (technical spike).** Two owner avatars move around a readable 3D
-> restaurant with server-authoritative positions, and one dev harness runs standalone. There
-> are no customers, orders, workers, menus, money, events or scoring yet — each has its own
-> story. See "What is not built yet" below.
+<p align="center">
+  <img src="docs/pr-screenshots/story-059-scene-after.jpg" alt="Copper &amp; Thyme restaurant at service, night lighting" width="820">
+</p>
+
+## Status
+
+The original 22-story slice is done, and two further waves have shipped a co-op mode, a full
+management layer (kitchen command, front door, service station, pantry, manager's ledger), and a
+post-match recap experience — the game runs end to end: customers arrive, choose a restaurant,
+are seated, order, are cooked for from finite stock, eat, pay, leave a review, and the match
+scores and recaps the result. `docs/kb/stories/index.md` is the live status board — as of this
+writing it runs through STORY-059, almost entirely merged or complete, with a handful still
+`pending`/`approved`/`pr-opened`. Known open item: a real 1v1 still serves fewer parties per
+restaurant than the PRD's target range — see `docs/kb/conventions.md`'s Open Balance Gaps.
+
+## Screenshots
+
+| Setup: build your menu | Live service |
+|:---:|:---:|
+| ![Choosing three mains on the ready-up menu, with a live 3D dish preview](docs/pr-screenshots/story-038-three-stage-ready-up.png) | ![A restaurant mid-Final-Rush, HUD and scoreboard visible](docs/pr-screenshots/copper-and-thyme-main-service.png) |
+
+| Management layer | |
+|:---:|:---:|
+| ![The Manager's Ledger diagnosing the current service pressure](docs/pr-screenshots/story-037-managers-ledger.png) | ![The Kitchen Command board comparing ticket priority under six different focuses](docs/pr-screenshots/story-036-kitchen-command-board.png) |
 
 ## Layout
 
@@ -19,12 +42,14 @@ is independently understandable and runnable; the root scripts only coordinate.
 
 | Path | What it is |
 |---|---|
-| `shared/` | Game data (JSON), wire schemas, and tuning constants used by both sides. |
-| `server/` | Authoritative Express + `ws` game server. **Plain JavaScript.** |
-| `client/` | Browser client: React UI + Three.js scene. **TypeScript.** |
-| `harnesses/` | Standalone 3D dev scenes. No backend, no match, no auth. **TypeScript.** |
+| `shared/` | Game data (JSON), wire schemas, and tuning constants used by both sides. Plain `.js` + sibling `.d.ts` — never compiled TypeScript. |
+| `server/` | Authoritative Express + `ws` game server. **Plain JavaScript.** Gameplay lives in registered systems under `server/src/game/systems/`, never in `match.js`. |
+| `client/` | Browser client: React UI + Three.js scene, pre-match lobby, live HUD/management layer, and the post-match recap flow. **TypeScript.** |
+| `harnesses/` | 14 standalone 3D dev scenes exercising individual systems with no backend. **TypeScript.** |
 | `assets/` | Models, textures, audio, and mandatory license metadata. |
-| `scripts/` | Repo checks. |
+| `scripts/` | The actual test suite (`check-*.mjs`/`smoke-*.mjs`) plus repo-hygiene checks. |
+| `openspec/` | Numbered architectural decisions behind the code, cited by heading throughout the knowledgebase. |
+| `docs/kb/` | The project's knowledgebase — architecture, module map, conventions, key files, and sliced stories. Start here to orient. |
 
 ## Running it
 
@@ -37,7 +62,7 @@ npm run dev:harnesses    # http://localhost:5174  — needs NO server running
 ```
 
 Open the client in two browser windows to see two owners in one room. To share a specific
-room, pass `?room=room_0001`.
+room, pass `?room=room_0001`, or use the in-menu **Invite Opponent** flow for a real invite link.
 
 For a production-shaped run, build the client into the server's static directory and serve
 everything from one origin:
@@ -77,23 +102,26 @@ Notes:
   on your LAN.
 - A `HEALTHCHECK` polls `/health`; `docker compose ps` shows the container as healthy once the
   server is up.
-- Match state is in-memory for MVP, so there is no volume and a restart drops open rooms by
-  design. That changes when a story introduces real persistence.
+- Match state is in-memory, so there is no volume and a restart drops open rooms by design.
 
 ## Checks
 
-There is no test framework yet (the PRD does not name one). Verification is by runnable
-scripts and by the dev harnesses.
+There is no test framework — the PRD names none. Verification is by runnable scripts, each
+constructing a real `Match` and stepping it, plus the dev harnesses for anything visual.
 
 ```bash
+npm run check              # everything below, plus both builds — this is CI
 npm run check:three        # Three.js pin/bundle rules — see below
 npm run check:data         # game-data catalogue integrity and wire-schema shapes
 npm run check:lifecycle    # match phases, the clock, reconnect grace, the system seam
-npm run check:events       # the seeded event deck: one timeline for both players, §9 cadence
-npm run check:milestone0   # end-to-end over sockets: movement, clamping, replication
-npm run check:phases       # end-to-end over sockets: the whole PRD §5 match lifecycle
-npm run check              # all of the above, plus both builds
+npm run check:crowd-density  # measures real district-choice numbers from a live seeded match
 ```
+
+`npm run check` chains 34 `check-*.mjs` scripts, 5 `smoke-*.mjs` scripts (real sockets, not
+in-process), and one measurement script — see `package.json` for the full list, one per system.
+Two rules, each learned from a real defect and detailed in `docs/kb/key-files.md`: a new check
+**must register every system it integrates with**, and a new check should be **falsified**
+(broken on purpose, confirmed red, then restored) before it's trusted.
 
 ## The Three.js rule
 
@@ -119,61 +147,56 @@ broken by accident:
 | `/health` | GET | Service health. |
 | `/api/version` | GET | Build/client compatibility, including the pinned Three.js version. |
 | `/api/markets` | GET | Market definitions, public projection (no `eventPool`). |
-| `/api/rooms` | POST | Create a room. Optional `{ "seed": "...", "phasePreset": "prototype" \| "full" }`. |
+| `/api/phases` | GET | The phase presets and their durations, from `tuning.js`. |
+| `/api/rooms` | POST | Create a room — `dev`, `solo_bot` (vs. the bot opponent), `private_human`, or `coop` (both players share one restaurant). |
 | `/api/rooms` | GET | List room statuses. |
 | `/api/rooms/:roomId` | GET | Room status. |
-| `/api/phases` | GET | The phase presets and their durations, from `tuning.js`. |
+| `/api/rooms/by-invite/:token` | GET | Resolve an invite link — read-only; the actual seat is claimed over the WebSocket. |
+| `/api/rooms/:roomId/cancel` | POST | The host calling off an unfilled invite. |
+| `/api/rooms/:roomId/log` | GET | The full structured event log for a running or ended match — seed, events, every decision. |
+| `/api/rooms/:roomId/summary` | GET | PRD §24 balance figures, derived from the same match. |
 | `/api/dev/match` | POST | Development/local match creation — seats **one** player, so the whole lifecycle runs without a second human. |
 
 The game session itself runs over WebSockets at `/ws`, not REST polling.
 
-## Architecture notes
+## Architecture
+
+The two facts that explain most of the code: **the server is authoritative over everything that
+matters**, and **gameplay lives in registered systems, never in `match.js`**.
 
 - **The server is authoritative.** The browser never computes money, customer choice, scores,
-  inventory, upgrades, or action outcomes. Clients send *intent* (`player_input`, `interact`);
-  the server integrates, clamps and broadcasts. `npm run check:milestone0` proves this for
-  movement: an out-of-bounds intent cannot produce an out-of-bounds position.
-- **Simulate at 20 Hz, broadcast at 10 Hz**, and interpolate on the client. Both rates live in
-  `shared/constants/tuning.js`.
-- **React owns UI; Three.js owns the scene.** React mounts the scene container once and
-  re-renders only on the low-frequency status callback — it never reconciles scene objects per
-  frame.
-- **Rules emit state; views render state.** This is what lets `harnesses/` mount the real
-  `RestaurantScene` with mocked state and no backend.
-- **Matches are seeded and reproducible.** The seed drives match configuration — including
-  which market is selected — and the same seed produces the same setup. A system that needs
-  random numbers takes its own named stream with `match.createRngStream('name')`, which is
-  seed-derived but independent of what other systems draw. This is the primary debugging
-  affordance until there are tests.
-- **The server owns the match clock.** The PRD §5 phase machine (`lobby -> market_reveal ->
-  setup -> service -> final_rush -> results`) runs in `server/src/game/match.js`, advanced by
-  the simulation tick. The client renders `matchPhase` and `timeRemainingMs` from the
-  snapshot and never counts down on its own.
-- **Snapshots are built per viewer.** `match_snapshot` is composed once per player: everything
-  public at the top level, that player's own state under `you`. PRD §18 forbids revealing an
-  opponent's menu or prices, so private state has exactly one place to live.
-- **Gameplay systems register against the tick.** Adding one is a new file in
-  `server/src/game/systems/` plus a single line in `systems/index.js` — never an edit to
-  `match.js`. See the seam documentation at the top of `server/src/game/simulation-loop.js`.
+  inventory, upgrades, or action outcomes. Clients send *intent*; the server integrates, clamps
+  and broadcasts.
+- **Simulate at 20 Hz, broadcast at 10 Hz**, and interpolate on the client.
+- **Gameplay systems register against the tick.** `server/src/game/systems/index.js` lists all
+  15, in three loose tiers (core simulation, operations/management, meta/observability).
+  Registration order is a documented contract — adding a system is a new file plus one line
+  there, never an edit to `match.js`. See `server/src/game/simulation-loop.js`'s block header.
+- **Snapshots are built per viewer.** `match_snapshot` puts public state at the top level and
+  that player's own state under `you` — PRD §18's rule against revealing an opponent's menu or
+  prices has exactly one place to live.
+- **React owns UI; Three.js owns the scene.** React re-renders only on a low-frequency status
+  callback and never reconciles scene objects per frame — the same seam that lets `harnesses/`
+  mount the real `RestaurantScene` with mocked state and no backend.
+- **Matches are seeded and reproducible.** Every system that needs randomness takes its own
+  named RNG sub-stream via `match.createRngStream(name)`, so one system's draws never shift
+  another's sequence.
+- **The bot is a real client, not a shortcut.** `server/src/game/bot/bot-socket.js` drives an
+  actual WebSocket connection through the same protocol and server authority as a human.
 
-## What is not built yet
-
-The repo covers scaffolding, replicated movement, the shared contracts, and the match
-lifecycle. There is no gameplay content yet: no customers arrive, no menu is submitted, nothing
-is cooked or scored, and `match_complete.results` is an empty object per player. Unimplemented
-client message types are explicitly rejected with `not_implemented` rather than silently
-ignored.
-
-Still to come, each as its own story: customers; orders and the kitchen; inventory; worker AI; owner interactions; the setup
-phase; the shared-district choice model; events; upgrades; scoring; the results screen; the
-HUD; the visual state language; a bot opponent; four more harnesses; and telemetry.
+This is the condensed version — for the full picture (a diagram of all 15 systems, the client's
+scene/UI/recap layers, and the wire-level data flow), see
+[`docs/kb/architecture.md`](docs/kb/architecture.md). The rest of the knowledgebase —
+[module map](docs/kb/module-map.md), [conventions](docs/kb/conventions.md), and
+[key files](docs/kb/key-files.md) (including the two hazards that have already cost real
+work) — is at [`docs/kb/`](docs/kb/index.md).
 
 ## Repository conventions
 
-- Base branch is `master`.
+- Base branch is `master`. One story per branch, cut from a freshly pulled master.
 - The server stays plain JavaScript; the client, harnesses and shared schemas are TypeScript.
 - All balance content is JSON or plain data under `shared/game-data/` — never hardcoded in a
-  system.
+  system. All tunable numbers live in `shared/constants/tuning.js`.
 - Data ids and WebSocket message types are `snake_case`; durations are milliseconds with a
   `Ms` suffix.
 - Every reused external asset needs license metadata in `assets/licenses/`.
