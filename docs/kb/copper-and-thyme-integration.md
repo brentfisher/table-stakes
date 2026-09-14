@@ -1,6 +1,18 @@
+---
+type: Reference
+title: Copper & Thyme scene integration
+description: How the adapted Copper & Thyme GLB asset composites into RestaurantScene and its 14 harnesses, and where the authoritative layout/rules still live in shared/.
+generated: { by: kb-generate/claude-sonnet-5, at: 2026-09-13T20:30:00Z }
+sources:
+  - id: crawl
+    resource: git@github.com:brentfisher/table-stakes.git
+    title: "table-stakes @ 05aa5f5eb44ccbf452581766d20bfe080a11e8f8"
+---
+
 # Copper & Thyme scene integration
 
-The main game and all six harnesses use `RestaurantScene`, which now loads the adapted
+The main game and the harnesses that reuse the production scene (now 14 harnesses total, up
+from six at the time this was first true) use `RestaurantScene`, which loads the adapted
 Copper & Thyme GLB. The user-supplied `docs/copper-and-thyme.zip` is the original local reference, kept unchanged.
 The archive is not required in a checkout: its construction script and the adapted GLB are included under `assets/copper-and-thyme/`.
 The reference's demo service logic, fixed customers and permanently ready burgers are excluded.
