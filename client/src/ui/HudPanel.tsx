@@ -23,6 +23,7 @@
 // that AC's "and nothing the PRD does not list" forbids, even though the field itself happens
 // to be public on `restaurants[]`.
 
+import type { CSSProperties } from 'react';
 import { CommandScorecard } from './CommandScorecard';
 import dishesData from '../../../shared/game-data/dishes.json';
 import upgradesData from '../../../shared/game-data/upgrades.json';
@@ -30,6 +31,7 @@ import kitchenCommandData from '../../../shared/game-data/kitchen-command.json';
 import frontDoorData from '../../../shared/game-data/front-door-specials.json';
 import serviceStationData from '../../../shared/game-data/service-station.json';
 import { FRONT_DOOR_UPGRADE_IDS, type GameClientStatus } from '../game/GameClient';
+import { PHASE_DURATIONS_MS } from '../../../shared/constants/tuning';
 import type { CriticalAlert } from '../../../shared/game-logic/hud-alerts';
 import { eventTitle } from './event-titles';
 import { botProfileLabel } from './bot-profiles';
@@ -131,15 +133,28 @@ function alertClass(alert: CriticalAlert): string {
 export function HudPanel({
   status,
   onReady,
+  onToggleOverview,
 }: {
   status: GameClientStatus | null;
   onReady: (ready: boolean) => void;
+  onToggleOverview: () => void;
 }): JSX.Element {
   const connection = status?.connection ?? 'connecting';
   const phase = status?.matchPhase ?? null;
   // The two phases the server accepts a readiness change in — see Match#setReady.
   const canReady = phase === 'lobby' || phase === 'setup';
   const inService = phase === 'service' || phase === 'final_rush';
+  // `timeRemainingMs` is null only in `lobby` (Match#timeRemainingMs — "ends when both ready",
+  // no fixed deadline). `market_reveal`/`setup`/`service`/`final_rush` all have a real one.
+  const preServiceCountdownMs = !inService ? status?.timeRemainingMs ?? null : null;
+  // Urgency threshold as a fraction of the phase's own total length, not a fixed second count —
+  // `setup` (45s prototype / 120s full) and `market_reveal` (15s / 30s) shouldn't share one
+  // absolute cutoff. `status.phasePreset` arrives once, off the `joined` message.
+  const phaseDurationMs =
+    status?.phasePreset && phase ? PHASE_DURATIONS_MS[status.phasePreset]?.[phase] ?? null : null;
+  const isUrgent =
+    preServiceCountdownMs !== null &&
+    (phaseDurationMs ? preServiceCountdownMs <= phaseDurationMs * 0.2 : preServiceCountdownMs <= 10_000);
 
   // STORY-039. `status.restaurantId`, not `status.playerId` — identical in every pre-existing
   // mode, but a co-op guest's `playerId` is never a key into `restaurants[]` (see
@@ -193,14 +208,54 @@ export function HudPanel({
           Tab. `KitchenCommandBoard.tsx`'s own `CommandScorecard` usage (E-press near the physical
           board) is a separate, already-correctly-gated render — left alone. */}
       {inService && status && status.showTacticalOverview ? <CommandScorecard status={status} /> : null}
+      {/* Reported: the Command Center "dominates the screen" with no discoverable way to know it
+          exists before pressing Tab blind. This is a persistent, minimal affordance — a mouse
+          alternative to the keyboard shortcut, always visible during service regardless of
+          whether the overlay is open, so the player never has to remember Tab exists on faith. */}
+      {inService ? (
+        <button
+          type="button"
+          className={`overview-toggle${status?.showTacticalOverview ? ' overview-toggle--open' : ''}`}
+          onClick={onToggleOverview}
+          aria-pressed={Boolean(status?.showTacticalOverview)}
+          aria-label={status?.showTacticalOverview ? 'Close tactical overview' : 'Open tactical overview'}
+        >
+          <span className="overview-toggle-arrow" aria-hidden="true">›</span>
+          <kbd>Tab</kbd>
+        </button>
+      ) : null}
       {inService ? <div className="service-context-chip"><strong>RIVAL RESTAURANT</strong><span>{status?.market?.name ?? 'Service'} <b className={`status-${connection}`}>● {connection}</b></span><small>{formatCountdown(status?.timeRemainingMs ?? null)} · {PHASE_LABELS[phase ?? ''] ?? 'Service'}</small></div> : null}
-      <div className={`service-card${inService ? ' service-card--in-service' : ''}`}>
+      <div
+        className={`service-card${inService ? ' service-card--in-service' : ''}${isUrgent ? ' service-card--urgent' : ''}`}
+      >
         <div className="service-card-metrics">
-          <div><span>{inService ? 'SERVICE TIME' : 'THE NEXT SERVICE'}</span><strong>{inService ? formatCountdown(status?.timeRemainingMs ?? null) : 'Welcome in.'}</strong></div>
+          <div>
+            <span>{inService ? 'SERVICE TIME' : preServiceCountdownMs !== null ? 'TIME LEFT' : 'THE NEXT SERVICE'}</span>
+            <strong>
+              {inService
+                ? formatCountdown(status?.timeRemainingMs ?? null)
+                : preServiceCountdownMs !== null
+                  ? formatCountdown(preServiceCountdownMs)
+                  : 'Welcome in.'}
+            </strong>
+          </div>
           <div><span>{inService ? 'REVENUE' : 'YOUR CREW'}</span><strong>{inService ? money(status?.revenue ?? null) : String(status?.playerCount ?? 0).padStart(2, '0')}</strong></div>
         </div>
         <div className="service-card-order"><span>{inService ? '✦' : '✧'}</span><div><strong>{carriedDishes.length ? carriedDishes.join(', ') : inService ? 'A good service starts with you.' : 'The kitchen is yours.'}</strong><small>{inService ? status?.prompt?.label ?? 'Look after your guests and keep the pass moving.' : 'Choose your menu, gather your crew, make their evening.'}</small></div></div>
-        {canReady ? <button type="button" className="service-card-action" onClick={() => onReady(!status?.ready)}>{status?.ready ? 'Ready ✓ · Cancel' : 'Prepare for service'}<span>↗</span></button> : <div className="service-card-action"><kbd>E</kbd>{status?.prompt?.label ?? 'Explore your restaurant'}</div>}
+        {canReady ? (
+          <button
+            type="button"
+            className="service-card-action"
+            style={
+              preServiceCountdownMs !== null && phaseDurationMs
+                ? { '--service-card-countdown-pct': `${Math.max(0, Math.min(1, preServiceCountdownMs / phaseDurationMs)) * 100}%` } as CSSProperties
+                : undefined
+            }
+            onClick={() => onReady(!status?.ready)}
+          >
+            {status?.ready ? 'Ready ✓ · Cancel' : 'Prepare for service'}<span>↗</span>
+          </button>
+        ) : <div className="service-card-action"><kbd>E</kbd>{status?.prompt?.label ?? 'Explore your restaurant'}</div>}
         <p>{inService ? 'Every plate is a little occasion.' : 'Your next great service begins here.'}</p>
       </div>
       <details className="hud hud-details">
@@ -320,7 +375,8 @@ export function HudPanel({
           resolve to the same real, comparable fields. See this file's own header for why there
           is no single "score" number. */}
       {inService && self && rival ? (
-        <details className="hud-scoreboard"><summary>Rival scoreboard <span>＋</span></summary>
+        <details className="hud-scoreboard" open={status?.showTacticalOverview || undefined}>
+          <summary>Rival scoreboard <span>＋</span></summary>
           <h2>Scoreboard</h2>
           <table>
             <thead>

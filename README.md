@@ -78,6 +78,24 @@ npm run build:client
 npm start                # http://localhost:3000 serves the built client
 ```
 
+### Dev harnesses
+
+The 14 standalone 3D scenes under `harnesses/` (see [Layout](#layout)) exercise individual
+systems with no backend and no match — good for isolating a rendering or interaction bug without
+a live game. Two ways to reach them, picking a scene from the sidebar once loaded:
+
+- **Own dev server, fastest iteration**: `npm run dev:harnesses` → <http://localhost:5174/>
+  (needs no server running at all).
+- **Alongside a locally-running server, one origin**: build them and they're served from the
+  same host as the client and API —
+  ```bash
+  npm run build:harnesses
+  npm start                # http://localhost:3000/harnesses/
+  ```
+  This is a local-only convenience, not part of the Docker image: `.dockerignore` excludes
+  `harnesses/` (and every `dist/`) from the build context entirely, so `/harnesses/` 404s on a
+  Docker deployment — dev tooling has no reason to ship in a production image.
+
 ## Running the backend on another machine (Docker)
 
 The server serves the API, the WebSocket endpoint and the built client from **one origin**, so

@@ -176,7 +176,11 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
           Graphics reconnecting…
         </div>
       ) : null}
-      <HudPanel status={status} onReady={(ready) => clientRef.current?.setReady(ready)} />
+      <HudPanel
+        status={status}
+        onReady={(ready) => clientRef.current?.setReady(ready)}
+        onToggleOverview={() => clientRef.current?.toggleTacticalOverview()}
+      />
       {/* STORY-034. Reported: the two restaurants share one camera frame but the rival's floor
           is only ever a small, distant sliver — hold this to swing the SAME camera over to it
           (`GameClient#setPeeking`'s own comment on why a hold, not a toggle). Gated to service/
