@@ -1295,6 +1295,11 @@ export class GameClient {
     // Render from interpolated state, never from locally integrated positions.
     const players = this.interpolator.sample();
     this.registry.reconcile('players', players);
+    // STORY-060. Must run AFTER `reconcile` above — `upsertOwner` (this frame's positions) is
+    // what populates the per-owner movement delta this reads, and only the self owner's Chef
+    // Blaze rig (once loaded) has an `AnimationMixer` to advance here; every other owner is a
+    // no-op (see `updateOwnerAnimations`'s own comment).
+    this.scene.restaurant.updateOwnerAnimations(dt);
 
     // STORY-016 PRD §4.4 "visibly look impatient" — a per-frame posture animation, not a
     // per-snapshot one, so it stays smooth between the ~10Hz snapshots that actually move

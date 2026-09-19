@@ -1212,6 +1212,13 @@ function createAssetShowcaseHarness(): SceneHarness {
           // sites below).
           scene.updateReadyDishAnimations(elapsedTotal);
           scene.updateWorkerAnimations();
+          // STORY-060. Advances the showcased self owner's Chef Blaze `AnimationMixer` once the
+          // GLB has resolved — same per-frame split as everything else in this block. Without
+          // this call the showcase would render the loaded rig frozen on its first pose (no
+          // crossfade, no breathing loop), which is also why this harness is the right place to
+          // read real frame cost with the model actually animating (this file's own `fpsReadout`
+          // above), not just loaded and static.
+          scene.updateOwnerAnimations(dt);
           if (boundsOn && boundsHelper && currentTarget) boundsHelper.box.setFromObject(currentTarget);
           camera.update(dt);
           renderer?.render(scene.scene, camera.camera);
