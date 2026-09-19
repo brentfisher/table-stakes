@@ -1,0 +1,48 @@
+{
+  "asset": "ChefBlaze",
+  "version": "retopo-1.0.0",
+  "source": "chef-blaze.blend — hero sculpt, retopologized/baked by build_chef_blaze.py",
+  "sourceFile": "chef-blaze.blend",
+  "sourceReadme": "RIG-README.md",
+  "notReused": [
+    "feat/chef-blaze-character (2aeb5bb) and feat/chef-blaze-turnaround-rebuild (00fbc60) are prior, unmerged, unrelated exports of an EARLIER/DIFFERENT Chef Blaze sculpt — their GLBs were not reused, only their pipeline/documentation pattern."
+  ],
+  "runtime": {
+    "file": "ChefBlaze.glb",
+    "heightMeters": 1.86,
+    "units": "meters",
+    "upAxis": "+Z in Blender / +Y in glTF",
+    "forwardAxis": "-Y in Blender / +Z in glTF (empirically verified against the exporter, not assumed — see build_chef_blaze.py's module docstring and the story's notes)",
+    "root": "(0, 0, 0), no additional rotation needed to match RestaurantScene.ts's existing +Z-forward avatar convention",
+    "fps": 30,
+    "triangles": 34706,
+    "trianglesBySource": {
+      "body (decimated from 1,000,000)": 20000,
+      "facialHair (decimated from 68,900)": 5654,
+      "eyeDetails x12 (decimated from 22,656)": 9052
+    },
+    "skinJoints": 52,
+    "bonesExportedDeformOnly": true,
+    "ikControlBonesExcluded": 9,
+    "meshObjects": 1,
+    "materialSlots": 7,
+    "packedTextures": {
+      "diffuse": "1024x1024 (downsized from 2048)",
+      "metallicRoughness": "1024x1024 (downsized from 2048)",
+      "normal": "1024x1024 (downsized from 2048)"
+    },
+    "fileSizeBytes": 3597064,
+    "skinning": "bounded smooth (<=4 bone influences/vertex, normalized) on the continuous body mesh; rigid single-bone (100% to 'head') on the eye/facial-hair meshes — see build_chef_blaze.py's module docstring for why the body can't be rigid single-bone the way the AC's phrasing (borrowed from the prior disjoint-primitive pipeline) describes"
+  },
+  "animations": [
+    {"name": "ChefBlaze_Idle", "start": 1, "end": 120, "fps": 30, "loop": true, "rootMotion": "in-place", "source": "unmodified from chef-blaze.blend's authored breathing action, renamed only"},
+    {"name": "ChefBlaze_Walk_InPlace", "start": 1, "end": 30, "fps": 30, "loop": true, "rootMotion": "in-place", "source": "authored by build_chef_blaze.py — the source file had no walk animation"}
+  ],
+  "build": {
+    "script": "build_chef_blaze.py",
+    "invocation": "/Applications/Blender.app/Contents/MacOS/Blender --background assets/chef-blaze/chef-blaze.blend --python assets/chef-blaze/build_chef_blaze.py",
+    "blenderVersion": "5.2.1 LTS",
+    "deterministic": true,
+    "overwritesSourceBlend": false
+  }
+}

@@ -62,3 +62,4 @@ Statuses refreshed 2026-09-13 against master `05aa5f5` (through STORY-059).
 * [STORY-057: Move the kitchen command board off the pass; expo rail becomes a back-wall display](STORY-057-kitchen-command-position-and-expo-rail-wall.md) - merged
 * [STORY-058: Setup ready-up countdown should tick from the start and run 10 seconds (dev/prototype pacing)](STORY-058-setup-ready-up-countdown.md) - approved
 * [STORY-059: Gate the Command Center behind Tab; tune shadow/bloom/pixel-ratio cost; darken the base scene for lighting impact](STORY-059-command-center-tab-gate-and-scene-perf.md) - pr-opened
+* [STORY-060: Rig the new Chef Blaze hero model into the player's owner character](STORY-060-chef-blaze-owner-model.md) - pending

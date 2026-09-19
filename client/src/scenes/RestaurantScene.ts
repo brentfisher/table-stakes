@@ -29,6 +29,7 @@ import {
   PATIENCE_RING_ATTENTION_THRESHOLD,
   PATIENCE_RING_BOTTLENECK_THRESHOLD,
   STATION_QUEUE_ATTENTION_THRESHOLD,
+  OWNER_MOVE_SPEED,
 } from '../../../shared/constants/tuning';
 import { patienceColorBand, stationQueueColorBand } from '../../../shared/game-logic/state-color-bands';
 import {
@@ -48,6 +49,7 @@ import {
   createDishPictureSprite,
 } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
+import { buildChefBlaze, disposeChefBlaze, type ChefBlazeInstance } from './ChefBlazeModel';
 
 export interface OwnerRenderState {
   playerId: string;
@@ -217,6 +219,10 @@ const STATION_COLORS_UPGRADED: Record<string, number> = {
 
 /** PRD §7 baseline before any Serving Tray upgrade. */
 const MAX_VISIBLE_CARRY_PLATES = 3;
+
+/** STORY-060. See `updateOwnerAnimations`'s own comment — the fraction of `OWNER_MOVE_SPEED`
+ * above which the self owner's Chef Blaze rig is considered "walking" rather than "idle". */
+const OWNER_ANIMATION_MOVE_FRACTION = 0.08;
 
 // --- STORY-031: PRD §5.3/§10.2 carry-socket dish proxies + destination-table target marker ----
 
@@ -1646,44 +1652,88 @@ export class RestaurantScene {
     let group = this.owners.get(state.playerId);
     if (!group) {
       group = new THREE.Group();
+      group.name = `owner_${state.playerId}`;
+      // STORY-060. The capsule/sphere/cone primitive built here used to be the ENTIRE owner
+      // avatar for both "self" and "rival"; it still is for rival (untouched — out of scope,
+      // see the story). For "self" it is now only the synchronous placeholder: `buildChefBlaze`
+      // below is async (a network fetch + parse), and gameplay must never wait on it, so this
+      // primitive group renders immediately and is swapped out for the loaded rig once/if that
+      // promise resolves — same "playable fallback first, atomic swap later" contract
+      // `buildArcadeFoodProxy` (`FoodModels.ts`) already uses for food props, and if the GLB
+      // ever fails to load, this placeholder is what's left in place rather than a hole.
+      const placeholder = new THREE.Group();
+      placeholder.name = 'placeholder';
       const color = state.isSelf ? 0x7ac74f : 0xd98c4a;
       const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.34, 0.75, 6, 12),
         new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
       );
       body.position.y = 0.85;
-      group.add(body);
+      placeholder.add(body);
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.26, 16, 12),
         new THREE.MeshStandardMaterial({ color: 0xf0d5b8 }),
       );
       head.position.y = 1.6;
-      group.add(head);
-      // Facing indicator — reads clearly from the high-angle camera of PRD §14.
+      placeholder.add(head);
+      // Facing indicator — reads clearly from the high-angle camera of PRD §14. The loaded
+      // Chef Blaze rig needs no equivalent: its own model-space forward orientation (baked in
+      // at export — see `assets/chef-blaze/README_ThreeJS.md`) reads the same way once
+      // `group.rotation.y = state.facing` below turns the whole group, primitive or not.
       const nose = new THREE.Mesh(
         new THREE.ConeGeometry(0.14, 0.4, 8),
         new THREE.MeshStandardMaterial({ color: 0x2b2f35 }),
       );
       nose.rotation.x = Math.PI / 2;
       nose.position.set(0, 1.15, 0.42);
-      group.add(nose);
-      group.name = `owner_${state.playerId}`;
+      placeholder.add(nose);
+      group.add(placeholder);
       // STORY-012 §10 "Serving Tray": up to 3 small plates, hidden until `setCarrying` shows
       // as many as the owner is actually holding. Built once here, alongside the avatar, so
       // `setCarrying` (called at snapshot cadence from `GameClient`, not every render frame)
-      // only ever toggles visibility rather than allocating geometry on the hot path.
+      // only ever toggles visibility rather than allocating geometry on the hot path. Left as
+      // direct children of `group` (not the placeholder) for BOTH self and rival, unchanged by
+      // the Chef Blaze swap below. NOTE: `setCarrying`/these plates are legacy — real gameplay's
+      // carry visual is `setCarriedDishes`'s dish proxies (STORY-031, `CARRY_DISH_SLOT_OFFSETS`
+      // above); only the harnesses (`asset-showcase-harness.ts`, `upgrade-preview-harness.ts`)
+      // still call `setCarrying`. Still worth getting right since the AC names it explicitly:
+      // the original (0.3, 1.35+i*0.12, 0) offset was fitted to the OLD capsule's silhouette,
+      // where a rounded body filled the gap out to x=0.3 at that height — on Chef Blaze's
+      // narrower, arms-away-from-torso rig the same numbers floated the plates beside the HEAD,
+      // clearly outside the body (checked visually in the Asset Showcase harness, "Carried
+      // plates" slider at 3 — see the story's PR description). Pulled in and down to sit beside
+      // the forearm/waist instead, which reads as "carried at the side" on both bodies.
       for (let i = 0; i < MAX_VISIBLE_CARRY_PLATES; i += 1) {
         const plate = new THREE.Mesh(
           new THREE.CylinderGeometry(0.16, 0.16, 0.04, 16),
           new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.4 }),
         );
         plate.name = `plate_${i}`;
-        plate.position.set(0.3, 1.35 + i * 0.12, 0);
+        plate.position.set(0.24, 1.0 + i * 0.11, 0.1);
         plate.visible = false;
         group.add(plate);
       }
       this.owners.set(state.playerId, group);
       this.scene.add(group);
+
+      if (state.isSelf) {
+        const ownerGroup = group;
+        void buildChefBlaze()
+          .then((instance) => {
+            // The owner could have been removed (disconnect, harness teardown) while the GLB
+            // was in flight — `removeOwner` takes the group out of `this.owners` and out of the
+            // scene, but doesn't reach into this closure, so check first rather than resurrect
+            // a detached group or, worse, silently leak the loaded instance.
+            if (this.owners.get(state.playerId) !== ownerGroup) return;
+            const stalePlaceholder = ownerGroup.getObjectByName('placeholder');
+            if (stalePlaceholder) ownerGroup.remove(stalePlaceholder);
+            ownerGroup.add(instance.root);
+            ownerGroup.userData.chefBlaze = instance;
+          })
+          .catch((error: unknown) => {
+            console.warn(`Chef Blaze model failed to load for ${state.playerId}; keeping placeholder.`, error);
+          });
+      }
     }
     // NOT the customer/`positionTarget` lerp pattern below — `upsertOwner` is called every
     // render frame (via `GameClient#handleFrame` -> `EntityViewRegistry.reconcile`) with a
@@ -1695,10 +1745,53 @@ export class RestaurantScene {
     // interpolated position straight from `players[]`, not from this mesh) kept following
     // correctly — the exact bug this replaces.
     const worldPosition = state.remapToRivalFloor ? this.rivalWorldPosition(state.position) : state.position;
+    // STORY-060. `updateOwnerAnimations` (called once per frame, right after every owner's
+    // `upsertOwner`) needs to know how far THIS owner moved since last frame to decide
+    // idle-vs-walk — there is no server-provided "is moving" flag (see this file's own header
+    // note on why), so it's derived here from consecutive positions, the only per-frame signal
+    // available. Recorded as a squared XZ distance (skip the sqrt until `updateOwnerAnimations`
+    // actually needs a real speed) rather than compared against a threshold right here, because
+    // this method has no `dt` — snapshot-to-snapshot wall-clock time varies with frame rate, and
+    // only `updateOwnerAnimations` (fed `dt` from `GameClient#handleFrame`) can turn a raw
+    // distance into a real units/second speed.
+    const lastPosition = group.userData.lastOwnerPosition as THREE.Vector3 | undefined;
+    if (lastPosition) {
+      const dx = worldPosition.x - lastPosition.x;
+      const dz = worldPosition.z - lastPosition.z;
+      group.userData.recentMoveDistSq = dx * dx + dz * dz;
+    } else {
+      group.userData.recentMoveDistSq = 0;
+    }
+    group.userData.lastOwnerPosition = new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
     group.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
     group.userData.remapToRivalFloor = state.remapToRivalFloor === true;
     group.visible = !state.remapToRivalFloor || this.competitor.visible;
     group.rotation.y = state.facing;
+  }
+
+  /** STORY-060. Advances the self owner's `AnimationMixer` (idle/walk crossfade — see
+   * `ChefBlazeModel.ts`'s own doc comment for why a crossfade rather than a hard cut) once per
+   * render frame. Split from `upsertOwner` for the same reason `updateWorkerAnimations` is split
+   * from `upsertWorker`: `upsertOwner` runs once per OWNER inside `EntityViewRegistry.reconcile`
+   * and has no `dt`, while this runs once per FRAME from `GameClient#handleFrame`, which does.
+   * A no-op for every owner that hasn't finished loading the GLB yet (still on the primitive
+   * placeholder) or isn't "self" (rival keeps its primitive permanently — see the story). */
+  updateOwnerAnimations(dt: number): void {
+    for (const group of this.owners.values()) {
+      const chefBlaze = group.userData.chefBlaze as ChefBlazeInstance | undefined;
+      if (!chefBlaze) continue;
+      const distSq = (group.userData.recentMoveDistSq as number | undefined) ?? 0;
+      // Squared-distance form of "speed > threshold": sqrt(distSq)/dt > OWNER_MOVE_SPEED *
+      // MOVE_FRACTION becomes distSq > (OWNER_MOVE_SPEED * MOVE_FRACTION * dt)^2. The 8% cutoff
+      // (`OWNER_ANIMATION_MOVE_FRACTION`, below) is well under real walking speed (so an owner
+      // who is actually moving reads as walking almost immediately) but comfortably above the
+      // sub-millimeter jitter `StateInterpolator`'s own smoothing leaves in an otherwise-still
+      // owner — the noise a naive "moved at all since last frame" check would otherwise read as
+      // a permanent, never-idle walk cycle.
+      const thresholdDist = OWNER_MOVE_SPEED * OWNER_ANIMATION_MOVE_FRACTION * Math.max(dt, 1 / 1000);
+      const moving = distSq > thresholdDist * thresholdDist;
+      chefBlaze.update(dt, moving);
+    }
   }
 
   /** STORY-012. Public: `carrying` already is (§8 §14, PlayerSnapshot). One small plate mesh
@@ -2740,6 +2833,12 @@ export class RestaurantScene {
   removeOwner(playerId: string): void {
     const group = this.owners.get(playerId);
     if (!group) return;
+    // STORY-060. `disposeChefBlaze` is safe here specifically because `ChefBlazeModel.ts`'s
+    // `buildChefBlaze` deep-clones geometry/material per instance (see its own comment on why) —
+    // disposing them only frees THIS owner's copy, not the cached source every future load
+    // reuses.
+    const chefBlaze = group.userData.chefBlaze as ChefBlazeInstance | undefined;
+    if (chefBlaze) disposeChefBlaze(chefBlaze.root);
     this.scene.remove(group);
     this.owners.delete(playerId);
     // STORY-031. Carry-socket dish proxies are children of `group`, so `scene.remove(group)`
