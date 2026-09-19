@@ -1,12 +1,12 @@
 ---
 id: STORY-060
 title: Rig the new Chef Blaze hero model into the player's owner character
-status: pending
+status: pr-opened
 prd_source: null
 branch: story/060-chef-blaze-owner-model
-worktree_path: null
+worktree_path: /Users/brent/table-stakes-worktrees/story-060-chef-blaze-owner-model
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/89
 is_architectural: false
 approach_summary: >
   A new hero-quality Chef Blaze asset landed as two UNTRACKED files at the repo root:
