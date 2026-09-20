@@ -1,12 +1,12 @@
 ---
 id: STORY-061
 title: Owner never faces its movement direction; Chef Blaze's rig only visibly animates the legs; add a sprint slide-overshoot
-status: in-progress
+status: pr-opened
 prd_source: null
 branch: story/061-owner-facing-and-sprint-slide
 worktree_path: /Users/brent/table-stakes-worktrees/story-061-owner-facing-and-sprint-slide
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/91
 is_architectural: false
 approach_summary: >
   Three asks bundled by the user into one report; treat as three sub-fixes with different
@@ -86,6 +86,82 @@ created: 2026-09-19
 updated: 2026-09-19
 ---
 
+## Implementation notes (post-hoc, added on completion)
+
+**Part 1 (facing).** Confirmed and fixed exactly as the `approach_summary` predicted. Added
+one call site in `client/src/game/GameClient.ts`'s input-send tick: compute the move intent
+once, and if it's nonzero, `this.input.setFacing(Math.atan2(x, z))` before reading
+`getFacing()` for `sendInput`. Stationary players keep their last heading. No server or
+`RestaurantScene.ts` change needed — `group.rotation.y = state.facing` already worked, it just
+never received a non-zero value.
+
+**Part 2 (rig animation) — root cause was NONE of (a)/(b)/(c).** All three were investigated
+and ruled out against the actual exported `ChefBlaze.glb`, not guessed:
+
+- Parsed the shipped GLB directly (custom script, no Blender needed for this half): the 52-bone
+  skin includes every FK arm/chest bone (`upper_arm.L/R`, `forearm.L/R`, `spine.chest`, etc.) —
+  rules out (b), nothing was scoped out of the deform-bone export.
+- Tallied per-vertex `JOINTS_0`/`WEIGHTS_0` weight against those bones: `upper_arm.L` alone
+  carries 1162 vertices totaling 673 weight-units, `forearm.L` 963 vertices/533 weight-units,
+  `spine.chest` 2406 vertices/1255 weight-units — real, well-distributed skin weight, not
+  wiped out by the post-decimate `vertex_group_limit_total`/normalize step. Rules out (a).
+- Loaded the model live in the Asset Showcase harness (`harnesses/src/asset-showcase-harness.ts`,
+  category "Player Models" -> "Owner (self)"), drove the owner's `chefBlaze.update(dt, true)`
+  directly via the console to force the walk clip, and used `SkinnedMesh.applyBoneTransform`
+  (the same CPU math the GPU shader replicates) to measure the actual post-clone, post-skinning
+  world-space displacement of the most-heavily-weighted vertex for several regions, over one
+  full 1-second walk cycle:
+    - `foot.L` 0.666 m peak-to-peak
+    - `hand.L` 0.283 m
+    - `forearm.L` 0.155 m
+    - `head` 0.089 m
+    - `spine.chest` 0.081 m
+    - `pelvis` 0.033 m
+  Every region moves — nothing is frozen, so the runtime `SkeletonUtils.clone` +
+  geometry/material clone pipeline in `ChefBlazeModel.ts` is not the bug either. Rules out (c).
+
+  The actual cause: **the authored upper-body amplitude was correct-but-imperceptible next to
+  the legs.** `foot.L`'s 0.666 m sweep is ~2.35x `hand.L`'s 0.283 m, and `spine.chest`/`pelvis`
+  move only a few centimeters — at the game's top-down arcade camera distance this reads exactly
+  as "legs walking, upper body just along for the ride," which is what the user described as
+  "hanging on a pole." This is a fourth possibility the story's `approach_summary` didn't name
+  (it only offered (a)/(b)/(c)) but is a legitimate, measured root cause distinct from all three.
+
+  Fixed in `assets/chef-blaze/build_chef_blaze.py`'s `WALK_BONES`/`PELVIS_BOB_M`/
+  `PELVIS_ROT_AMP`/`CHEST_ROT_AMP`: raised `upper_arm` 0.35->0.55 rad, `forearm` 0.22->0.42 rad
+  (its old amplitude was further throttled by the clamped-to-non-negative `flex_phase` drive, so
+  its real swing was only ~4.5° of the nominal ~12.6°), `CHEST_ROT_AMP` 0.05->0.11,
+  `PELVIS_ROT_AMP` 0.08->0.12, `PELVIS_BOB_M` 0.09->0.13. Rebuilt via headless Blender (5.2.1 LTS,
+  found at `/Applications/Blender.app/Contents/MacOS/Blender`, no MCP bridge needed — the
+  documented `--background chef-blaze.blend --python build_chef_blaze.py` invocation worked
+  directly) and re-measured with the same harness technique: `foot.L` 0.716 m, `hand.L` 0.423 m,
+  `forearm.L` 0.230 m, `head` 0.117 m, `spine.chest` 0.114 m, `pelvis` 0.052 m — every region up
+  30-60%, and the leg-to-hand ratio down from 2.35x to 1.69x, without the upper body ever
+  out-swinging the legs. Re-verified the rebuilt GLB's structure (52 joints, both named
+  animation clips, deform bones intact) with the same static inspection used to rule out (a)/(b)
+  the first time.
+
+**Part 3 (sprint slide).** Added `player.slideVelocity` in `server/src/game/match.js`, populated
+and decayed in `server/src/game/systems/movement-system.js`: while sprinting, it's kept "topped
+up" to the current sprint velocity every tick; once sprint ends (key release or
+`OWNER_SPRINT_MAX_MS` exhaustion), the owner coasts on that vector while it decays at
+`OWNER_SPRINT_SLIDE_DECEL_PER_S2` (new tunable, `shared/constants/tuning.js`, alongside the
+existing `OWNER_SPRINT_*` block) until it drops below `OWNER_SPRINT_SLIDE_STOP_SPEED` (also new).
+Both integration paths reuse the existing `clamp(...)` against `RESTAURANT_BOUNDS`, so a slide
+can never leave the floor. New input (walk or a fresh sprint tap) is intentionally ignored for
+the ~0.3s the slide lasts — see the code comment for why. Added two new checks to
+`scripts/check-owner-actions.mjs` (sections 15-16): one measuring that the owner keeps
+coasting for at least one tick after input drops, that the slide is a bounded nudge (not most of
+the floor) and settles to exactly zero velocity with no residual drift; another confirming a
+slide into a wall still respects `RESTAURANT_BOUNDS`. Falsified both by temporarily forcing the
+stop-speed threshold to `Infinity` (confirmed 2 targeted failures), then restored and
+re-confirmed 59/59. Cross-checked `check-owner-actions.mjs`'s existing sprint-stamina/cooldown
+section (unaffected — it only reads `player.sprinting`/`sprintCooldownMs`, not position) and
+`smoke-milestone0.mjs`'s out-of-bounds clamp check (still passes).
+
+`npm run check` is green in full (all `check-*.mjs` and `smoke-*.mjs` scripts), run from the
+worktree after `npm run install:all`.
+
 # Owner never faces its movement direction; Chef Blaze's rig only visibly animates the legs; add a sprint slide-overshoot
 
 Reported by the user after merging STORY-060 (PR #89): the rigged Chef Blaze model's walk cycle
@@ -104,28 +180,33 @@ getting right the first time.
 
 ## Acceptance Criteria
 
-- [ ] `InputController`'s `facing` is derived from the current movement intent
+- [x] `InputController`'s `facing` is derived from the current movement intent
   (`Math.atan2(x, z)`, matching `bot-controller.js`'s existing convention) whenever that intent is
   nonzero, and holds its last value while stationary — sent to the server every input tick same as
   today.
-- [ ] Both the rival's primitive owner and the player's own Chef Blaze model visibly turn to face
+- [x] Both the rival's primitive owner and the player's own Chef Blaze model visibly turn to face
   the direction of travel during movement (this should fall out of the single fix above via the
   existing `group.rotation.y = state.facing` line — confirm it does, don't add a second code path).
-- [ ] Reproduced and root-caused: confirmed which of (a) post-decimation skin-weight capping, (b)
-  deform-bone export scoping, or (c) a runtime clone/binding issue is actually why only the legs
-  visibly deform during `ChefBlaze_Walk_InPlace`, with the arms/chest/pelvis motion the action
-  already authors. State which one, in the PR description.
-- [ ] The Chef Blaze model's arms, chest, and pelvis visibly move during the walk animation, not
+- [x] Reproduced and root-caused, against the actual exported `ChefBlaze.glb` and the live
+  post-clone runtime: it was NONE of (a) post-decimation skin-weight capping, (b) deform-bone
+  export scoping, or (c) a runtime clone/binding issue — all three were checked directly and
+  ruled out (weights, joints, and animation channels are all correct in the file; bone poses and
+  CPU-replicated GPU skinning are all correct at runtime). The real cause: the authored
+  upper-body walk amplitude was simply too small relative to the legs (measured peak-to-peak
+  displacement — see Implementation notes above) to read as animated next to the legs' much
+  larger sweep. Fixed by raising the arm/forearm/chest/pelvis amplitudes in
+  `build_chef_blaze.py` and rebuilding the GLB.
+- [x] The Chef Blaze model's arms, chest, and pelvis visibly move during the walk animation, not
   just the legs — verified by actually watching it play (in the live scene or the Asset Showcase
   harness), not just by confirming keyframes exist.
-- [ ] Sprinting owners slide/coast a short distance past the point where sprint input drops
+- [x] Sprinting owners slide/coast a short distance past the point where sprint input drops
   (key released, or stamina exhausted) before coming to a full stop, integrated server-side in
   `movement-system.js` with new named tunables in `shared/constants/tuning.js`'s existing
   `OWNER_SPRINT_*` block — not a client-only visual effect.
-- [ ] The slide still respects `RESTAURANT_BOUNDS` at every tick (reuses the existing `clamp(...)`
+- [x] The slide still respects `RESTAURANT_BOUNDS` at every tick (reuses the existing `clamp(...)`
   calls) and doesn't let a player slide through/into something the normal movement clamp already
   prevents.
-- [ ] `npm run check` stays green, specifically confirmed for `check-owner-actions.mjs`'s sprint
+- [x] `npm run check` stays green, specifically confirmed for `check-owner-actions.mjs`'s sprint
   stamina/cooldown assertions and `smoke-milestone0.mjs`'s out-of-bounds clamp check.
 
 ## Notes
