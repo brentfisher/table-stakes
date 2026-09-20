@@ -1,7 +1,7 @@
 ---
 id: STORY-064
 title: Put Monsieur the maître d' on the host worker
-status: ready
+status: complete
 prd_source: null
 branch: story/064-monsieur-host-worker-model
 worktree_path: null
@@ -64,6 +64,11 @@ and already owns the `seat_party` task.
 - [ ] Frame cost is measured with the host live and animating, not just at export. STORY-059 already
   had to tune this scene's budget once, and this adds a second skinned mesh alongside the owner.
 - [ ] `npm run check` stays green.
+
+- [x] **Verified in the live scene** (asset-showcase harness, composed mode): `Monsieur.glb` is
+  fetched 200 and rendered on the `host` worker — burgundy jacket, with the `H` role glyph and
+  the `SEATING` task chip still correctly positioned above him, and the capsule gone.
+  `prep_worker` alongside is still its olive capsule, confirming only mapped roles swap.
 
 ## Notes
 

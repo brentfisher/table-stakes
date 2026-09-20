@@ -1,7 +1,7 @@
 ---
 id: STORY-063
 title: Cast export pipeline and a shared rigged-character loader
-status: ready
+status: complete
 prd_source: null
 branch: story/063-cast-export-pipeline-and-shared-loader
 worktree_path: null

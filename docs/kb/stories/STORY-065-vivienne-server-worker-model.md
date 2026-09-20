@@ -1,7 +1,7 @@
 ---
 id: STORY-065
 title: Put Vivienne the concierge on the server worker
-status: ready
+status: complete
 prd_source: null
 branch: story/065-vivienne-server-worker-model
 worktree_path: null
@@ -56,6 +56,10 @@ role, reusing the role-to-model path STORY-064 established for `host`.
 - [ ] Frame cost measured with the server live and animating alongside the owner and the host — three
   skinned meshes in the scene, where STORY-060 sized for one.
 - [ ] `npm run check` stays green.
+
+- [x] **Verified in the live scene** (asset-showcase harness, composed mode): `Vivienne.glb` is
+  fetched 200 and rendered on the `server` worker — navy-and-burgundy uniform, with the `S`
+  glyph and `DELIVER` chip intact above her.
 
 ## Notes
 
