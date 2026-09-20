@@ -64,4 +64,4 @@ Statuses refreshed 2026-09-13 against master `05aa5f5` (through STORY-059).
 * [STORY-059: Gate the Command Center behind Tab; tune shadow/bloom/pixel-ratio cost; darken the base scene for lighting impact](STORY-059-command-center-tab-gate-and-scene-perf.md) - pr-opened
 * [STORY-060: Rig the new Chef Blaze hero model into the player's owner character](STORY-060-chef-blaze-owner-model.md) - pr-opened
 * [STORY-061: Owner never faces its movement direction; Chef Blaze's rig only visibly animates the legs; add a sprint slide-overshoot](STORY-061-owner-facing-and-sprint-slide.md) - pending
-* [STORY-062: Key-light shadow camera frustum is set but never applied, causing intermittent black patches in the scene](STORY-062-shadow-camera-frustum-never-applied.md) - pending
+* [STORY-062: Key-light shadow camera frustum is set but never applied, causing intermittent black patches in the scene](STORY-062-shadow-camera-frustum-never-applied.md) - pr-opened

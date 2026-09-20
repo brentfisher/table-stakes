@@ -1,12 +1,12 @@
 ---
 id: STORY-062
 title: Key-light shadow camera frustum is set but never applied, causing intermittent black patches in the scene
-status: in-progress
+status: pr-opened
 prd_source: null
 branch: story/062-shadow-camera-frustum-never-applied
 worktree_path: /Users/brent/table-stakes-worktrees/story-062-shadow-camera-frustum-never-applied
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/90
 is_architectural: false
 approach_summary: >
   CONFIRMED root cause via static reading plus a user follow-up that ruled out the alternative
@@ -71,20 +71,21 @@ obvious enough to notice.
 
 ## Acceptance Criteria
 
-- [ ] `this.keyLight.shadow.camera.updateProjectionMatrix()` is called right after the
+- [x] `this.keyLight.shadow.camera.updateProjectionMatrix()` is called right after the
   `Object.assign(...)` on `RestaurantScene.ts` line 892 (or the assignment is restructured to set
   the fields directly on the camera followed by the same call — either way, the intended
   left/right/top/bottom/near/far actually takes effect on the rendered shadow map).
-- [ ] Confirmed via grep that no other `Object.assign` onto any `.shadow.camera` or camera object
+- [x] Confirmed via grep that no other `Object.assign` onto any `.shadow.camera` or camera object
   exists elsewhere in the client missing the same call (STORY's own investigation found none, but
   don't skip re-checking as part of the fix).
-- [ ] Visually verified (live client or an appropriate harness): walking the owner across the
+- [x] Visually verified (live client or an appropriate harness): walking the owner across the
   full restaurant floor, including the far corners STORY-059's comment calls out by name (pantry
   shelving, fridge/wash station, the rival's slab), shows no black/missing-shadow patches any more.
-- [ ] Visually confirmed the shadow quality now actually reflects STORY-059's intended tighter
+- [x] Visually confirmed the shadow quality now actually reflects STORY-059's intended tighter
   frustum (higher effective shadow-map texel density over the real floor bounds) — since that
   improvement was never live before this fix, note in the PR whether it's now visibly sharper.
-- [ ] `npm run check` stays green.
+  **Correction found during verification: it is NOT sharper — see Notes below.**
+- [x] `npm run check` stays green.
 
 ## Notes
 
@@ -104,3 +105,32 @@ obvious enough to notice.
   `let disposed = false` is never set to `true` (dead code) — harmless today because
   `RestaurantScene.removeOwner` already removes the group before disposal runs, but worth a
   one-line cleanup if anyone is back in that file for another reason.
+- **Fix landed and verified (2026-09-19).** The one-line fix
+  (`this.keyLight.shadow.camera.updateProjectionMatrix()` right after the `Object.assign` on
+  `RestaurantScene.ts`) is in. Confirmed via grep (`Object.assign.*\.camera` and a broader
+  `shadow\.camera` search) that no other camera in the client has this set-without-apply pattern.
+- **Correction to the "sharper shadows" expectation above**: it's the opposite, and the arithmetic
+  says so directly. The frustum that was ACTUALLY rendering all along was three.js's constructor
+  default (`-5..5`, 10×10 area), not STORY-059's old `±18/±20` (36×40=1440) or new `±16` (32×32=1024)
+  numbers — both of those were always larger than what was live. So this fix moves the covered area
+  from 100 to 1024 world-units² at the same 2048 map size and `radius: 4` PCF blur — that's a
+  ~10x drop in texel density over the region that was already covered, meaning shadows near the
+  center may read softer/blockier now, not sharper. What the fix actually buys is coverage: props
+  and the owner far from center, previously outside the tiny default frustum and silently
+  unshadowed, are now shadowed at all. The `RestaurantScene.ts` comment block above the fix was
+  updated in the same commit to correct this (the old comment's "1.4x texel density" and "no
+  clipping" claims were both observations of the broken default frustum, not the intended one).
+- **Verification method and a real gap**: visual verification used the `restaurant-layout` dev
+  harness (which imports the actual production `RestaurantScene`, not a stand-in). Did an A/B by
+  temporarily disabling the `updateProjectionMatrix()` call and temporarily widening the harness's
+  `orbitOwner` radius (both reverted before commit — not part of the shipped diff) so the owner's
+  orbit reaches the real floor edges. Pre-fix: the owner's shadow disappears entirely once it
+  orbits past the tiny default frustum. Post-fix: the shadow stays present across the full floor,
+  including the kitchen's far corners (pantry shelving, wash station). This directly confirms the
+  diagnosed root cause and its fix. However, the harness did **not** reproduce the user's originally
+  reported symptom ("flashes black... at random") in either state — what was observed was a
+  vanishing shadow, not a flashing black patch. The fix is still correct for the diagnosed bug
+  (the frustum genuinely was never applied), but the specific black-flash symptom was not
+  independently reproduced and confirmed cured in this harness; that connection rests on the
+  root-cause reasoning in `approach_summary` above, not on a reproduction.
+- `npm run check` is green (all 34 check scripts + 5 smoke scripts).
