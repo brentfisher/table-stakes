@@ -17,11 +17,8 @@
 //                                                    and the cast supplies nothing closer.
 //
 // `cook`, `prep_worker` and `busser` keep their primitive capsules — the cast pack has no
-// character for them. Aurelia, the third cast character, is a DINER rather than a worker and is
-// deliberately absent from this table: `upsertCustomer` seats its diners (~1.0 m seated
-// silhouette) while `assets/cast/Aurelia.glb` is exported standing at 1.45 m, and the source rig
-// ships no seated pose. STORY-066 authors one; until then wiring her in would float a standing
-// woman through the tabletop.
+// character for them. Aurelia is a DINER rather than a worker, so she is absent from the worker
+// table and exported separately as `SEATED_DINER_MODEL` below.
 import type { RiggedCharacterSpec } from './RiggedCharacterModel';
 
 // Each URL is spelled out as a literal rather than built from the character's name. Vite resolves
@@ -32,6 +29,16 @@ import type { RiggedCharacterSpec } from './RiggedCharacterModel';
 function castSpec(name: string, url: string): RiggedCharacterSpec {
   return { url, idleClip: `${name}_Idle`, walkClip: `${name}_Walk_InPlace` };
 }
+
+/** Aurelia is a SEATED diner: `assets/cast/Aurelia.glb` ships a seated idle and no walk at all
+ * (see `build_cast.py`'s SEATED_POSE), so her spec deliberately omits `walkClip`. Her GLB is also
+ * scaled and offset for the seated silhouette — 0.99 m crown-to-floor, matching the
+ * CapsuleGeometry(0.18, 0.2) + SphereGeometry(0.17) diner primitive she replaces — so she must
+ * never be used for a standing role. */
+export const SEATED_DINER_MODEL: RiggedCharacterSpec = {
+  url: new URL('../../../assets/cast/Aurelia.glb', import.meta.url).href,
+  idleClip: 'Aurelia_Idle',
+};
 
 /** Worker role -> cast character. A role absent from this table keeps its primitive capsule, so
  * adding a character later is a one-line change here rather than a new branch in `upsertWorker`. */

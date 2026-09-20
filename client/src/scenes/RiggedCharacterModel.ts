@@ -29,9 +29,17 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 export interface RiggedCharacterSpec {
   /** Absolute URL of the GLB, normally built with `new URL('...', import.meta.url).href`. */
   readonly url: string;
-  /** Names of the two clips the GLB must contain. Both are required — see `buildRiggedCharacter`. */
+  /** Name of the clip played at rest. Required. */
   readonly idleClip: string;
-  readonly walkClip: string;
+  /**
+   * Name of the in-place walk clip, if this character has one.
+   *
+   * Optional because not every rigged character in this scene moves: a seated diner
+   * (`assets/cast/Aurelia.glb`) is exported with a seated idle and NO walk, since shipping a walk
+   * clip that must never play is both dead weight and an invitation to play it by mistake. When
+   * this is absent, `update()` ignores its `moving` argument and simply advances the idle.
+   */
+  readonly walkClip?: string;
 }
 
 export interface RiggedCharacterOptions {
@@ -132,8 +140,12 @@ export async function buildRiggedCharacter(
   });
 
   const idleClip = THREE.AnimationClip.findByName(gltf.animations, spec.idleClip);
-  const walkClip = THREE.AnimationClip.findByName(gltf.animations, spec.walkClip);
-  if (!idleClip || !walkClip) {
+  // A missing walk is only an error when one was ASKED for. A spec with no `walkClip` is a
+  // character that genuinely cannot walk, not an incomplete one.
+  const walkClip = spec.walkClip
+    ? THREE.AnimationClip.findByName(gltf.animations, spec.walkClip)
+    : null;
+  if (!idleClip || (spec.walkClip && !walkClip)) {
     if (ownResources) disposeObject(root);
     const missing = !idleClip ? spec.idleClip : spec.walkClip;
     throw new Error(`${spec.url} is missing animation clip ${missing}`);
@@ -141,7 +153,7 @@ export async function buildRiggedCharacter(
 
   const mixer = new THREE.AnimationMixer(root);
   const idleAction = mixer.clipAction(idleClip);
-  const walkAction = mixer.clipAction(walkClip);
+  const walkAction = walkClip ? mixer.clipAction(walkClip) : null;
   idleAction.play();
   let moving = false;
   let disposed = false;
@@ -150,7 +162,7 @@ export async function buildRiggedCharacter(
     root,
     update(dt, nextMoving) {
       if (disposed) return;
-      if (nextMoving !== moving) {
+      if (walkAction !== null && nextMoving !== moving) {
         moving = nextMoving;
         const from = moving ? idleAction : walkAction;
         const to = moving ? walkAction : idleAction;

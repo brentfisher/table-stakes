@@ -9,7 +9,8 @@
   "roleNote": "seated diner — up to 24 live instances (6 tables x partySize 4)",
   "runtime": {
     "file": "Aurelia.glb",
-    "heightMeters": 1.45,
+    "heightMeters": 0.99,
+    "heightMeasuredFrom": "posed seated mesh",
     "units": "meters",
     "upAxis": "+Z in Blender / +Y in glTF",
     "forwardAxis": "-Y in Blender / +Z in glTF — matches RestaurantScene.ts's existing +Z-forward avatar convention, so no corrective rotation is needed",
@@ -22,24 +23,18 @@
       "bake_uv"
     ],
     "bakedAlbedo": "512x512",
-    "fileSizeBytes": 778652,
+    "fileSizeBytes": 747144,
     "skinning": "bounded smooth (<=4 influences/vertex, normalized)"
   },
+  "posture": "seated",
   "animations": [
     {
       "name": "Aurelia_Idle",
+      "frames": 120,
       "fps": 30,
       "loop": true,
       "rootMotion": "in-place",
-      "source": "the character's own authored breathing loop, renamed only"
-    },
-    {
-      "name": "Aurelia_Walk_InPlace",
-      "frames": 30,
-      "fps": 30,
-      "loop": true,
-      "rootMotion": "in-place",
-      "source": "authored by build_cast.py — cast-pack.blend ships no walk animation"
+      "source": "authored by build_cast.py — a held seated pose with a shallow chest rise; cast-pack.blend ships no seated pose, and its standing breathing loop is keyed against a standing rest pose so it is not reused"
     }
   ],
   "knownLimitations": [

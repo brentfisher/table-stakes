@@ -22,10 +22,12 @@ import { managerLedgerHarness } from './manager-ledger-harness';
 import { readyUpMenuHarness } from './ready-up-menu-harness';
 import { neonSignHarness } from './neon-sign-harness';
 import { audioEffectsHarness } from './audio-effects-harness';
+import { castModelsHarness } from './cast-models-harness';
 import type { SceneHarness } from './harness-shell';
 
 export const harnesses: SceneHarness[] = [
   restaurantLayoutHarness,
+  castModelsHarness,
   customerFlowHarness,
   kitchenBottleneckHarness,
   eventVisualizationHarness,

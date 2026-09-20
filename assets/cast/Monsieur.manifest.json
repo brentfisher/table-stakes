@@ -10,6 +10,7 @@
   "runtime": {
     "file": "Monsieur.glb",
     "heightMeters": 1.45,
+    "heightMeasuredFrom": "standing rest mesh",
     "units": "meters",
     "upAxis": "+Z in Blender / +Y in glTF",
     "forwardAxis": "-Y in Blender / +Z in glTF — matches RestaurantScene.ts's existing +Z-forward avatar convention, so no corrective rotation is needed",
@@ -22,12 +23,14 @@
       "bake_uv"
     ],
     "bakedAlbedo": "1024x1024",
-    "fileSizeBytes": 2362264,
+    "fileSizeBytes": 2362116,
     "skinning": "bounded smooth (<=4 influences/vertex, normalized)"
   },
+  "posture": "standing",
   "animations": [
     {
       "name": "Monsieur_Idle",
+      "frames": 120,
       "fps": 30,
       "loop": true,
       "rootMotion": "in-place",

@@ -1,7 +1,7 @@
 ---
 id: STORY-066
 title: Put Aurelia on seated customers
-status: ready
+status: complete
 prd_source: null
 branch: story/066-aurelia-seated-customer-model
 worktree_path: null
@@ -67,6 +67,20 @@ only after a seated pose exists, which the source scene does not supply.
 - [ ] Frame cost measured with all 6 tables full (24 diners) animating, alongside the owner, host and
   server — 27 skinned meshes, where STORY-060 sized this scene for one.
 - [ ] `npm run check` stays green.
+
+- [x] **Verified in the live scene** (asset-showcase harness, composed mode): seated Aurelia renders
+  on customers through `upsertCustomer`, on her segment disc, with the patience ring intact. Also
+  shown in the new **Cast Models** harness, which lines up all four rigged characters at close
+  range through the production loader.
+- [x] **Two rigging defects in the source were found and fixed in the build**, both of which also
+  affected the already-merged workers and owner avatar:
+  - Every `.R` vertex group in `cast-pack.blend` carries ZERO weight, so the right arm and right
+    leg of all three cast characters were welded rigidly to the torso. `mirror_side_weights`
+    populates them from the `.L` side via a KD-tree spatial match on the dense mesh.
+  - `WALK_BONES` paired each bone with the OPPOSITE amp on the other side, on the assumption of a
+    mirrored rig. These rigs are not mirrored, so the opposite amp cancelled the opposite phase and
+    both legs swung IN UNISON. Fixed here and in `build_chef_blaze.py` — the player's own avatar
+    had been hopping rather than walking since STORY-060.
 
 ## Notes
 

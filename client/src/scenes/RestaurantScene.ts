@@ -50,7 +50,7 @@ import {
 } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 import { buildChefBlaze, disposeChefBlaze, type ChefBlazeInstance } from './ChefBlazeModel';
-import { WORKER_ROLE_MODELS } from './CastModels';
+import { SEATED_DINER_MODEL, WORKER_ROLE_MODELS } from './CastModels';
 import { buildRiggedCharacter, type RiggedCharacterInstance } from './RiggedCharacterModel';
 
 export interface OwnerRenderState {
@@ -156,6 +156,23 @@ const TABLE_BADGE_COLORS: Record<Exclude<TableBadgeKind, null>, number> = {
   paying: STATE_COLORS.opportunity,
   dirty: STATE_COLORS.bottleneck,
 };
+
+/** One shared material per segment colour, for the diner segment discs.
+ *
+ * Built lazily and cached rather than one per diner: a full dining room is 6 tables x a
+ * `partySize` cap of 4 = up to 24 discs, but only a handful of distinct segment colours
+ * (`customer-segments.json`), so this collapses 24 materials down to a few. The discs exist
+ * because the seated model cannot carry the tint the capsule used to — see `upsertCustomer`. */
+const segmentDiscMaterials = new Map<number, THREE.MeshBasicMaterial>();
+
+function segmentDiscMaterial(color: number): THREE.MeshBasicMaterial {
+  let material = segmentDiscMaterials.get(color);
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    segmentDiscMaterials.set(color, material);
+  }
+  return material;
+}
 
 /** Scratch vector for `updateWorkerAnimations`'s per-frame step measurement. Module-level and
  * reused rather than allocated per worker per frame — this runs for every worker every frame. */
@@ -2382,25 +2399,73 @@ export class RestaurantScene {
     while (body.children.length < partySize) {
       const diner = new THREE.Group();
       diner.name = 'diner';
+      // The capsule+sphere pair stays as the synchronous placeholder and the permanent fallback
+      // if the GLB never resolves — same contract `upsertOwner` and `upsertWorker` use. Grouped
+      // under one node so the model swap removes both with a single call.
+      const placeholder = new THREE.Group();
+      placeholder.name = 'diner_placeholder';
       const torso = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.18, 0.2, 5, 10),
         new THREE.MeshStandardMaterial({ color: segmentColor, roughness: 0.7 }),
       );
       torso.position.y = 0.45;
-      diner.add(torso);
+      placeholder.add(torso);
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.17, 12, 10),
         new THREE.MeshStandardMaterial({ color: 0xf0d5b8, roughness: 0.8 }),
       );
       head.position.y = 0.82;
-      diner.add(head);
+      placeholder.add(head);
+      diner.add(placeholder);
+      // §14's "segment-cued customers" tint lives on that torso today. A textured model cannot
+      // carry it — tinting per instance would mean per-instance materials, i.e. 24 copies of
+      // Aurelia's material, which is exactly what the shared-resource path exists to avoid. So the
+      // cue moves to its own small disc at the diner's feet, which survives the swap and keeps the
+      // channel independent of the patience ring (a party-wide marker, a different signal).
+      const segmentDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.22, 16),
+        segmentDiscMaterial(segmentColor),
+      );
+      segmentDisc.rotation.x = -Math.PI / 2;
+      segmentDisc.position.y = 0.02;
+      segmentDisc.name = 'segment_disc';
+      diner.add(segmentDisc);
       body.add(diner);
+
+      const dinerGroup = diner;
+      void buildRiggedCharacter(SEATED_DINER_MODEL)
+        .then((instance) => {
+          // The party may have left while the GLB was in flight; `removeCustomer` drops the group
+          // but cannot reach this closure.
+          if (this.customers.get(state.customerId) !== group || dinerGroup.parent === null) {
+            instance.dispose();
+            return;
+          }
+          const stale = dinerGroup.getObjectByName('diner_placeholder');
+          if (stale) dinerGroup.remove(stale);
+          dinerGroup.add(instance.root);
+          dinerGroup.userData.model = instance;
+        })
+        .catch((error: unknown) => {
+          console.warn(`Seated diner model failed to load for ${state.customerId}; keeping placeholder.`, error);
+        });
     }
     body.children.forEach((child, index) => {
       child.visible = index < partySize;
       const [x, z] = seatOffsets[index] ?? seatOffsets[0];
       child.position.set(x, 0, z);
+      // Turn each seat inward to face the table. The capsule placeholder was rotationally
+      // symmetric so this never mattered; a seated figure with legs and a face very much has a
+      // front, and four diners all facing the same way reads as a waiting room rather than a
+      // table. `atan2(x, z)` (not `-x, -z`) because these models are +Z-forward in their own local
+      // space, so pointing the seat's own outward offset along +Z aims the character back at the
+      // centre. Same convention `upsertOwner` uses to apply `state.facing` with no correction.
+      child.rotation.y = Math.atan2(x, z);
     });
+    for (const diner of body.children) {
+      const disc = diner.getObjectByName('segment_disc') as THREE.Mesh | undefined;
+      if (disc) disc.material = segmentDiscMaterial(segmentColor);
+    }
     const existingOrderLabel = group.getObjectByName('order_label') as THREE.Sprite | undefined;
     if (state.orderLabel) {
       if (existingOrderLabel?.userData.text !== state.orderLabel) {
@@ -2426,6 +2491,16 @@ export class RestaurantScene {
   removeCustomer(customerId: string): void {
     const group = this.customers.get(customerId);
     if (!group) return;
+    // Release each seated diner's mixer bookkeeping. Geometry and materials are NOT freed: these
+    // are shared-resource instances, so they belong to the cached source and every other diner is
+    // still pointing at them (see `RiggedCharacterOptions`).
+    const body = group.getObjectByName('body');
+    if (body) {
+      for (const diner of body.children) {
+        const model = diner.userData.model as RiggedCharacterInstance | undefined;
+        if (model) model.dispose();
+      }
+    }
     this.scene.remove(group);
     this.customers.delete(customerId);
   }
@@ -2439,12 +2514,24 @@ export class RestaurantScene {
    * `GameClient#handleFrame`, never from React (Notable Pattern 3/11): cheap (one `Math.sin`
    * per live customer), and a healthy party is perfectly still (amplitude 0), so this costs
    * nothing extra for the common case of a floor with no one impatient yet. */
-  updateCustomerAnimations(elapsedSeconds: number): void {
+  updateCustomerAnimations(elapsedSeconds: number, dt = 0): void {
     const amplitudeByBand: Record<string, number> = { healthy: 0, attention: 0.03, bottleneck: 0.07, critical: 0.13 };
     const speedByBand: Record<string, number> = { healthy: 0, attention: 2.2, bottleneck: 3.4, critical: 5.0 };
     for (const group of this.customers.values()) {
       const target = group.userData.positionTarget as THREE.Vector3 | undefined;
       if (target) group.position.lerp(target, 0.035);
+      if (dt > 0) {
+        const seated = group.getObjectByName('body');
+        // `moving` is always false: a seated diner's GLB ships no walk clip at all, so the loader
+        // ignores the flag entirely (see `RiggedCharacterSpec.walkClip`). This call is purely to
+        // advance the mixer so the seated idle's chest rise plays.
+        if (seated) {
+          for (const diner of seated.children) {
+            const model = diner.userData.model as RiggedCharacterInstance | undefined;
+            if (model) model.update(dt, false);
+          }
+        }
+      }
       const band = (group.userData.band as string) ?? 'healthy';
       const amplitude = amplitudeByBand[band] ?? 0;
       const body = group.getObjectByName('body');
