@@ -1,12 +1,12 @@
 ---
 id: STORY-063
 title: Cast export pipeline and a shared rigged-character loader
-status: complete
+status: pr-opened
 prd_source: null
 branch: story/063-cast-export-pipeline-and-shared-loader
 worktree_path: null
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/94
 is_architectural: true
 approach_summary: >
   Foundation story for wiring the three new cast characters (Monsieur, Vivienne, Aurelia) into the

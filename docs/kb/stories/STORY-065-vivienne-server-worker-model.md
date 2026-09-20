@@ -1,12 +1,12 @@
 ---
 id: STORY-065
 title: Put Vivienne the concierge on the server worker
-status: complete
+status: pr-opened
 prd_source: null
 branch: story/065-vivienne-server-worker-model
 worktree_path: null
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/94
 is_architectural: false
 approach_summary: >
   Depends on STORY-063 (cast export pipeline + generalized loader), and lands after STORY-064,

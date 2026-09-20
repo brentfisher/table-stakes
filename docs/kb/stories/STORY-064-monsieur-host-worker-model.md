@@ -1,12 +1,12 @@
 ---
 id: STORY-064
 title: Put Monsieur the maître d' on the host worker
-status: complete
+status: pr-opened
 prd_source: null
 branch: story/064-monsieur-host-worker-model
 worktree_path: null
 base_branch: master
-pr_url: null
+pr_url: https://github.com/brentfisher/table-stakes/pull/94
 is_architectural: false
 approach_summary: >
   Depends on STORY-063 (cast export pipeline + generalized loader). Do not start until it lands.
