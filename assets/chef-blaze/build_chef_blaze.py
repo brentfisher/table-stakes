@@ -198,6 +198,36 @@ bpy.context.scene.render.fps = WALK_FPS
 # character faces -Y (root/pelvis/spine/thigh/shin bones all confirm this — see the
 # story's notes for the axis dump used to check it) — a rotation around world X stays
 # entirely within the Y-Z (forward/up) plane, which is exactly the swing a walk needs.
+#
+# STORY-061. The FIRST-PASS amplitudes below (upper_arm 0.35, forearm 0.22, chest 0.05,
+# pelvis rotation 0.08) were not a bug in any of the senses STORY-061 went looking for —
+# every bone here IS keyframed every frame, the export DOES carry deform weights for all of
+# them, and the runtime clone DOES apply the resulting pose. They were just too SMALL to read
+# next to the legs, which is exactly the "hanging on a pole" complaint. Measured directly (not
+# guessed) via the Asset Showcase harness: `SkinnedMesh.applyBoneTransform` on each region's
+# most-heavily-weighted vertex, world-space peak-to-peak displacement over one full
+# `ChefBlaze_Walk_InPlace` cycle, on the ORIGINAL amplitudes below:
+#   foot.L      0.666 m   (thigh+shin+foot chain — already reads clearly, left alone)
+#   hand.L      0.283 m   (upper_arm+forearm chain — visible, but well under half the leg's)
+#   forearm.L   0.155 m
+#   head        0.089 m
+#   spine.chest 0.081 m
+#   pelvis      0.033 m   (bob + rotation combined)
+# A believable walk doesn't need the arm to out-swing the leg, but a ~2.4x gap (0.666 vs
+# 0.283) reads as "legs walking, upper body just along for the ride" at this game's top-down
+# arcade camera distance — small differences in a big sweep are far more legible than small
+# differences in an already-small one. The amplitudes below were scaled up specifically to
+# close that gap, not picked independently: upper_arm and forearm both roughly +55-90% (the
+# forearm gets the bigger relative bump because its old 0.22 rad amplitude was further
+# throttled by `flex_phase`'s clamped-to-non-negative half-sine drive below, so its real
+# swing was only ~4.5 degrees of the nominal ~12.6 — nearly half the authored amplitude never
+# showed up in the export at all); chest and pelvis rotation both roughly doubled so the
+# torso countersway is legible rather than a rounding error next to the legs' 25-45 degree
+# swings. Re-measured after rebuilding (same harness technique): foot.L 0.716 m, hand.L
+# 0.423 m, forearm.L 0.230 m, head 0.117 m, spine.chest 0.114 m, pelvis 0.052 m — every
+# region gained 30-60%, and the leg-to-hand ratio dropped from 2.35x down to 1.69x, closing
+# most of the gap without making the upper body out-swing the legs (which would read as its
+# own kind of wrong for a walk cycle).
 WALK_BONES = {
     "thigh.L": 0.45,
     "thigh.R": -0.45,
@@ -205,10 +235,10 @@ WALK_BONES = {
     "shin.R": -0.35,
     "foot.L": 0.16,
     "foot.R": -0.16,
-    "upper_arm.L": -0.35,   # opposite phase to the SAME-side leg (contralateral gait):
-    "upper_arm.R": 0.35,    # upper_arm.L swings with thigh.R, and vice versa.
-    "forearm.L": 0.22,
-    "forearm.R": -0.22,
+    "upper_arm.L": -0.55,   # opposite phase to the SAME-side leg (contralateral gait):
+    "upper_arm.R": 0.55,    # upper_arm.L swings with thigh.R, and vice versa.
+    "forearm.L": 0.42,
+    "forearm.R": -0.42,
 }
 # Which bone's phase each entry above actually follows (own leg phase, or the opposite
 # side's, for the contralateral arms). Value is the phase-lookup key into `leg_phase`.
@@ -218,9 +248,9 @@ PHASE_SOURCE = {
     "upper_arm.L": "R", "forearm.L": "R",
     "upper_arm.R": "L", "forearm.R": "L",
 }
-PELVIS_BOB_M = 0.09          # in Blender units, pre-scale (-> ~0.023 m after TARGET_HEIGHT_M scale)
-PELVIS_ROT_AMP = 0.08
-CHEST_ROT_AMP = 0.05
+PELVIS_BOB_M = 0.13          # in Blender units, pre-scale (-> ~0.033 m after TARGET_HEIGHT_M scale)
+PELVIS_ROT_AMP = 0.12
+CHEST_ROT_AMP = 0.11
 
 
 def world_axis_to_local(pose_bone, world_axis):

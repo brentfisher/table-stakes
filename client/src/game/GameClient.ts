@@ -1389,10 +1389,20 @@ export class GameClient {
     this.sinceInputSend += dt * 1000;
     if (this.sinceInputSend >= 1000 / INPUT_SEND_HZ) {
       this.sinceInputSend = 0;
-      this.network.sendInput(
-        this.input.getMoveIntent(this.scene.cameraController.getSettings().angle),
-        this.input.getFacing(),
-      );
+      const moveIntent = this.input.getMoveIntent(this.scene.cameraController.getSettings().angle);
+      // STORY-061. `InputController.setFacing()` was defined but never called anywhere in the
+      // client, so `facing` stayed hard-initialized at `0` for the life of the page and every
+      // owner (primitive or Chef Blaze model) rendered permanently facing its spawn direction —
+      // `RestaurantScene`'s `group.rotation.y = state.facing` line was always correct, it just
+      // never received a real value. Derive facing from the live move intent here, matching the
+      // convention `bot-controller.js` already uses for bots (`Math.atan2(x, z)`). Only update it
+      // when the intent is actually nonzero: an idle owner should hold its last heading rather
+      // than snap to `0`, which is what a naive "always recompute" version would do the instant
+      // the player lets go of every key.
+      if (moveIntent.x !== 0 || moveIntent.z !== 0) {
+        this.input.setFacing(Math.atan2(moveIntent.x, moveIntent.z));
+      }
+      this.network.sendInput(moveIntent, this.input.getFacing());
     }
   }
 

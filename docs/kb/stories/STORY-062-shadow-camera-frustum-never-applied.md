@@ -1,10 +1,10 @@
 ---
 id: STORY-062
 title: Key-light shadow camera frustum is set but never applied, causing intermittent black patches in the scene
-status: pending
+status: in-progress
 prd_source: null
 branch: story/062-shadow-camera-frustum-never-applied
-worktree_path: null
+worktree_path: /Users/brent/table-stakes-worktrees/story-062-shadow-camera-frustum-never-applied
 base_branch: master
 pr_url: null
 is_architectural: false

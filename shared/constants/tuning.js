@@ -104,6 +104,30 @@ export const OWNER_MOVE_SPEED = 4.2; // world units / second
 export const OWNER_SPRINT_MULTIPLIER = 1.7;
 export const OWNER_SPRINT_MAX_MS = 2_500;
 export const OWNER_SPRINT_COOLDOWN_MS = 5_000;
+/**
+ * STORY-061. "A little bit of ice" — when sprint input drops (key released, or
+ * `OWNER_SPRINT_MAX_MS` stamina exhausted), the owner should not snap from full sprint speed to
+ * either a dead stop or plain walk speed on the very next tick. `movement-system.js` instead
+ * captures the owner's current sprint velocity into `player.slideVelocity` and lets it coast,
+ * decaying this many world units/second of speed off that vector every second, until it drops
+ * below `OWNER_SPRINT_SLIDE_STOP_SPEED` and manual control resumes.
+ *
+ * The number is chosen backward from a target *slide duration*, not picked first: at top sprint
+ * speed (`OWNER_MOVE_SPEED * OWNER_SPRINT_MULTIPLIER` ≈ 7.14 units/s), a linear decay to zero
+ * takes `speed / decel` seconds. 24 units/s² gives ≈0.30s — long enough to read as a deliberate
+ * skid, short enough that it never feels like lost control. Over that window the owner covers
+ * `speed² / (2 * decel)` ≈ 1.06 world units (about 6% of the 18-unit-wide restaurant floor) before
+ * stopping — a nudge, not a hazard.
+ */
+export const OWNER_SPRINT_SLIDE_DECEL_PER_S2 = 24;
+/**
+ * STORY-061. Below this residual speed (world units/second) the slide is considered spent and
+ * `movement-system.js` snaps `slideVelocity` to exactly zero rather than asymptotically crawling
+ * toward it forever. Small relative to `OWNER_MOVE_SPEED` (4.2) so it is well below anything a
+ * player could perceive as still-sliding, but not zero, since floating-point decay never reaches
+ * zero on its own.
+ */
+export const OWNER_SPRINT_SLIDE_STOP_SPEED = 0.05;
 
 /** Reconnect grace period. PRD §13 "Server responsibilities": handle reconnect grace. */
 export const RECONNECT_GRACE_MS = 30_000;

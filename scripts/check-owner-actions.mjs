@@ -41,6 +41,7 @@ import {
   OWNER_CARRY_CAPACITY,
   OWNER_SPRINT_MAX_MS,
   OWNER_SPRINT_COOLDOWN_MS,
+  RESTAURANT_BOUNDS,
   CUSTOMER_VISIBLE_QUEUE_MS,
   UNHAPPY_CUSTOMER_PATIENCE_THRESHOLD,
   WORKER_RESTOCK_THRESHOLD_UNITS,
@@ -919,6 +920,86 @@ function cookProbe(id) {
     'and stays locked out through the cooldown, not just for one tick',
     stillSprint === false,
     `cooldownMs=${player.sprintCooldownMs} of ${OWNER_SPRINT_COOLDOWN_MS}`,
+  );
+}
+
+// =============================================================================================
+// 15. STORY-061: sprinting owner slides past the point sprint input drops ("a little bit of ice")
+// =============================================================================================
+{
+  const match = cookProbe('m_slide');
+  const player = match.players.get('p1');
+  const startX = player.position.x;
+
+  // Sprint in +x for long enough to reach steady sprint speed, well short of exhausting stamina.
+  match.applyInput('p1', { sequence: 1, move: { x: 1, z: 0, sprint: true }, facing: 0 });
+  quiet(() => {
+    for (let i = 0; i < 10; i += 1) stepMatch(match, TICK_MS);
+  });
+  const xAtSprintEnd = player.position.x;
+  check(
+    'sprinting moved the owner as before this story',
+    xAtSprintEnd > startX,
+    `startX=${startX} xAtSprintEnd=${xAtSprintEnd}`,
+  );
+
+  // Drop all input, as if every key was released at once — the moment the slide should begin.
+  match.applyInput('p1', { sequence: 2, move: { x: 0, z: 0, sprint: false }, facing: 0 });
+  quiet(() => stepMatch(match, TICK_MS));
+  const xOneTickAfterRelease = player.position.x;
+  check(
+    'the owner keeps moving for at least one tick after sprint input drops (coasting, not a dead stop)',
+    xOneTickAfterRelease > xAtSprintEnd,
+    `xAtSprintEnd=${xAtSprintEnd} xOneTickAfterRelease=${xOneTickAfterRelease}`,
+  );
+
+  // Measured, not asserted: run out the whole slide window and confirm it actually ends —
+  // this is "a little bit of ice," not a permanent shove — and that the total coast distance is
+  // small relative to the floor, not a runaway.
+  quiet(() => {
+    for (let i = 0; i < 40; i += 1) stepMatch(match, TICK_MS);
+  });
+  const xAfterSlideSettles = player.position.x;
+  const slideDistance = xAfterSlideSettles - xAtSprintEnd;
+  check(
+    'the slide comes to a full stop on its own with no input (velocity actually decays to zero)',
+    Math.hypot(player.slideVelocity.x, player.slideVelocity.z) === 0,
+    `slideVelocity=(${player.slideVelocity.x}, ${player.slideVelocity.z})`,
+  );
+  check(
+    'the coast is a short nudge, not most of the floor — under half the room width past sprint end',
+    slideDistance > 0 && slideDistance < (RESTAURANT_BOUNDS.maxX - RESTAURANT_BOUNDS.minX) / 2,
+    `slideDistance=${slideDistance.toFixed(3)} floorWidth=${RESTAURANT_BOUNDS.maxX - RESTAURANT_BOUNDS.minX}`,
+  );
+  quiet(() => stepMatch(match, TICK_MS));
+  check(
+    'once settled, standing still with no input holds position exactly (no residual drift)',
+    player.position.x === xAfterSlideSettles,
+    `xAfterSlideSettles=${xAfterSlideSettles} afterOneMoreTick=${player.position.x}`,
+  );
+}
+
+// =============================================================================================
+// 16. STORY-061: a slide never carries the owner out of RESTAURANT_BOUNDS
+// =============================================================================================
+{
+  const match = cookProbe('m_slide_bounds');
+  const player = match.players.get('p1');
+  // Walk the owner to just short of the +x wall, then sprint straight into it so the slide
+  // window falls right at the boundary — the case most likely to expose a clamp gap.
+  player.position.x = RESTAURANT_BOUNDS.maxX - 0.3;
+  match.applyInput('p1', { sequence: 1, move: { x: 1, z: 0, sprint: true }, facing: 0 });
+  quiet(() => {
+    for (let i = 0; i < 5; i += 1) stepMatch(match, TICK_MS);
+  });
+  match.applyInput('p1', { sequence: 2, move: { x: 0, z: 0, sprint: false }, facing: 0 });
+  quiet(() => {
+    for (let i = 0; i < 20; i += 1) stepMatch(match, TICK_MS);
+  });
+  check(
+    'sliding into the +x wall still respects RESTAURANT_BOUNDS at settle',
+    player.position.x <= RESTAURANT_BOUNDS.maxX + 1e-6,
+    `x=${player.position.x} maxX=${RESTAURANT_BOUNDS.maxX}`,
   );
 }
 
