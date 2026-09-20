@@ -51,7 +51,7 @@ is independently understandable and runnable; the root scripts only coordinate.
 | `shared/` | Game data (JSON), wire schemas, and tuning constants used by both sides. Plain `.js` + sibling `.d.ts` — never compiled TypeScript. |
 | `server/` | Authoritative Express + `ws` game server. **Plain JavaScript.** Gameplay lives in registered systems under `server/src/game/systems/`, never in `match.js`. |
 | `client/` | Browser client: React UI + Three.js scene, pre-match lobby, live HUD/management layer, and the post-match recap flow. **TypeScript.** |
-| `harnesses/` | 14 standalone 3D dev scenes exercising individual systems with no backend. **TypeScript.** |
+| `harnesses/` | 16 standalone 3D dev scenes exercising individual systems with no backend. **TypeScript.** |
 | `assets/` | Models, textures, audio, and mandatory license metadata. |
 | `scripts/` | The actual test suite (`check-*.mjs`/`smoke-*.mjs`) plus repo-hygiene checks. |
 | `openspec/` | Numbered architectural decisions behind the code, cited by heading throughout the knowledgebase. |
@@ -80,7 +80,7 @@ npm start                # http://localhost:3000 serves the built client
 
 ### Dev harnesses
 
-The 14 standalone 3D scenes under `harnesses/` (see [Layout](#layout)) exercise individual
+The 16 standalone 3D scenes under `harnesses/` (see [Layout](#layout)) exercise individual
 systems with no backend and no match — good for isolating a rendering or interaction bug without
 a live game. Two ways to reach them, picking a scene from the sidebar once loaded:
 
@@ -95,6 +95,24 @@ a live game. Two ways to reach them, picking a scene from the sidebar once loade
   This is a local-only convenience, not part of the Docker image: `.dockerignore` excludes
   `harnesses/` (and every `dist/`) from the build context entirely, so `/harnesses/` 404s on a
   Docker deployment — dev tooling has no reason to ship in a production image.
+
+Every harness takes a `?harness=<id>` query parameter, so a scene can be linked directly rather
+than found in the sidebar. Two worth knowing:
+
+- **[Cast Models](http://localhost:5174/?harness=cast-models)** (`?harness=cast-models`) — a
+  turntable lineup of every rigged character (Chef Blaze, Monsieur, Vivienne, Aurelia), loaded
+  through the same `RiggedCharacterModel` loader the game uses, with an idle/walk toggle and
+  camera controls. Use this to check a MODEL: whether a clip reads right, whether a silhouette
+  holds up, whether an export landed at the right scale.
+- **[Asset Showcase](http://localhost:5174/?harness=asset-showcase)** (`?harness=asset-showcase`)
+  — the same characters reached through the real `upsertOwner`/`upsertWorker`/`upsertCustomer`
+  paths, in the real restaurant at the real gameplay camera. Use this to check the WIRING: whether
+  a role maps to the model it should, and what a character actually looks like in the game's
+  framing (a 1.45 m worker is about 80 px tall there).
+
+Character assets and their build pipeline are documented in
+[`assets/cast/README_ThreeJS.md`](assets/cast/README_ThreeJS.md) and
+[`assets/chef-blaze/README_ThreeJS.md`](assets/chef-blaze/README_ThreeJS.md).
 
 ## Running the backend on another machine (Docker)
 
