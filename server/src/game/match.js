@@ -281,6 +281,11 @@ export class Match {
       sprinting: false,
       sprintRemainingMs: OWNER_SPRINT_MAX_MS,
       sprintCooldownMs: 0,
+      // STORY-061. Residual sprint momentum `movement-system.js` decays toward zero once sprint
+      // input drops, instead of an instant stop — see `OWNER_SPRINT_SLIDE_*` in tuning.js. Never
+      // serialized (position already carries its effect each broadcast), so it lives here as a
+      // plain player field the same way `sprintRemainingMs` does, not through a facade.
+      slideVelocity: { x: 0, z: 0 },
       lastSequence: 0,
       connected: true,
       ready: false,
