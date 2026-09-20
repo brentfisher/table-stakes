@@ -1,10 +1,10 @@
 ---
 id: STORY-061
 title: Owner never faces its movement direction; Chef Blaze's rig only visibly animates the legs; add a sprint slide-overshoot
-status: pending
+status: in-progress
 prd_source: null
 branch: story/061-owner-facing-and-sprint-slide
-worktree_path: null
+worktree_path: /Users/brent/table-stakes-worktrees/story-061-owner-facing-and-sprint-slide
 base_branch: master
 pr_url: null
 is_architectural: false
