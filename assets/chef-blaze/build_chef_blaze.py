@@ -62,7 +62,10 @@ Pipeline, in order:
      root node's scale means every rotation/translation keyframe stays in its original,
      already-correct-relative-proportions space — there's no separate "did I also scale
      the animation curves" failure mode to get wrong.
-  8. Export deform-bones-only (drops the 8 IK control/pole bones, which carry no vertex
+  8. Zero every material's Principled `Anisotropic` value so the exporter cannot emit
+     `KHR_materials_anisotropy` — see that step's own comment for the renderer bug it
+     caused.
+  9. Export deform-bones-only (drops the 8 IK control/pole bones, which carry no vertex
      weights and exist only for FK/IK-switch posing inside Blender), Y-up, GLB, both
      actions.
 """
@@ -395,7 +398,48 @@ log(f"set armature scale to {scale_factor:.5f} (-> {TARGET_HEIGHT_M} m tall once
 
 
 # --------------------------------------------------------------------------------------
-# 8. Export
+# 8. Drop anisotropy from every material before export
+# --------------------------------------------------------------------------------------
+# The source .blend's "Hair | sculpted espresso filament" material carries a non-zero
+# Principled `Anisotropic` value, which Blender's glTF exporter emits as
+# `KHR_materials_anisotropy`. That extension is only safe on a mesh that also ships vertex
+# TANGENTs, and this export has none (three.js only writes a TANGENT attribute when the
+# source mesh carries one, and the sculpt does not) — so three.js derives the tangent frame
+# in the fragment shader instead, via `getTangentFrame()`. That helper guards a DEGENERATE
+# frame (edge-on or sub-pixel triangles, where the screen-space UV derivatives collapse) by
+# setting its scale to 0, which hands back a zero-length T and B. The anisotropy path then
+# runs `normalize( tbn[0] * aniso.x + tbn[1] * aniso.y )` on those, and `normalize(vec3(0))`
+# is NaN.
+#
+# A single NaN fragment is not a local artifact here, because the scene renders through
+# `SceneManager`'s EffectComposer: `UnrealBloomPass` high-passes the frame, blurs it across
+# five mip levels — smearing the NaN over an ever-larger area — then blends the result back
+# additively, turning every texel it reached black. The symptom was the whole restaurant
+# view flashing black several times a second, in every match phase, for as long as the owner
+# avatar was on screen. Measured live: 42% of frames affected with anisotropy on, 0 of 2,221
+# consecutive frames with it off, and no visible change to the hair.
+#
+# Zeroed here in the build rather than edited into `chef-blaze.blend` so the checked-in
+# sculpt stays pristine (this script never saves the .blend — see the module docstring), and
+# applied to EVERY material rather than the hair alone so re-authoring the sculpt cannot
+# quietly reintroduce it on a different slot. `scripts/check-gltf-anisotropy.mjs` fails the
+# build if any shipped GLB pairs this extension with a mesh that has no TANGENT attribute.
+cleared = []
+for material in body.data.materials:
+    if material is None or not material.use_nodes:
+        continue
+    for node in material.node_tree.nodes:
+        if node.type != "BSDF_PRINCIPLED":
+            continue
+        socket = node.inputs.get("Anisotropic")
+        if socket is not None and socket.default_value != 0.0:
+            cleared.append(f"{material.name} ({socket.default_value:.3f})")
+            socket.default_value = 0.0
+log("zeroed Anisotropic on:", ", ".join(cleared) if cleared else "(none found)")
+
+
+# --------------------------------------------------------------------------------------
+# 9. Export
 # --------------------------------------------------------------------------------------
 bpy.ops.object.select_all(action="DESELECT")
 body.select_set(True)
