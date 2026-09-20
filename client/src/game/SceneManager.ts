@@ -94,6 +94,23 @@ export class SceneManager {
     const aspect = container.clientWidth / Math.max(1, container.clientHeight);
     this.cameraController = new CameraController(aspect);
     this.composer = new EffectComposer(this.renderer);
+    // `EffectComposer` sizes its own render targets as `cssWidth * pixelRatio` and — unlike
+    // `WebGLRenderer.setSize`, which floors — does NOT round that product to whole pixels. So
+    // STORY-059's non-integer `min(devicePixelRatio, 1.5)` cap left the composer a HALF PIXEL
+    // wider than the canvas it composites into on any `devicePixelRatio >= 1.5` display: at a
+    // 1667px-wide viewport the canvas drawing buffer is `floor(1667 * 1.5)` = 2500, while every
+    // composer target carried 2500.5. Confirmed live with a `gl.viewport` trace, which showed
+    // `0,0,2500.5,693` for the composer's targets against `0,0,2500,693` for the final
+    // to-screen pass. WebGL truncates the fractional size when it actually allocates the texture,
+    // so the two agreed by luck rather than by construction — a latent unit mismatch, with no
+    // observed rendering symptom, that any later math reading `renderTarget.viewport` inherits.
+    //
+    // Fix: take pixel-ratio scaling away from the composer entirely and size it in DEVICE pixels
+    // straight off the canvas, which `WebGLRenderer.setSize` has already floored. The composer's
+    // targets are then exactly the canvas's drawing buffer by definition, on every display and at
+    // every viewport width. `handleResize` keeps the same basis.
+    this.composer.setPixelRatio(1);
+    this.composer.setSize(this.renderer.domElement.width, this.renderer.domElement.height);
     this.renderPass = new RenderPass(this.active, this.cameraController.camera);
     // A restrained threshold keeps practical lights and authored Glow materials luminous while
     // leaving UI sprites and most matte surfaces crisp. The pass is intentionally subtle so the
@@ -112,9 +129,14 @@ export class SceneManager {
     // low-frequency effect by nature: the extra downsample is invisible once blurred back up.
     // `strength`/`radius`/`threshold` (0.28/0.48/0.84) are UNCHANGED — those control the look,
     // this and the devicePixelRatio cap below are the only pure cost cuts.
+    // Read off the canvas's own (already-floored) drawing buffer rather than recomputing
+    // `cssSize * pixelRatio`, for the same whole-pixel reason as the `composer.setSize` call
+    // above — and so this and the composer stay in ONE basis instead of two that agree by
+    // arithmetic coincidence. Numerically all but identical to what it replaces (2500/2 = 1250
+    // against 2500.5/2 = 1250.25 at a 1667px viewport), so the bloom cost cut is unchanged.
     const bloomResolution = new THREE.Vector2(
-      (container.clientWidth * this.renderer.getPixelRatio()) / 2,
-      (container.clientHeight * this.renderer.getPixelRatio()) / 2,
+      this.renderer.domElement.width / 2,
+      this.renderer.domElement.height / 2,
     );
     this.bloomPass = new UnrealBloomPass(bloomResolution, 0.28, 0.48, 0.84);
     this.composer.addPass(this.renderPass);
@@ -145,15 +167,17 @@ export class SceneManager {
     const width = this.container.clientWidth;
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-    // STORY-059: `EffectComposer.setSize(width, height)` internally resizes every pass —
-    // `bloomPass` included — to `width * pixelRatio` x `height * pixelRatio` (its own
-    // "effective" resolution basis), NOT the raw CSS-pixel `width`/`height` passed in. Re-apply
-    // the halved resolution in that SAME basis (matching how it was constructed above) so a
-    // window resize doesn't silently undo — or under-cut, via a units mismatch — the bloom cost
-    // saving.
-    const pixelRatio = this.renderer.getPixelRatio();
-    this.bloomPass.setSize((width * pixelRatio) / 2, (height * pixelRatio) / 2);
+    // Device pixels, off the canvas `setSize` just floored — the composer runs at
+    // `pixelRatio` 1 and does its own scaling nowhere, so CSS pixels here would silently
+    // shrink every render target to 1/pixelRatio of the canvas. See the constructor's own
+    // comment on `composer.setPixelRatio(1)` for why the composer is in this basis at all.
+    const bufferWidth = this.renderer.domElement.width;
+    const bufferHeight = this.renderer.domElement.height;
+    this.composer.setSize(bufferWidth, bufferHeight);
+    // STORY-059: `EffectComposer.setSize` internally resizes every pass, `bloomPass` included,
+    // to whatever it was just given — so re-apply the halved resolution afterwards, in that same
+    // device-pixel basis, or a window resize silently undoes the bloom cost saving.
+    this.bloomPass.setSize(bufferWidth / 2, bufferHeight / 2);
     this.cameraController.setAspect(width / height);
   }
 
