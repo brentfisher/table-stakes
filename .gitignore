@@ -20,3 +20,6 @@ server/public/client-build/*
 .claude/settings.local.json
 
 .dream-loop/
+
+# Character asset delivery zips — source blends live outside the repo (see assets/chef-blaze/README_ThreeJS.md)
+assets/*.zip

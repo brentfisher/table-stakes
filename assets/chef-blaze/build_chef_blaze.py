@@ -231,17 +231,31 @@ bpy.context.scene.render.fps = WALK_FPS
 # region gained 30-60%, and the leg-to-hand ratio dropped from 2.35x down to 1.69x, closing
 # most of the gap without making the upper body out-swing the legs (which would read as its
 # own kind of wrong for a walk cycle).
+# STORY-066 correction. Each pair used to carry OPPOSITE amps (thigh.L +0.45, thigh.R -0.45),
+# on the assumption that a left and a right bone need mirrored signs to move the same way. This
+# rig is not mirrored: the same signed angle rotates both sides in the same physical direction.
+#
+# With opposite amps AND opposite phases the two cancelled — thigh.R's -0.45 multiplied
+# `leg_phase["R"]`, itself the negation of `leg_phase["L"]` — so both thighs received an identical
+# value every frame and the legs swung IN UNISON. Measured on the shipped `ChefBlaze.glb`: at
+# frame 8 of 30, thigh.L and thigh.R tails both sat at y=+2.475. The player's own avatar has been
+# hopping rather than walking since STORY-060. It is invisible in a still and easy to miss in
+# motion from the game's high camera, which is why it survived.
+#
+# Matching amps let the opposite phases do the work, producing a real contralateral gait. The arm
+# amps are positive for the same reason: `PHASE_SOURCE` already hands each arm the opposite side's
+# phase, so a positive amp swings it against its own-side leg.
 WALK_BONES = {
     "thigh.L": 0.45,
-    "thigh.R": -0.45,
+    "thigh.R": 0.45,
     "shin.L": 0.35,      # additive knee bend, phase-shifted below (bends most mid-swing)
-    "shin.R": -0.35,
+    "shin.R": 0.35,
     "foot.L": 0.16,
-    "foot.R": -0.16,
-    "upper_arm.L": -0.55,   # opposite phase to the SAME-side leg (contralateral gait):
-    "upper_arm.R": 0.55,    # upper_arm.L swings with thigh.R, and vice versa.
+    "foot.R": 0.16,
+    "upper_arm.L": 0.55,    # swings against the SAME-side leg (contralateral gait), via
+    "upper_arm.R": 0.55,    # PHASE_SOURCE handing each arm the other side's phase.
     "forearm.L": 0.42,
-    "forearm.R": -0.42,
+    "forearm.R": 0.42,
 }
 # Which bone's phase each entry above actually follows (own leg phase, or the opposite
 # side's, for the contralateral arms). Value is the phase-lookup key into `leg_phase`.

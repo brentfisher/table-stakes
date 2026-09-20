@@ -1,0 +1,60 @@
+{
+  "asset": "Monsieur",
+  "version": "cast-1.0.0",
+  "story": "STORY-063",
+  "source": "cast-pack.blend — four-character cast pack, NOT committed to this repo",
+  "sourceSha256": "43bd1b4b406eef32ef837bc770aedd09d00537633bb596de1e75c0f79cd5f6a2",
+  "sourcePathDefault": "~/asset-sources/table-stakes/chef-blaze-cast-assets/blender/cast-pack.blend",
+  "sourceHeightBlenderUnits": 6.7064,
+  "roleNote": "host worker — exactly one live instance, so hero-tier budget",
+  "runtime": {
+    "file": "Monsieur.glb",
+    "heightMeters": 1.45,
+    "heightMeasuredFrom": "standing rest mesh",
+    "units": "meters",
+    "upAxis": "+Z in Blender / +Y in glTF",
+    "forwardAxis": "-Y in Blender / +Z in glTF — matches RestaurantScene.ts's existing +Z-forward avatar convention, so no corrective rotation is needed",
+    "forwardAxisVerifiedBy": "rest-pose head-bone frames dumped across all four rigs (identical), plus re-importing each export and rendering from Blender -Y, where every character renders face-on",
+    "root": "(0, 0, 0)",
+    "fps": 30,
+    "triangles": 35597,
+    "materialSlots": 1,
+    "uvSets": [
+      "bake_uv"
+    ],
+    "bakedAlbedo": "1024x1024",
+    "fileSizeBytes": 2362116,
+    "skinning": "bounded smooth (<=4 influences/vertex, normalized)"
+  },
+  "posture": "standing",
+  "animations": [
+    {
+      "name": "Monsieur_Idle",
+      "frames": 120,
+      "fps": 30,
+      "loop": true,
+      "rootMotion": "in-place",
+      "source": "the character's own authored breathing loop, renamed only"
+    },
+    {
+      "name": "Monsieur_Walk_InPlace",
+      "frames": 30,
+      "fps": 30,
+      "loop": true,
+      "rootMotion": "in-place",
+      "source": "authored by build_cast.py — cast-pack.blend ships no walk animation"
+    }
+  ],
+  "knownLimitations": [
+    "Side profile is weak: these are front/rear image-projected volumetric reconstructions, so the silhouette is shallow and the texture stretches into vertical streaks along the side transition band. Worst on a character crossing open floor in profile.",
+    "Both female heads carry a front/rear projection seam tearing horizontally across the mid-face. The packed source plates are clean — this is a projection defect, not a texture one. See STORY-063.",
+    "No facial animation rig is supplied by the source."
+  ],
+  "build": {
+    "script": "build_cast.py",
+    "invocation": "/Applications/Blender.app/Contents/MacOS/Blender --background <cast-pack.blend> --python assets/cast/build_cast.py -- --character Monsieur",
+    "blenderVersion": "5.2.1 LTS",
+    "deterministic": true,
+    "overwritesSourceBlend": false
+  }
+}

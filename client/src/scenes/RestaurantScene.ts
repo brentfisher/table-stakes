@@ -50,6 +50,8 @@ import {
 } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 import { buildChefBlaze, disposeChefBlaze, type ChefBlazeInstance } from './ChefBlazeModel';
+import { SEATED_DINER_MODEL, WORKER_ROLE_MODELS } from './CastModels';
+import { buildRiggedCharacter, type RiggedCharacterInstance } from './RiggedCharacterModel';
 
 export interface OwnerRenderState {
   playerId: string;
@@ -154,6 +156,46 @@ const TABLE_BADGE_COLORS: Record<Exclude<TableBadgeKind, null>, number> = {
   paying: STATE_COLORS.opportunity,
   dirty: STATE_COLORS.bottleneck,
 };
+
+/** One shared material per segment colour, for the diner segment discs.
+ *
+ * Built lazily and cached rather than one per diner: a full dining room is 6 tables x a
+ * `partySize` cap of 4 = up to 24 discs, but only a handful of distinct segment colours
+ * (`customer-segments.json`), so this collapses 24 materials down to a few. The discs exist
+ * because the seated model cannot carry the tint the capsule used to — see `upsertCustomer`. */
+const segmentDiscMaterials = new Map<number, THREE.MeshBasicMaterial>();
+
+function segmentDiscMaterial(color: number): THREE.MeshBasicMaterial {
+  let material = segmentDiscMaterials.get(color);
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    segmentDiscMaterials.set(color, material);
+  }
+  return material;
+}
+
+/** Scratch vector for `updateWorkerAnimations`'s per-frame step measurement. Module-level and
+ * reused rather than allocated per worker per frame — this runs for every worker every frame. */
+const WORKER_STEP = new THREE.Vector3();
+
+/** Below this squared per-frame step, a worker's heading is left alone. The position lerp never
+ * fully converges, so without a floor here an arrived worker would keep re-deriving a heading
+ * from meaningless sub-millimetre jitter and slowly rotate on the spot forever. */
+const WORKER_FACING_EPSILON_SQ = 1e-8;
+
+/** How fast a worker turns toward its direction of travel, in "fraction of the remaining arc per
+ * second". Fast enough that a worker rounding a table is facing the right way before it gets
+ * there, slow enough that the turn is visible rather than a snap. */
+const WORKER_TURN_RATE = 9;
+
+/** Worker walking speed, and the fraction of it that counts as "moving" for the idle/walk
+ * crossfade. Mirrors `OWNER_MOVE_SPEED`/`OWNER_ANIMATION_MOVE_FRACTION` — see
+ * `updateWorkerAnimations` for why a threshold is needed at all. The worker figure is well under
+ * the owner's because `group.position` here is the OUTPUT of a 0.035 lerp, which lags the true
+ * snapshot velocity substantially; thresholding at the owner's fraction would leave a genuinely
+ * walking worker stuck in its idle clip. */
+const WORKER_MOVE_SPEED = 2.2;
+const WORKER_ANIMATION_MOVE_FRACTION = 0.02;
 
 /** PRD §4.4/§14 "Worker role icon" — one letter per `WorkerRole`, distinct from the table-badge
  * glyphs above so a player never confuses the two vocabularies. */
@@ -2357,25 +2399,73 @@ export class RestaurantScene {
     while (body.children.length < partySize) {
       const diner = new THREE.Group();
       diner.name = 'diner';
+      // The capsule+sphere pair stays as the synchronous placeholder and the permanent fallback
+      // if the GLB never resolves — same contract `upsertOwner` and `upsertWorker` use. Grouped
+      // under one node so the model swap removes both with a single call.
+      const placeholder = new THREE.Group();
+      placeholder.name = 'diner_placeholder';
       const torso = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.18, 0.2, 5, 10),
         new THREE.MeshStandardMaterial({ color: segmentColor, roughness: 0.7 }),
       );
       torso.position.y = 0.45;
-      diner.add(torso);
+      placeholder.add(torso);
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.17, 12, 10),
         new THREE.MeshStandardMaterial({ color: 0xf0d5b8, roughness: 0.8 }),
       );
       head.position.y = 0.82;
-      diner.add(head);
+      placeholder.add(head);
+      diner.add(placeholder);
+      // §14's "segment-cued customers" tint lives on that torso today. A textured model cannot
+      // carry it — tinting per instance would mean per-instance materials, i.e. 24 copies of
+      // Aurelia's material, which is exactly what the shared-resource path exists to avoid. So the
+      // cue moves to its own small disc at the diner's feet, which survives the swap and keeps the
+      // channel independent of the patience ring (a party-wide marker, a different signal).
+      const segmentDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.22, 16),
+        segmentDiscMaterial(segmentColor),
+      );
+      segmentDisc.rotation.x = -Math.PI / 2;
+      segmentDisc.position.y = 0.02;
+      segmentDisc.name = 'segment_disc';
+      diner.add(segmentDisc);
       body.add(diner);
+
+      const dinerGroup = diner;
+      void buildRiggedCharacter(SEATED_DINER_MODEL)
+        .then((instance) => {
+          // The party may have left while the GLB was in flight; `removeCustomer` drops the group
+          // but cannot reach this closure.
+          if (this.customers.get(state.customerId) !== group || dinerGroup.parent === null) {
+            instance.dispose();
+            return;
+          }
+          const stale = dinerGroup.getObjectByName('diner_placeholder');
+          if (stale) dinerGroup.remove(stale);
+          dinerGroup.add(instance.root);
+          dinerGroup.userData.model = instance;
+        })
+        .catch((error: unknown) => {
+          console.warn(`Seated diner model failed to load for ${state.customerId}; keeping placeholder.`, error);
+        });
     }
     body.children.forEach((child, index) => {
       child.visible = index < partySize;
       const [x, z] = seatOffsets[index] ?? seatOffsets[0];
       child.position.set(x, 0, z);
+      // Turn each seat inward to face the table. The capsule placeholder was rotationally
+      // symmetric so this never mattered; a seated figure with legs and a face very much has a
+      // front, and four diners all facing the same way reads as a waiting room rather than a
+      // table. `atan2(x, z)` (not `-x, -z`) because these models are +Z-forward in their own local
+      // space, so pointing the seat's own outward offset along +Z aims the character back at the
+      // centre. Same convention `upsertOwner` uses to apply `state.facing` with no correction.
+      child.rotation.y = Math.atan2(x, z);
     });
+    for (const diner of body.children) {
+      const disc = diner.getObjectByName('segment_disc') as THREE.Mesh | undefined;
+      if (disc) disc.material = segmentDiscMaterial(segmentColor);
+    }
     const existingOrderLabel = group.getObjectByName('order_label') as THREE.Sprite | undefined;
     if (state.orderLabel) {
       if (existingOrderLabel?.userData.text !== state.orderLabel) {
@@ -2401,6 +2491,16 @@ export class RestaurantScene {
   removeCustomer(customerId: string): void {
     const group = this.customers.get(customerId);
     if (!group) return;
+    // Release each seated diner's mixer bookkeeping. Geometry and materials are NOT freed: these
+    // are shared-resource instances, so they belong to the cached source and every other diner is
+    // still pointing at them (see `RiggedCharacterOptions`).
+    const body = group.getObjectByName('body');
+    if (body) {
+      for (const diner of body.children) {
+        const model = diner.userData.model as RiggedCharacterInstance | undefined;
+        if (model) model.dispose();
+      }
+    }
     this.scene.remove(group);
     this.customers.delete(customerId);
   }
@@ -2414,12 +2514,24 @@ export class RestaurantScene {
    * `GameClient#handleFrame`, never from React (Notable Pattern 3/11): cheap (one `Math.sin`
    * per live customer), and a healthy party is perfectly still (amplitude 0), so this costs
    * nothing extra for the common case of a floor with no one impatient yet. */
-  updateCustomerAnimations(elapsedSeconds: number): void {
+  updateCustomerAnimations(elapsedSeconds: number, dt = 0): void {
     const amplitudeByBand: Record<string, number> = { healthy: 0, attention: 0.03, bottleneck: 0.07, critical: 0.13 };
     const speedByBand: Record<string, number> = { healthy: 0, attention: 2.2, bottleneck: 3.4, critical: 5.0 };
     for (const group of this.customers.values()) {
       const target = group.userData.positionTarget as THREE.Vector3 | undefined;
       if (target) group.position.lerp(target, 0.035);
+      if (dt > 0) {
+        const seated = group.getObjectByName('body');
+        // `moving` is always false: a seated diner's GLB ships no walk clip at all, so the loader
+        // ignores the flag entirely (see `RiggedCharacterSpec.walkClip`). This call is purely to
+        // advance the mixer so the seated idle's chest rise plays.
+        if (seated) {
+          for (const diner of seated.children) {
+            const model = diner.userData.model as RiggedCharacterInstance | undefined;
+            if (model) model.update(dt, false);
+          }
+        }
+      }
       const band = (group.userData.band as string) ?? 'healthy';
       const amplitude = amplitudeByBand[band] ?? 0;
       const body = group.getObjectByName('body');
@@ -2461,6 +2573,10 @@ export class RestaurantScene {
         new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
       );
       body.position.y = 0.8;
+      // Named so the cast-model load below can find and remove exactly this mesh. The role glyph
+      // and task chips are siblings and deliberately survive the swap — they identify the worker
+      // and describe what it is doing, which a textured model does not replace.
+      body.name = 'worker_placeholder';
       group.add(body);
       // Role glyphs stay compact because the task chip above them supplies the readable action.
       const roleGlyph = createGlyphSprite(WORKER_ROLE_GLYPHS[state.role] ?? '?', color, 0.6);
@@ -2485,6 +2601,39 @@ export class RestaurantScene {
       group.userData.positionTarget = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
       this.workers.set(state.workerId, group);
       this.scene.add(group);
+
+      // STORY-064/065. Roles with a cast character (`host` -> Monsieur, `server` -> Vivienne)
+      // swap the capsule for the rigged model once the GLB resolves. Everything above stays: the
+      // capsule is the synchronous placeholder — the load is a network fetch plus parse and
+      // gameplay must never wait on it — and it is also the permanent fallback for `cook`,
+      // `prep_worker` and `busser`, which have no character, and for a load that fails.
+      //
+      // `ownResources` is left at its default (shared geometry/materials). Only one host and one
+      // server exist per restaurant today (`restaurant-layout.json`'s `staff.roster`), so this
+      // saves nothing yet — but it is the same path STORY-066's up-to-24 diners need, and having
+      // the crowd characters on a different path from the crowd-safe one is how that stops being
+      // true by accident.
+      const roleSpec = WORKER_ROLE_MODELS[state.role];
+      if (roleSpec) {
+        const workerGroup = group;
+        void buildRiggedCharacter(roleSpec)
+          .then((instance) => {
+            // The worker may have despawned while the GLB was in flight. `removeWorker` drops it
+            // from `this.workers` but cannot reach into this closure, so check before attaching —
+            // otherwise this resurrects a detached group and leaks the instance with it.
+            if (this.workers.get(state.workerId) !== workerGroup) {
+              instance.dispose();
+              return;
+            }
+            const capsule = workerGroup.getObjectByName('worker_placeholder');
+            if (capsule) workerGroup.remove(capsule);
+            workerGroup.add(instance.root);
+            workerGroup.userData.model = instance;
+          })
+          .catch((error: unknown) => {
+            console.warn(`${state.role} model failed to load for ${state.workerId}; keeping placeholder.`, error);
+          });
+      }
     }
     // `upsertWorker` is called once per `match_snapshot` (~10 Hz), unlike owners (called every
     // render frame via `StateInterpolator`) — snapping `group.position` directly here, as this
@@ -2511,6 +2660,11 @@ export class RestaurantScene {
   removeWorker(workerId: string): void {
     const group = this.workers.get(workerId);
     if (!group) return;
+    // Release the mixer's per-root bookkeeping. This does NOT free geometry or materials: worker
+    // models are built on the shared-resource path, so those belong to the cached source and are
+    // still in use by every other instance of this character (see `RiggedCharacterOptions`).
+    const model = group.userData.model as RiggedCharacterInstance | undefined;
+    if (model) model.dispose();
     this.scene.remove(group);
     this.workers.delete(workerId);
   }
@@ -2524,10 +2678,46 @@ export class RestaurantScene {
    * only get new positions at snapshot cadence, unlike the owner avatar (interpolated every
    * frame upstream by `StateInterpolator`, so it needs no second smoothing pass). Called every
    * frame from `GameClient#handleFrame`, same lerp factor as customers for a consistent feel. */
-  updateWorkerAnimations(): void {
+  updateWorkerAnimations(dt = 0): void {
     for (const group of this.workers.values()) {
       const target = group.userData.positionTarget as THREE.Vector3 | undefined;
-      if (target) group.position.lerp(target, 0.035);
+      if (!target) continue;
+      const before = WORKER_STEP.copy(group.position);
+      group.position.lerp(target, 0.035);
+      const model = group.userData.model as RiggedCharacterInstance | undefined;
+      if (!model || dt <= 0) continue;
+
+      // How far this worker actually moved THIS frame, which is the only movement signal
+      // available here: unlike the owner (whose `upsertOwner` records a per-frame delta from
+      // `StateInterpolator`), workers get new positions at ~10 Hz and are smoothed by the lerp
+      // above, so the lerp's own output is the thing to measure.
+      const stepSq = before.distanceToSquared(group.position);
+
+      // STORY-064. Workers were rotationally-symmetric capsules and so never carried a facing at
+      // all — there is no `state.facing` to read for them the way `upsertOwner` has one. A rigged
+      // character without it would slide sideways and backwards while always facing one
+      // direction, which reads as broken far more loudly than a capsule ever did. Facing is
+      // therefore derived from the direction of travel.
+      //
+      // `atan2(dx, dz)`, not the usual `atan2(dz, dx)`: these models are +Z-forward in their own
+      // local space (`assets/cast/README_ThreeJS.md`), so a group rotated by `theta` about Y
+      // points along `(sin theta, 0, cos theta)` — the same convention `upsertOwner` relies on to
+      // apply `state.facing` with no corrective rotation.
+      if (stepSq > WORKER_FACING_EPSILON_SQ) {
+        const heading = Math.atan2(group.position.x - before.x, group.position.z - before.z);
+        // Shortest-arc turn, so a worker crossing the +/-PI seam turns a few degrees rather than
+        // spinning the long way round, and eased rather than snapped so the turn reads as a turn.
+        // Wrap the raw difference into [-PI, PI] so the turn takes the short way round.
+        const raw = heading - group.rotation.y;
+        const delta = Math.atan2(Math.sin(raw), Math.cos(raw));
+        group.rotation.y += delta * Math.min(1, dt * WORKER_TURN_RATE);
+      }
+
+      // Same squared-distance-vs-threshold form as `updateOwnerAnimations`, for the same reason:
+      // the lerp leaves sub-millimetre jitter in a worker that has arrived, and a naive "moved at
+      // all" test reads that as a permanent, never-idle walk cycle.
+      const thresholdDist = WORKER_MOVE_SPEED * WORKER_ANIMATION_MOVE_FRACTION * Math.max(dt, 1 / 1000);
+      model.update(dt, stepSq > thresholdDist * thresholdDist);
     }
   }
 

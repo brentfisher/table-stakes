@@ -1305,7 +1305,7 @@ export class GameClient {
     // per-snapshot one, so it stays smooth between the ~10Hz snapshots that actually move
     // `patienceRemaining`.
     this.elapsedSeconds += dt;
-    this.scene.restaurant.updateCustomerAnimations(this.elapsedSeconds);
+    this.scene.restaurant.updateCustomerAnimations(this.elapsedSeconds, dt);
     // STORY-030 PRD §5.2 "highlight or pulse the oldest ready ticket first" — per-frame, same
     // split as the customer posture animation above.
     this.scene.restaurant.updateReadyDishAnimations(this.elapsedSeconds);
@@ -1319,7 +1319,7 @@ export class GameClient {
     this.scene.restaurant.updateComplaintMarkerAnimations(this.elapsedSeconds);
     // Smooths worker positions between ~10Hz snapshots — see updateWorkerAnimations's own
     // comment on why workers need this and owners don't.
-    this.scene.restaurant.updateWorkerAnimations();
+    this.scene.restaurant.updateWorkerAnimations(dt);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (this.status.peeking) {
