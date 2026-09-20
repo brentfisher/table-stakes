@@ -50,6 +50,8 @@ import {
 } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 import { buildChefBlaze, disposeChefBlaze, type ChefBlazeInstance } from './ChefBlazeModel';
+import { WORKER_ROLE_MODELS } from './CastModels';
+import { buildRiggedCharacter, type RiggedCharacterInstance } from './RiggedCharacterModel';
 
 export interface OwnerRenderState {
   playerId: string;
@@ -154,6 +156,29 @@ const TABLE_BADGE_COLORS: Record<Exclude<TableBadgeKind, null>, number> = {
   paying: STATE_COLORS.opportunity,
   dirty: STATE_COLORS.bottleneck,
 };
+
+/** Scratch vector for `updateWorkerAnimations`'s per-frame step measurement. Module-level and
+ * reused rather than allocated per worker per frame — this runs for every worker every frame. */
+const WORKER_STEP = new THREE.Vector3();
+
+/** Below this squared per-frame step, a worker's heading is left alone. The position lerp never
+ * fully converges, so without a floor here an arrived worker would keep re-deriving a heading
+ * from meaningless sub-millimetre jitter and slowly rotate on the spot forever. */
+const WORKER_FACING_EPSILON_SQ = 1e-8;
+
+/** How fast a worker turns toward its direction of travel, in "fraction of the remaining arc per
+ * second". Fast enough that a worker rounding a table is facing the right way before it gets
+ * there, slow enough that the turn is visible rather than a snap. */
+const WORKER_TURN_RATE = 9;
+
+/** Worker walking speed, and the fraction of it that counts as "moving" for the idle/walk
+ * crossfade. Mirrors `OWNER_MOVE_SPEED`/`OWNER_ANIMATION_MOVE_FRACTION` — see
+ * `updateWorkerAnimations` for why a threshold is needed at all. The worker figure is well under
+ * the owner's because `group.position` here is the OUTPUT of a 0.035 lerp, which lags the true
+ * snapshot velocity substantially; thresholding at the owner's fraction would leave a genuinely
+ * walking worker stuck in its idle clip. */
+const WORKER_MOVE_SPEED = 2.2;
+const WORKER_ANIMATION_MOVE_FRACTION = 0.02;
 
 /** PRD §4.4/§14 "Worker role icon" — one letter per `WorkerRole`, distinct from the table-badge
  * glyphs above so a player never confuses the two vocabularies. */
@@ -2461,6 +2486,10 @@ export class RestaurantScene {
         new THREE.MeshStandardMaterial({ color, roughness: 0.6 }),
       );
       body.position.y = 0.8;
+      // Named so the cast-model load below can find and remove exactly this mesh. The role glyph
+      // and task chips are siblings and deliberately survive the swap — they identify the worker
+      // and describe what it is doing, which a textured model does not replace.
+      body.name = 'worker_placeholder';
       group.add(body);
       // Role glyphs stay compact because the task chip above them supplies the readable action.
       const roleGlyph = createGlyphSprite(WORKER_ROLE_GLYPHS[state.role] ?? '?', color, 0.6);
@@ -2485,6 +2514,39 @@ export class RestaurantScene {
       group.userData.positionTarget = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
       this.workers.set(state.workerId, group);
       this.scene.add(group);
+
+      // STORY-064/065. Roles with a cast character (`host` -> Monsieur, `server` -> Vivienne)
+      // swap the capsule for the rigged model once the GLB resolves. Everything above stays: the
+      // capsule is the synchronous placeholder — the load is a network fetch plus parse and
+      // gameplay must never wait on it — and it is also the permanent fallback for `cook`,
+      // `prep_worker` and `busser`, which have no character, and for a load that fails.
+      //
+      // `ownResources` is left at its default (shared geometry/materials). Only one host and one
+      // server exist per restaurant today (`restaurant-layout.json`'s `staff.roster`), so this
+      // saves nothing yet — but it is the same path STORY-066's up-to-24 diners need, and having
+      // the crowd characters on a different path from the crowd-safe one is how that stops being
+      // true by accident.
+      const roleSpec = WORKER_ROLE_MODELS[state.role];
+      if (roleSpec) {
+        const workerGroup = group;
+        void buildRiggedCharacter(roleSpec)
+          .then((instance) => {
+            // The worker may have despawned while the GLB was in flight. `removeWorker` drops it
+            // from `this.workers` but cannot reach into this closure, so check before attaching —
+            // otherwise this resurrects a detached group and leaks the instance with it.
+            if (this.workers.get(state.workerId) !== workerGroup) {
+              instance.dispose();
+              return;
+            }
+            const capsule = workerGroup.getObjectByName('worker_placeholder');
+            if (capsule) workerGroup.remove(capsule);
+            workerGroup.add(instance.root);
+            workerGroup.userData.model = instance;
+          })
+          .catch((error: unknown) => {
+            console.warn(`${state.role} model failed to load for ${state.workerId}; keeping placeholder.`, error);
+          });
+      }
     }
     // `upsertWorker` is called once per `match_snapshot` (~10 Hz), unlike owners (called every
     // render frame via `StateInterpolator`) — snapping `group.position` directly here, as this
@@ -2511,6 +2573,11 @@ export class RestaurantScene {
   removeWorker(workerId: string): void {
     const group = this.workers.get(workerId);
     if (!group) return;
+    // Release the mixer's per-root bookkeeping. This does NOT free geometry or materials: worker
+    // models are built on the shared-resource path, so those belong to the cached source and are
+    // still in use by every other instance of this character (see `RiggedCharacterOptions`).
+    const model = group.userData.model as RiggedCharacterInstance | undefined;
+    if (model) model.dispose();
     this.scene.remove(group);
     this.workers.delete(workerId);
   }
@@ -2524,10 +2591,46 @@ export class RestaurantScene {
    * only get new positions at snapshot cadence, unlike the owner avatar (interpolated every
    * frame upstream by `StateInterpolator`, so it needs no second smoothing pass). Called every
    * frame from `GameClient#handleFrame`, same lerp factor as customers for a consistent feel. */
-  updateWorkerAnimations(): void {
+  updateWorkerAnimations(dt = 0): void {
     for (const group of this.workers.values()) {
       const target = group.userData.positionTarget as THREE.Vector3 | undefined;
-      if (target) group.position.lerp(target, 0.035);
+      if (!target) continue;
+      const before = WORKER_STEP.copy(group.position);
+      group.position.lerp(target, 0.035);
+      const model = group.userData.model as RiggedCharacterInstance | undefined;
+      if (!model || dt <= 0) continue;
+
+      // How far this worker actually moved THIS frame, which is the only movement signal
+      // available here: unlike the owner (whose `upsertOwner` records a per-frame delta from
+      // `StateInterpolator`), workers get new positions at ~10 Hz and are smoothed by the lerp
+      // above, so the lerp's own output is the thing to measure.
+      const stepSq = before.distanceToSquared(group.position);
+
+      // STORY-064. Workers were rotationally-symmetric capsules and so never carried a facing at
+      // all — there is no `state.facing` to read for them the way `upsertOwner` has one. A rigged
+      // character without it would slide sideways and backwards while always facing one
+      // direction, which reads as broken far more loudly than a capsule ever did. Facing is
+      // therefore derived from the direction of travel.
+      //
+      // `atan2(dx, dz)`, not the usual `atan2(dz, dx)`: these models are +Z-forward in their own
+      // local space (`assets/cast/README_ThreeJS.md`), so a group rotated by `theta` about Y
+      // points along `(sin theta, 0, cos theta)` — the same convention `upsertOwner` relies on to
+      // apply `state.facing` with no corrective rotation.
+      if (stepSq > WORKER_FACING_EPSILON_SQ) {
+        const heading = Math.atan2(group.position.x - before.x, group.position.z - before.z);
+        // Shortest-arc turn, so a worker crossing the +/-PI seam turns a few degrees rather than
+        // spinning the long way round, and eased rather than snapped so the turn reads as a turn.
+        // Wrap the raw difference into [-PI, PI] so the turn takes the short way round.
+        const raw = heading - group.rotation.y;
+        const delta = Math.atan2(Math.sin(raw), Math.cos(raw));
+        group.rotation.y += delta * Math.min(1, dt * WORKER_TURN_RATE);
+      }
+
+      // Same squared-distance-vs-threshold form as `updateOwnerAnimations`, for the same reason:
+      // the lerp leaves sub-millimetre jitter in a worker that has arrived, and a naive "moved at
+      // all" test reads that as a permanent, never-idle walk cycle.
+      const thresholdDist = WORKER_MOVE_SPEED * WORKER_ANIMATION_MOVE_FRACTION * Math.max(dt, 1 / 1000);
+      model.update(dt, stepSq > thresholdDist * thresholdDist);
     }
   }
 

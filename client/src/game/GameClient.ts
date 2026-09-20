@@ -1319,7 +1319,7 @@ export class GameClient {
     this.scene.restaurant.updateComplaintMarkerAnimations(this.elapsedSeconds);
     // Smooths worker positions between ~10Hz snapshots — see updateWorkerAnimations's own
     // comment on why workers need this and owners don't.
-    this.scene.restaurant.updateWorkerAnimations();
+    this.scene.restaurant.updateWorkerAnimations(dt);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
     if (this.status.peeking) {
