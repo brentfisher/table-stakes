@@ -887,9 +887,25 @@ export class RestaurantScene {
     // covered even by the OLD bottom:-20, so -16 here is not a new regression there). Net area
     // 32×32=1024 vs the original 36×40=1440 — about 1.4x shadow-map texel density at the SAME
     // 2048 resolution, a real if more modest win than a naive (and wrong) world-space reading of
-    // the old numbers would suggest. Visually confirmed no clipping at the kitchen's far back
-    // corners (pantry shelving, fridge/wash station) via the `restaurant-layout` harness.
+    // the old numbers would suggest. The "visually confirmed no clipping... via the
+    // `restaurant-layout` harness" claim this comment used to end on was checked against
+    // whatever frustum was ACTUALLY live at the time — which STORY-062 (below) found was never
+    // this one; see that note for what was really being observed.
+    // BUGFIX (STORY-062): Object.assign only sets these plain fields on the OrthographicCamera
+    // instance — three.js's shadow-map render path (WebGLShadowMap -> LightShadow.updateMatrices)
+    // uses the camera's existing `projectionMatrix` as-is every frame and never recomputes it from
+    // left/right/top/bottom/near/far on its own. Without the explicit updateProjectionMatrix()
+    // call below, this frustum silently never took effect and the shadow camera kept rendering
+    // with DirectionalLightShadow's constructor-default frustum (OrthographicCamera(-5, 5, 5, -5,
+    // 0.5, 500)) instead of the fitted one documented above — so every texel-density and
+    // no-clipping claim above was made against that tiny ±5 default, not the intended ±16 one.
+    // With the default frustum's area (10×10=100) actually smaller than the intended one
+    // (32×32=1024), fixing this trades texel density for coverage: shadows over the region the
+    // default already covered may read softer/blockier at the same 2048 map size and radius:4
+    // PCF blur, not sharper — the real win is that owner/props far from center (previously
+    // outside the tiny default frustum, silently unshadowed) are now covered at all.
     Object.assign(this.keyLight.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 60 });
+    this.keyLight.shadow.camera.updateProjectionMatrix();
     this.keyLight.shadow.normalBias = 0.035;
     this.keyLight.shadow.bias = -0.0002;
     // STORY-059: was 0.65 — darkened alongside `ambient` above, same reasoning.
