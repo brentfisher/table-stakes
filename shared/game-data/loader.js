@@ -380,6 +380,41 @@ export function validateCatalogue(raw) {
     }
   }
 
+  // --- STORY-067 movement barriers, which also live on the §14 layout -------------------------
+  // `movement-system.js` reads these to decide what the owner may walk through. A malformed
+  // barrier there would fail open — the owner would silently walk through the pass counter again
+  // — so it is a startup failure here instead, the same reasoning `staff` below is validated on.
+  const bounds = raw.layout?.bounds ?? {};
+  const barrierIds = new Set();
+  for (const barrier of raw.layout?.barriers ?? []) {
+    const at = `restaurant-layout.json barriers[${barrier?.id}]`;
+    if (typeof barrier?.id !== 'string' || !SNAKE_CASE.test(barrier.id)) {
+      err(`${at}: barrier id must be snake_case`);
+      continue;
+    }
+    if (barrierIds.has(barrier.id)) err(`${at}: duplicate barrier id`);
+    barrierIds.add(barrier.id);
+    if (barrier.axis !== 'x' && barrier.axis !== 'z') err(`${at}: axis must be "x" or "z"`);
+    if (typeof barrier.at !== 'number') err(`${at}: at must be a number`);
+    if (!Array.isArray(barrier.openings)) {
+      err(`${at}: openings must be an array (use [] for a fully solid barrier)`);
+      continue;
+    }
+    // Openings are a range on the axis the barrier RUNS along — the opposite of `axis`.
+    const [lo, hi] = barrier.axis === 'z'
+      ? [bounds.minX, bounds.maxX]
+      : [bounds.minZ, bounds.maxZ];
+    for (const opening of barrier.openings) {
+      if (typeof opening?.min !== 'number' || typeof opening?.max !== 'number') {
+        err(`${at}: each opening needs numeric min and max`);
+      } else if (opening.min >= opening.max) {
+        err(`${at}: opening min ${opening.min} must be below max ${opening.max}`);
+      } else if (opening.min < lo || opening.max > hi) {
+        err(`${at}: opening ${opening.min}..${opening.max} falls outside the floor (${lo}..${hi})`);
+      }
+    }
+  }
+
   // --- the §7 staffing roster, which lives on the §14 layout --------------------------------
   // `staffAssignments` in setup_submit names a worker and a post; both vocabularies are here,
   // so a typo in either is a startup failure rather than a rejected submission at match time.

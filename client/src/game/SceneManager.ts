@@ -41,7 +41,13 @@ export class SceneManager {
   private readonly handleContextLost: (event: Event) => void;
   private readonly handleContextRestored: () => void;
 
-  constructor(container: HTMLElement, restaurant = new RestaurantScene(), results = new ResultsScene()) {
+  /**
+   * STORY-067. `reducedMotion` threads straight through to `CameraController`'s own constructor
+   * param — see that file's comment on why a live profile swap (`setSettings`) is read once here
+   * rather than polled per-frame: `Settings` is only reachable from the main menu, never mid-match
+   * (same reasoning `GameClient#baseCamera`'s own comment gives for `wideCameraView`).
+   */
+  constructor(container: HTMLElement, restaurant = new RestaurantScene(), results = new ResultsScene(), reducedMotion = false) {
     this.container = container;
     this.restaurant = restaurant;
     this.results = results;
@@ -92,7 +98,7 @@ export class SceneManager {
     this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored);
 
     const aspect = container.clientWidth / Math.max(1, container.clientHeight);
-    this.cameraController = new CameraController(aspect);
+    this.cameraController = new CameraController(aspect, reducedMotion);
     this.composer = new EffectComposer(this.renderer);
     // `EffectComposer` sizes its own render targets as `cssWidth * pixelRatio` and — unlike
     // `WebGLRenderer.setSize`, which floors — does NOT round that product to whole pixels. So

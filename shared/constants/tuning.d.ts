@@ -294,3 +294,7 @@ export declare const INVITE_TOKEN_EXPIRY_MS: number;
 // --- STORY-045: district Peek strategy signal --------------------------------------------------
 export declare const PEEK_CAMERA_DISTANCE: number;
 export declare const PEEK_CAMERA_TARGET_Z: number;
+
+// --- STORY-067: kitchen operations camera state -------------------------------------------------
+export declare const CAMERA_PROFILE_TRANSITION_MS: number;
+export declare const KITCHEN_CAMERA_TARGET_Z: number;

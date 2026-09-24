@@ -22,8 +22,75 @@ import {
   OWNER_SPRINT_SLIDE_DECEL_PER_S2,
   OWNER_SPRINT_SLIDE_STOP_SPEED,
 } from '../../../../shared/constants/tuning.js';
+import layout from '../../../../shared/game-data/restaurant-layout.json' with { type: 'json' };
 
 const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
+
+// STORY-067. The §14 layout's own `barriers` (see its `_barriers_comment`) — solid segments the
+// owner may not cross except through a declared opening. Read once at module load, not per tick.
+// Presently exactly one: the pass counter. THE OWNER ONLY: `worker-system.js` moves workers on
+// its own path and the server worker must cross the pass to carry plates to tables, so applying
+// this there would need real pathfinding through the opening. That is a deliberate cut, not an
+// oversight.
+const BARRIERS = layout.barriers ?? [];
+
+/**
+ * How far past a barrier a blocked move is parked. One clamp-epsilon, so the owner ends the tick
+ * demonstrably on the side they started rather than exactly ON the line, where the next tick's
+ * own `from === at` comparison would be a coin flip between "crossed" and "did not".
+ */
+const BARRIER_EPSILON = 0.01;
+
+/**
+ * Integrate one step with the authority clamp AND the barrier check, and write it to `player`.
+ * EVERY movement path goes through here — walk, sprint, and post-sprint slide — so there is no
+ * route that clamps but forgets to collide. That is the whole reason this is a function rather
+ * than three copies of two `clamp` calls, which is what this file used to carry.
+ *
+ * Barriers are tested as a LINE CROSSING, not as a box the owner might be inside: solve for where
+ * the step's own segment meets the barrier's axis, and ask whether THAT point is inside an
+ * opening. A point-in-box test would let a fast enough tick step cleanly over a thin barrier
+ * (today's worst case is a sprint tick at 7.14 u/s * 50ms = 0.357 units against a counter 1.48
+ * deep, so it would not tunnel right now — but that is arithmetic that holds by luck, and a
+ * crossing test does not depend on it surviving a future speed or geometry change).
+ *
+ * A blocked move keeps its travel ALONG the barrier and loses only the component through it, so
+ * walking into the counter slides the owner along it toward the opening instead of sticking them
+ * in place — the behaviour a player expects from a countertop.
+ */
+function integrate(player, dx, dz) {
+  const fromX = player.position.x;
+  const fromZ = player.position.z;
+  let toX = clamp(fromX + dx, RESTAURANT_BOUNDS.minX, RESTAURANT_BOUNDS.maxX);
+  let toZ = clamp(fromZ + dz, RESTAURANT_BOUNDS.minZ, RESTAURANT_BOUNDS.maxZ);
+
+  for (const barrier of BARRIERS) {
+    const alongAxis = barrier.axis === 'z' ? 'x' : 'z';
+    const from = barrier.axis === 'z' ? fromZ : fromX;
+    const to = barrier.axis === 'z' ? toZ : toX;
+    // Not a crossing: both ends on the same side of the line (or the step never moved along
+    // this axis at all). `from === barrier.at` counts as "already on the line", which the
+    // epsilon above is what stops happening in the first place.
+    if ((from < barrier.at && to < barrier.at) || (from > barrier.at && to > barrier.at)) continue;
+    if (from === to) continue;
+
+    // Where along the OTHER axis the step's own segment meets the barrier.
+    const t = (barrier.at - from) / (to - from);
+    const crossFrom = alongAxis === 'x' ? fromX : fromZ;
+    const crossTo = alongAxis === 'x' ? toX : toZ;
+    const crossAt = crossFrom + (crossTo - crossFrom) * t;
+    if (barrier.openings.some((o) => crossAt >= o.min && crossAt <= o.max)) continue;
+
+    // Blocked. Park just short of the line on the side the step started from, and keep the
+    // full movement along it.
+    const parked = from < barrier.at ? barrier.at - BARRIER_EPSILON : barrier.at + BARRIER_EPSILON;
+    if (barrier.axis === 'z') toZ = parked;
+    else toX = parked;
+  }
+
+  player.position.x = toX;
+  player.position.z = toZ;
+}
 
 export const movementSystem = {
   id: 'movement',
@@ -64,9 +131,9 @@ export const movementSystem = {
         const nx = dirX * speed * dt;
         const nz = dirZ * speed * dt;
         // THE authority check: the server clamps, so an out-of-bounds intent cannot produce
-        // an out-of-bounds broadcast position.
-        player.position.x = clamp(player.position.x + nx, RESTAURANT_BOUNDS.minX, RESTAURANT_BOUNDS.maxX);
-        player.position.z = clamp(player.position.z + nz, RESTAURANT_BOUNDS.minZ, RESTAURANT_BOUNDS.maxZ);
+        // an out-of-bounds broadcast position. STORY-067 folded that clamp into `integrate`
+        // alongside the barrier crossing — same clamp, same guarantee, one place.
+        integrate(player, nx, nz);
         player.slideVelocity.x = dirX * speed;
         player.slideVelocity.z = dirZ * speed;
         continue;
@@ -78,8 +145,9 @@ export const movementSystem = {
         // real momentum still in `slideVelocity`. Coast on that momentum instead of falling
         // straight through to plain input-driven walking — decay the vector's magnitude at a
         // fixed rate (see `OWNER_SPRINT_SLIDE_DECEL_PER_S2`'s reasoning in tuning.js) and
-        // integrate position from the decayed vector, through the same clamp as every other
-        // movement path so a slide can never carry a player out of `RESTAURANT_BOUNDS`. New
+        // integrate position from the decayed vector, through the same `integrate` as every
+        // other movement path so a slide can neither leave `RESTAURANT_BOUNDS` nor coast through
+        // a barrier. New
         // walk/sprint input is intentionally ignored for the brief remainder of the slide — that
         // loss of instant manual control is the "ice" — and resumes the instant the slide spends
         // itself out below `OWNER_SPRINT_SLIDE_STOP_SPEED`. This includes a fresh sprint key
@@ -91,16 +159,7 @@ export const movementSystem = {
         const scale = decayedSpeed / slideSpeed;
         player.slideVelocity.x *= scale;
         player.slideVelocity.z *= scale;
-        player.position.x = clamp(
-          player.position.x + player.slideVelocity.x * dt,
-          RESTAURANT_BOUNDS.minX,
-          RESTAURANT_BOUNDS.maxX,
-        );
-        player.position.z = clamp(
-          player.position.z + player.slideVelocity.z * dt,
-          RESTAURANT_BOUNDS.minZ,
-          RESTAURANT_BOUNDS.maxZ,
-        );
+        integrate(player, player.slideVelocity.x * dt, player.slideVelocity.z * dt);
         continue;
       }
 
@@ -112,8 +171,7 @@ export const movementSystem = {
       if (len > 0) {
         const nx = (player.input.x / len) * OWNER_MOVE_SPEED * dt;
         const nz = (player.input.z / len) * OWNER_MOVE_SPEED * dt;
-        player.position.x = clamp(player.position.x + nx, RESTAURANT_BOUNDS.minX, RESTAURANT_BOUNDS.maxX);
-        player.position.z = clamp(player.position.z + nz, RESTAURANT_BOUNDS.minZ, RESTAURANT_BOUNDS.maxZ);
+        integrate(player, nx, nz);
       }
     }
   },

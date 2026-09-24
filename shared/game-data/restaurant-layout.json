@@ -35,6 +35,16 @@
     { "id": "pantry", "type": "pantry", "position": [-6, 0, 9] },
     { "id": "dishwashing", "type": "dishwashing", "position": [6, 0, 9] }
   ],
+  "_barriers_comment": "STORY-067. Solid segments the OWNER cannot walk through, in world units on the XZ plane. Until this story the server only clamped to `bounds` (server/src/game/systems/movement-system.js), so the owner walked straight through the pickup counter into the kitchen instead of round it. `axis` names the axis the barrier is PERPENDICULAR to and `at` is its coordinate on that axis, because this is a line you cross, not a volume you occupy — a crossing test cannot be tunnelled by a fast tick the way a point-in-box test can. `openings` are ranges along the other axis where crossing IS allowed. Workers are deliberately NOT subject to these: worker-system.js moves them on its own path and the server worker must cross the pass to carry plates, which would need pathfinding through the opening — a much larger change than this story carries.",
+  "barriers": [
+    {
+      "id": "service_pass_counter",
+      "axis": "z",
+      "at": 2,
+      "openings": [{ "min": -9, "max": -8 }],
+      "_comment": "The pass counter. The authored Copper & Thyme geometry for `service_pass` spans x -8.00..8.00 (measured from the GLB's own POSITION accessors) against floor bounds of x -9..9, so the counter already leaves a one-unit gap at each end. Only the LEFT gap is walkable: it opens onto the pantry/prep side (pantry x=-6) and sits nearest the kitchen order queue board at x=-3. The right gap is closed so there is ONE way in, which is what makes the route through the kitchen readable."
+    }
+  ],
   "spawn": {
     "owner": [0, 0, -3],
     "customerEntry": [-7, 0, -11]

@@ -7,10 +7,14 @@ import { StateInterpolator, type PlayerState } from './StateInterpolator';
 import { EntityViewRegistry } from './EntityViewRegistry';
 import { SceneManager } from './SceneManager';
 import { InteractionController, type InteractionPrompt } from './InteractionController';
-import { DEFAULT_CAMERA, WIDE_CAMERA, PEEK_CAMERA } from './CameraController';
+import { DEFAULT_CAMERA, WIDE_CAMERA, PEEK_CAMERA, KITCHEN_CAMERA } from './CameraController';
 import { loadSettings } from '../app/settings';
-import { PEEK_CAMERA_TARGET_Z } from '../../../shared/constants/tuning';
+import { PEEK_CAMERA_TARGET_Z, KITCHEN_CAMERA_TARGET_Z } from '../../../shared/constants/tuning';
 import type { PhasePreset } from '../../../shared/constants/tuning';
+// STORY-067. Same source `InteractionController.ts` already reads layout entities from — no new
+// zone data file, per this story's own AC: kitchen proximity is derived from the `kitchen` zone
+// already declared here, through the same client-side path the codebase already uses for layout.
+import layoutData from '../../../shared/game-data/restaurant-layout.json';
 import type {
   BotSnapshotEntry,
   CustomerSnapshot,
@@ -86,6 +90,17 @@ const RECONNECT_RETRY_INTERVAL_MS = 1500;
  * is the authority on when the seat is actually gone; this only covers "we cannot even reach it
  * to find out", which the grace window alone would cut off right at the boundary. */
 const RECONNECT_GIVE_UP_BUFFER_MS = 5_000;
+
+/** STORY-067. The layout's own `kitchen` zone (z 3-12, per STORY-057's notes) — looked up once
+ * rather than re-scanning `layoutData.zones` every frame. Presentation-only: this drives which
+ * `CameraController` profile is active, never anything `action-validator.js` reads (Notable
+ * Pattern 11 — camera is view state). */
+const KITCHEN_ZONE = (layoutData.zones as Array<{ id: string; min: number[]; max: number[] }>)
+  .find((z) => z.id === 'kitchen')!;
+
+function isInsideZone(x: number, z: number, zone: { min: number[]; max: number[] }): boolean {
+  return x >= zone.min[0] && x <= zone.max[0] && z >= zone.min[1] && z <= zone.max[1];
+}
 
 interface UpgradeInfo {
   id: string;
@@ -433,6 +448,11 @@ export class GameClient {
    * time). `setPeeking`'s own `DEFAULT_CAMERA` reset reads this too, so releasing Peek returns to
    * whichever baseline this match actually started with, not always the zoomed-in default. */
   private readonly baseCamera = loadSettings().wideCameraView ? WIDE_CAMERA : DEFAULT_CAMERA;
+  /** STORY-067. Edge-triggered, same discipline as `setPeeking`: `handleFrame` below only calls
+   * `cameraController.setSettings` on the kitchen-zone ENTER/EXIT transition, not every frame the
+   * owner happens to be standing in it — this is what it compares against to find that edge. Pure
+   * client presentation, never read by `patchStatus`/`GameClientStatus`. */
+  private kitchenCameraEngaged = false;
 
   private sinceInputSend = 0;
   /** STORY-016. Accumulated seconds, fed to `RestaurantScene#updateCustomerAnimations` every
@@ -557,10 +577,13 @@ export class GameClient {
   onStatus: ((status: GameClientStatus) => void) | null = null;
 
   constructor(container: HTMLElement) {
-    this.scene = new SceneManager(container);
+    this.scene = new SceneManager(container, undefined, undefined, loadSettings().reducedMotion);
     // `CameraController`'s own constructor default is `DEFAULT_CAMERA` — only need to override
-    // it here when the player asked for the wide framing instead.
-    if (this.baseCamera !== DEFAULT_CAMERA) this.scene.cameraController.setSettings(this.baseCamera);
+    // it here when the player asked for the wide framing instead. STORY-067:
+    // `setSettingsImmediate`, not `setSettings` — this is the match's BASE profile, applied
+    // before the scene has ever rendered a frame, so there is nothing to lerp FROM (see that
+    // method's own comment in `CameraController.ts`).
+    if (this.baseCamera !== DEFAULT_CAMERA) this.scene.cameraController.setSettingsImmediate(this.baseCamera);
     // Keep the authored restaurant isolated until the player explicitly holds Peek.
     this.scene.restaurant.setCompetitorVisible(false);
     this.input = new InputController(window);
@@ -1322,6 +1345,14 @@ export class GameClient {
     this.scene.restaurant.updateWorkerAnimations(dt);
 
     const self = players.find((p) => p.playerId === this.status.playerId);
+
+    // PRECEDENCE (STORY-067 AC): Peek always wins over the kitchen state when both would apply.
+    // Checked FIRST and unconditionally, so it holds in both press orders — Peek held while
+    // already in the kitchen, and walking into the kitchen while already peeking — because the
+    // kitchen-zone check below is never even reached while `peeking` is true. `setPeeking`
+    // already swaps `CameraController` onto a different subject entirely (the shared district,
+    // its own comment) the instant Peek is pressed, regardless of what profile was active before;
+    // this branch only has to keep re-aiming the target every held frame, same as pre-067.
     if (this.status.peeking) {
       // `PEEK_CAMERA_TARGET_Z` (`shared/constants/tuning.js`, with the frustum reasoning in its
       // own comment) biases the shot toward the authored rival room at z=-24.5 while retaining
@@ -1329,11 +1360,46 @@ export class GameClient {
       // `CameraController` onto the pulled-back profile (own comment there) — this call only
       // ever needs to move the target, not the framing.
       this.scene.cameraController.setTarget(0, PEEK_CAMERA_TARGET_Z);
-    } else if (self) {
+      // Release the kitchen latch so that if Peek ends while the owner is still standing in the
+      // kitchen, the branch below re-engages `KITCHEN_CAMERA` on the very next frame instead of
+      // reading as already-engaged and staying on whatever `setPeeking(false)` just restored.
+      if (this.kitchenCameraEngaged) this.kitchenCameraEngaged = false;
+    } else if (self != null && isInsideZone(self.position.x, self.position.z, KITCHEN_ZONE)) {
+      // STORY-067 PRD Story 1 (pp. 3-4). Kitchen-zone proximity, derived from the layout's own
+      // `kitchen` zone (`KITCHEN_ZONE`, above) against THIS viewer's own interpolated position —
+      // client presentation only, never sent to the server and never surfaced on
+      // `GameClientStatus` (Notable Pattern 11: camera is view state). Each client derives this
+      // from its own owner, so one player entering the kitchen never moves a co-op partner's
+      // camera the way an authoritative field would.
+      //
+      // Edge-triggered, same discipline as `setPeeking`: only swap the PROFILE on the zone-enter
+      // transition (`CameraController.setSettings` now interpolates on its own, over
+      // `CAMERA_PROFILE_TRANSITION_MS` — see that file) — re-issuing the identical target every
+      // frame the owner merely stands in the kitchen would be wasted work for no visual change.
+      if (!this.kitchenCameraEngaged) {
+        this.scene.cameraController.setSettings(KITCHEN_CAMERA);
+        this.kitchenCameraEngaged = true;
+      }
+      // `KITCHEN_CAMERA_TARGET_Z` fixes the look-at z at the kitchen's own back half (see
+      // `KITCHEN_CAMERA`'s own comment, `CameraController.ts`) — the usual owner-clamped z below
+      // never reaches past +-1.5, nowhere near the kitchen's z 3-12 span. `x` still follows the
+      // owner, same clamp as the default branch: the kitchen's full width already reads inside
+      // frame regardless, so there is no reason to also pin it.
       this.scene.cameraController.setTarget(
         Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
-        Math.max(-1.5, Math.min(1.5, self.position.z * 0.18)),
+        KITCHEN_CAMERA_TARGET_Z,
       );
+    } else {
+      if (this.kitchenCameraEngaged) {
+        this.scene.cameraController.setSettings(this.baseCamera);
+        this.kitchenCameraEngaged = false;
+      }
+      if (self) {
+        this.scene.cameraController.setTarget(
+          Math.max(-1.3, Math.min(1.3, self.position.x * 0.18)),
+          Math.max(-1.5, Math.min(1.5, self.position.z * 0.18)),
+        );
+      }
     }
 
     // STORY-008. Re-resolved every frame against interpolated position (cheap: a handful of

@@ -10,7 +10,9 @@
 import * as THREE from 'three';
 import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
-import { RestaurantScene, CameraController, DEFAULT_CAMERA } from './shared/scene-primitives';
+import { RestaurantScene, CameraController, DEFAULT_CAMERA, KITCHEN_CAMERA } from './shared/scene-primitives';
+import { KITCHEN_CAMERA_TARGET_Z } from '../../shared/constants/tuning';
+import layout from '../../shared/game-data/restaurant-layout.json';
 import { DevControls } from './shared/dev-controls';
 import { mockOwner, orbitOwner, mockShortageVsQueueDemo } from './shared/test-entities';
 
@@ -67,15 +69,45 @@ function createRestaurantLayoutHarness(): SceneHarness {
       scene.scene.add(staff);
 
       // Blocked-path probes (§15.1 "Test blocked path locations").
+      //
+      // STORY-067. These used to be three hand-placed red boxes at coordinates nothing enforced —
+      // a drawing of where blockage was imagined to be, at a time when `movement-system.js` had
+      // no collision at all and the owner walked through everything. They are now generated FROM
+      // `restaurant-layout.json`'s own `barriers`, the exact data the server reads, so this
+      // toggle shows the real thing: red where the owner is refused, green where they may pass.
+      // If the layout's opening moves, this moves with it; if it disagrees with the server, the
+      // bug is visible here rather than only discoverable by walking into a wall.
       blockers = new THREE.Group();
       blockers.visible = false;
-      for (const [x, z] of [[-4, 1.6], [4, 1.6], [0, -7]] as const) {
-        const probe = new THREE.Mesh(
-          new THREE.BoxGeometry(1.2, 2, 1.2),
-          new THREE.MeshStandardMaterial({ color: 0xc75f5f, transparent: true, opacity: 0.55 }),
-        );
-        probe.position.set(x, 1, z);
-        blockers.add(probe);
+      for (const barrier of layout.barriers ?? []) {
+        const [lo, hi] = barrier.axis === 'z'
+          ? [layout.bounds.minX, layout.bounds.maxX]
+          : [layout.bounds.minZ, layout.bounds.maxZ];
+        // Walk the barrier's full span, cutting at every opening edge, and mark each resulting
+        // run by whether its midpoint is inside an opening.
+        const edges = [lo, hi, ...barrier.openings.flatMap((o) => [o.min, o.max])]
+          .filter((v) => v >= lo && v <= hi)
+          .sort((a, b) => a - b);
+        for (let i = 0; i < edges.length - 1; i += 1) {
+          const [a, b] = [edges[i], edges[i + 1]];
+          if (b - a < 1e-6) continue;
+          const mid = (a + b) / 2;
+          const open = barrier.openings.some((o) => mid >= o.min && mid <= o.max);
+          const span = b - a;
+          const probe = new THREE.Mesh(
+            barrier.axis === 'z'
+              ? new THREE.BoxGeometry(span, 2, 0.15)
+              : new THREE.BoxGeometry(0.15, 2, span),
+            new THREE.MeshStandardMaterial({
+              color: open ? 0x5fc77f : 0xc75f5f,
+              transparent: true,
+              opacity: open ? 0.4 : 0.55,
+            }),
+          );
+          if (barrier.axis === 'z') probe.position.set(mid, 1, barrier.at);
+          else probe.position.set(barrier.at, 1, mid);
+          blockers.add(probe);
+        }
       }
       scene.scene.add(blockers);
 
@@ -123,7 +155,30 @@ function createRestaurantLayoutHarness(): SceneHarness {
         (v) => camera?.setSettings({ angle: v }));
       const setCameraFov = panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: DEFAULT_CAMERA.fov },
         (v) => camera?.setSettings({ fov: v }));
-      panel.addButton('Reset camera', () => camera?.setSettings({ ...DEFAULT_CAMERA }));
+      panel.addButton('Reset camera', () => {
+        camera?.setSettings({ ...DEFAULT_CAMERA });
+        kitchenView = false;
+        setCameraHeight(DEFAULT_CAMERA.height);
+        setCameraDistance(DEFAULT_CAMERA.distance);
+        setCameraAngle(DEFAULT_CAMERA.angle);
+        setCameraFov(DEFAULT_CAMERA.fov);
+      });
+
+      // STORY-067 PRD Story 1 (pp. 3-4) verification: same "one-click preset + slider readouts"
+      // shape as `Night view` below, for `KITCHEN_CAMERA`. Also flips the per-frame `setTarget`
+      // call in the render loop below to `KITCHEN_CAMERA_TARGET_Z` (own comment there) — a plain
+      // `setSettings` call alone would leave the look-at point wherever the owner-walk toggle last
+      // left it, since this harness has no owner-position-driven follow the way `GameClient`'s
+      // `handleFrame` does.
+      let kitchenView = false;
+      panel.addToggle('Kitchen view (STORY-067)', false, (v) => {
+        kitchenView = v;
+        camera?.setSettings(v ? KITCHEN_CAMERA : DEFAULT_CAMERA);
+        setCameraHeight((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).height);
+        setCameraDistance((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).distance);
+        setCameraAngle((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).angle);
+        setCameraFov((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).fov);
+      });
 
       // Reported: "make a toggle for lighting and the night view of cameras" — one-click
       // combination of `setNight(true)` with a camera framing suited to showing it off, rather
@@ -178,6 +233,10 @@ function createRestaurantLayoutHarness(): SceneHarness {
           // Frame the restaurant, not the owner: this harness exists to judge the whole
           // footprint (§15.1). Follow the owner only while the walk toggle is on.
           if (orbiting) camera.setTarget(state.position.x, state.position.z);
+          // STORY-067. `KITCHEN_CAMERA_TARGET_Z` — same fixed-z-retarget role
+          // `GameClient#handleFrame`'s kitchen branch gives it, so this toggle previews the exact
+          // framing that branch produces in the real game, not an approximation of it.
+          else if (kitchenView) camera.setTarget(0, KITCHEN_CAMERA_TARGET_Z);
           else camera.setTarget(0, -1);
           camera.update(dt);
           renderer?.render(scene.scene, camera.camera);
