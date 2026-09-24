@@ -168,6 +168,7 @@ export function createLabelSprite(text: string, colorHex: number, scale = 0.5): 
 const dishPictureTextureCache = new Map<string, THREE.CanvasTexture>();
 const DISH_PICTURE_WIDTH = 300;
 const DISH_PICTURE_HEIGHT = 360;
+const DISH_PICTURE_ASPECT = DISH_PICTURE_WIDTH / DISH_PICTURE_HEIGHT;
 
 /** `name`/`accentHex` are read only on first draw for a given `dishId` — see the cache-forever
  * comment above. `dishId` alone is the cache key (not `name`, unlike `labelTexture`) because the
@@ -235,31 +236,16 @@ function dishPictureTexture(dishId: string, name: string, accentHex: number): TH
   return texture;
 }
 
-/** A new sprite instance for one dish's big picture card — `scale` sets the card's HEIGHT in
- * world units, width follows the texture's own portrait aspect ratio (same convention
- * `createLabelSprite` uses). Unlike `createGlyphSprite`/`createLabelSprite`, color is baked
- * into the texture itself (each dish's accent is permanent, not a per-instance tint), so the
- * sprite material's own `.color` is left at its default white — there is nothing to recolor
- * per instance the way a badge sprite's severity color changes. */
-export function createDishPictureSprite(dishId: string, name: string, accentHex: number, scale = 1.6): THREE.Sprite {
-  const material = new THREE.SpriteMaterial({
+/** A flat dish card mounted to the queue board. Keeping the card in the board's plane
+ * prevents billboard corners from intersecting the backing or overlapping neighboring cards. */
+export function createDishPicturePanel(dishId: string, name: string, accentHex: number, scale = 1.6): THREE.Mesh {
+  const material = new THREE.MeshBasicMaterial({
     map: dishPictureTexture(dishId, name, accentHex),
-    // Deliberately NOT `depthTest: false` (unlike `createGlyphSprite`/`createLabelSprite`, small
-    // badges that must never hide behind a table/station they sit flush against). These are ~10
-    // much bigger cards mounted with real standoff in front of their own panel
-    // (`QUEUE_BOARD_SLOT_Z`, `RestaurantScene.ts`) — `depthTest: false` was tried first and caught
-    // in review: it painted a mispositioned row of cards over the floor tiles and pantry shelving
-    // behind them instead of revealing the bug, and would keep painting every card over anything
-    // between it and the camera (a worker walking past the board) even once positioned correctly.
-    // Normal depth testing still draws each card in front of its own panel (the panel is BEHIND
-    // it, at a smaller local z) while letting nearer geometry occlude a card correctly.
     transparent: true,
   });
-  const sprite = new THREE.Sprite(material);
-  const aspect = DISH_PICTURE_WIDTH / DISH_PICTURE_HEIGHT;
-  sprite.scale.set(scale * aspect, scale, 1);
-  sprite.renderOrder = 10;
-  return sprite;
+  const card = new THREE.Mesh(new THREE.PlaneGeometry(scale * DISH_PICTURE_ASPECT, scale), material);
+  card.rotation.y = Math.PI; // Board faces the kitchen (-Z).
+  return card;
 }
 
 /** STORY-053. Swaps a `createLabelSprite` sprite's TEXT in place, for the rare label whose text

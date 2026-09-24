@@ -46,7 +46,7 @@ import {
   createOrderLabelSprite,
   setGlyphSpriteColor,
   setLabelSpriteText,
-  createDishPictureSprite,
+  createDishPicturePanel,
 } from './icon-sprites';
 import { buildArcadeFoodProxy, disposeFoodObject } from './FoodModels';
 import { buildChefBlaze, disposeChefBlaze, type ChefBlazeInstance } from './ChefBlazeModel';
@@ -381,112 +381,17 @@ function readyDishSlotPosition(slot: number): number {
   return -READY_DISH_SLOT_X_RANGE + t * (READY_DISH_SLOT_X_RANGE * 2);
 }
 
-// --- STORY-043/STORY-057: PRD co-op slice — the kitchen order queue board's picture pool -------
-//
-// A SECOND fixed-slot pool alongside `readyDishes` above, anchored near a different landmark
-// (`kitchen_order_queue_board` instead of `service_pass`). Deliberately NOT the same held-claim
-// slot discipline `claimReadyDishSlot` uses: `readyDishes`' slots are claimed once and kept so an
-// already-visible dish never jumps sideways when a newer one arrives (see that constant's own
-// comment) — exactly backwards for a board whose entire point is PRIORITY ORDER. Here, slot index
-// IS rank index, recomputed from `you.kitchenQueueBoard`'s own array position every snapshot
-// (`GameClient.ts`), so a prop visibly moves toward the front as its ticket's priority rises —
-// see `upsertQueueBoardDish`'s own comment.
-//
-// STORY-057 "the expo rail shows the items when you click it. I would rather the entire back wall
-// have 2d pictures of the dishes ... largely". This grid used to hold real-scale 3D dish-proxy
-// models (`buildDishProxy`, the SAME low-poly models used at the pass/in carried hands) on a
-// 3.4-unit-wide board — legible up close, not "at a glance from across the kitchen". Replaced
-// (not kept alongside — see this constant's own note below) with `createDishPictureSprite`'s big
-// flat 2D cards on a much larger board (`buildEntity`'s `kitchen_order_queue_board` case, now
-// 9x4.4 instead of 3.4x1.8). REPLACED rather than added-to: keeping both would put a small 3D
-// model and a big 2D card on the same board showing the SAME list twice, which is exactly the
-// "two competing representations of one list" this story's own notes call out as "probably not
-// warranted" — one visual treatment, same data, is simpler and is what the report actually asked
-// for (2D pictures, not "2D pictures in addition to the existing 3D models").
-/** Hides rather than overlaps past this many simultaneously queued tickets, same discipline
- * `MAX_READY_DISH_SLOTS` documents. Higher than that constant's 8: this list is restaurant-WIDE
- * across all 4 stations (`queuedTicketsAcrossStations`), not one station's approximation of the
- * pass, so a busier worst case is plausible. A purely rendering-layout number (how many slots this
- * scene lays out), not a gameplay tunable — kept local here rather than in
- * `shared/constants/tuning.js`, the same choice `MAX_READY_DISH_SLOTS` already made for the exact
- * same reason. */
+// Restaurant-wide queue pictures are positioned by server priority, unlike the pass's stable
+// ready-dish slots. Keep ten visible cards in two rows on the clear wall between pantry and wash.
 const MAX_QUEUE_BOARD_SLOTS = 10;
-/** A grid, not `readyDishSlotPosition`'s single row — even at this story's enlarged 9-unit board
- * width, 10 dishes in one row would still overlap; 5 columns x 2 rows keeps every card readably
- * spaced. Column/row counts unchanged from STORY-043 — only the WORLD-SPACE size of the grid and
- * of each card grew (see the constants below), so `queueBoardSlotPosition`'s own math (which slot
- * gets which grid cell) still applies unmodified. */
 const QUEUE_BOARD_COLUMNS = 5;
-/** STORY-057. Was 1.5 (out of the old 3.4-wide board's 1.7 half-width, an 0.88 fill ratio) —
- * scaled up to the new 9-wide board's 4.5 half-width at the SAME 0.88 fill ratio (4.5*0.88=3.96,
- * rounded to 4.0) rather than picked freehand, so the grid keeps the same proportional margin
- * from the board's own edges it always had. */
-const QUEUE_BOARD_SLOT_X_RANGE = 4.0;
-/** STORY-057. NOT simply the old [1.3, 0.6] scaled by the height ratio — measured instead
- * (`new THREE.Box3().setFromObject(mesh)` in a throwaway console probe against the real running
- * scene, then reverted), because that scaling approach rested on a false premise, caught TWICE:
- *
- * First pass (WRONG, caught by review before merging): assumed a bare `this.box(...)` mesh here
- * spans `-height/2..+height/2` in world space (since `BoxGeometry` is center-pivoted and
- * `buildEntities` sets `mesh.position` to the entity's layout position verbatim, y always 0) —
- * measured `minY=-2.2, maxY=2.2` for the 4.4-tall board and picked row centers `[1.05, -0.95]`
- * against THAT span. That measurement was real, but the FIX should have been to stop the board
- * straddling the floor, not to fit cards into the straddle — `buildEntity`'s
- * `kitchen_order_queue_board` case now wraps the panel mesh in a `THREE.Group` specifically so
- * `buildEntities`' position-clobber lands on the GROUP (to the entity's real x/0/z) while the
- * CHILD panel mesh keeps its own `position.y = height/2` (see that case's own comment) — so the
- * panel genuinely spans world y **0..4.4**, sitting on the floor. The row centers below are
- * against THIS corrected span.
- *
- * Second pass (current): two 1.7-tall (`QUEUE_BOARD_PICTURE_SCALE`) cards inside 0..4.4 with real
- * margins — row 1 (top) center 3.25 -> card spans 2.4..4.1 (0.3 clear of the 4.4 top edge); row 2
- * (bottom) center 1.25 -> card spans 0.4..2.1 (0.4 clear of the y=0 FLOOR, not a made-up "bottom
- * edge" — this is the number that matters, since the earlier pass's row 2 span, -1.8..-0.1, was
- * entirely BELOW y=0, i.e. under the floor, invisible on its own merits and only ever visible
- * because `createDishPictureSprite`'s `depthTest: false` painted it over the floor mesh); the two
- * rows are 0.3 apart (row 1's 2.4 floor to row 2's 2.1 ceiling). Re-verified in the browser after
- * the fix: both rows render ON the dark panel, not on the white floor tiles. */
+const QUEUE_BOARD_SLOT_X_RANGE = 3.2;
 const QUEUE_BOARD_ROW_Y = [3.25, 1.25] as const;
-/** Local-space Z offset in front of the board's own (now 0.3-deep, was 0.22) box (`buildEntity`),
- * just enough clearance that a card's flat sprite never z-fights the board mesh behind it.
- *
- * NEGATIVE, not +0.55 like the old value this replaces — found the hard way. The old
- * `buildDishProxy` 3D models sat at +0.55 and were clearly visible; keeping that same SIGN for
- * this story's flat sprites (at +0.4) rendered nothing at all once `createDishPictureSprite`
- * used normal depth testing (see that function's own comment on why `depthTest: false` was
- * rejected) — the cards were there (confirmed by temporarily re-enabling `depthTest: false`,
- * which painted them back on screen regardless of what was in front) but fully occluded BEHIND
- * the panel's own mesh from the camera's side. A solid 3D model has real thickness, so part of it
- * can still poke out past the panel's face toward the camera even with the "wrong"-sign center
- * offset — a flat, zero-thickness sprite card cannot. Flipping the sign to -0.4 (confirmed in the
- * browser, `?harness=kitchen-bottleneck`: cards render on the panel's own face, in front of it,
- * correctly occluded by nearer geometry) is the actual "toward the camera" direction for this
- * board's local frame. */
-const QUEUE_BOARD_SLOT_Z = -0.4;
-/** World-space HEIGHT of one dish picture card (`createDishPictureSprite`'s `scale`), sized to
- * comfortably fill one grid cell without touching its neighbor: at `QUEUE_BOARD_COLUMNS` = 5
- * across `QUEUE_BOARD_SLOT_X_RANGE` * 2 = 8.0 world units, adjacent column centers are 2.0 apart;
- * a 1.7-tall card at the texture's own 300:360 portrait aspect is 1.7 * (300/360) = 1.42 wide,
- * leaving a 0.58 gap between neighboring cards — comfortably clear, same "generous, not
- * knife-edge" margin `READY_DISH_SLOT_X_RANGE`'s own siblings use elsewhere in this file. */
 const QUEUE_BOARD_PICTURE_SCALE = 1.7;
-
-/** STORY-057. `buildWayfinding`'s "EXPO RAIL" text label and its "E" command-post badge use ONE
- * fixed pair of y-offsets (0.19/1.75) shared by every command post — fine for the boards that
- * DIDN'T grow (both offsets sit comfortably outside e.g. `host_stand`'s 1.1-tall box either way,
- * which spans world y 0..1.1 the same corrected way this board's own case now does), but this
- * board's own top edge is now 4.4 (was 0.9) while those offsets stayed put — both would sit deep
- * inside the picture grid rather than above the board at all. Confirmed in the browser
- * (`?harness=kitchen-bottleneck`, "Spawn rush (8 tickets)"): before this constant existed, the "E"
- * badge (at the shared y=1.75) rendered stamped on top of the middle picture card. So this ONE
- * entity gets its own pair, lifted clear of the panel's real top edge (4.4, corrected — see
- * `QUEUE_BOARD_ROW_Y`'s own comment on the two-pass fix that established this number) with the
- * same margins the shared pair's OWN relationship uses — label first (0.34 half-height + 0.2
- * clearance above 4.4 = 4.94, rounded 4.95), badge above that (0.475 half-size + 0.2 clearance
- * above the label's own top edge (4.95+0.34=5.29) = 5.965, rounded 6.0). Re-verified in the
- * browser after the panel-height correction: both still float cleanly above the whole grid, and
- * clear of the room's roofline (the `COPPER & THYME` title sprite sits at y=3.6 at a different
- * x/z — checked this badge's own screenshot doesn't clip through any visible ceiling/wall). */
+const QUEUE_BOARD_PANEL_DEPTH = 0.3;
+// Cards share the panel's plane and sit just ahead of its kitchen-facing surface.
+const QUEUE_BOARD_SLOT_Z = -(QUEUE_BOARD_PANEL_DEPTH / 2 + 0.03);
+// Both wayfinding markers sit above the panel's 4.4-unit top edge.
 const QUEUE_BOARD_LABEL_Y = 4.95;
 const QUEUE_BOARD_BADGE_Y = 6.0;
 
@@ -501,7 +406,7 @@ function queueBoardSlotPosition(slot: number): { x: number; y: number } {
 }
 
 /** STORY-057. One accent color per catalogue dish for its big picture card
- * (`createDishPictureSprite`) — no existing per-dish 2D color/artwork field exists anywhere
+ * (`createDishPicturePanel`) — no existing per-dish 2D color/artwork field exists anywhere
  * (`dishes.json` has none; `DISH_COLORS` above is per-INGREDIENT/component, e.g. `bunTan`, not
  * per-dish), so this is a new, purpose-built map, kept small and local exactly like
  * `DISH_PROXY_BUILDERS` above. Chosen loosely off each dish's real ingredient palette (burger
@@ -1190,7 +1095,7 @@ export class RestaurantScene {
       sprite.position.set(
         0,
         entity.id === 'kitchen_order_queue_board' ? QUEUE_BOARD_LABEL_Y : 0.19,
-        entity.type === 'station' ? -1.25 : -0.85,
+        entity.id === 'kitchen_order_queue_board' ? 0 : entity.type === 'station' ? -1.25 : -0.85,
       );
       this.scene.getObjectByName(entity.id)?.add(sprite);
 
@@ -1209,15 +1114,15 @@ export class RestaurantScene {
         badge.position.set(
           0,
           entity.id === 'kitchen_order_queue_board' ? QUEUE_BOARD_BADGE_Y : 1.75,
-          entity.type === 'station' ? -1.25 : -0.85,
+          entity.id === 'kitchen_order_queue_board' ? 0 : entity.type === 'station' ? -1.25 : -0.85,
         );
         this.scene.getObjectByName(entity.id)?.add(badge);
       }
     }
     // Reported: "the expo rail has the icons overlap the board and you can't see them at times."
     // Root cause — this sign and `kitchen_order_queue_board` (STORY-057's back-wall expo rail,
-    // `restaurant-layout.json` position [-3, 0, 10.8]) occupy overlapping world space: the
-    // board's card grid spans world x -7..1, y 0..4.4 (`QUEUE_BOARD_ROW_Y`'s top row centers at
+    // its original position [-3, 0, 10.8]) occupied overlapping world space: the
+    // original board's card grid spanned world x -7..1, y 0..4.4 (`QUEUE_BOARD_ROW_Y`'s top row centers at
     // y=3.25), plus its own "EXPO RAIL" label/badge up to y=6.0 (`QUEUE_BOARD_LABEL_Y`/
     // `QUEUE_BOARD_BADGE_Y`) — this sign's OLD y=3.6 sat squarely inside that top row's band, at
     // an x/z close enough to the board's face to land in the same screen region from the default
@@ -1458,61 +1363,15 @@ export class RestaurantScene {
       // achievable bar; the naive "combined-radii" ceiling of 4.4 STORY-053 used for
       // `.upgrade-terminal` is NOT clear of the two nearest stations at 2.5 each, but that
       // stricter bar is already broken elsewhere in this shipped layout by design — adjacent
-      // stations sit exactly 4 apart against their own 2.2+2.2 combined ceiling, and
-      // `kitchen_order_queue_board`-to-`pantry` is ~3.5 apart against the same ceiling — resolved
-      // there, as here, by "no two ANCHOR POINTS overlap the other's circle", not by zero overlap
-      // anywhere). Only this entity moved — `service_pass`, the four stations, and
-      // `kitchen_order_queue_board` keep their STORY-043/pre-existing positions verbatim.
+      // stations sit exactly 4 apart against their own 2.2+2.2 combined ceiling).
+      // The queue board now occupies the clear wall at [1, 0, 10.8], also outside this trigger.
       case 'kitchen_command_board':
         return this.box(2.2, 1.5, 0.22, 0x392f27);
-      // STORY-043. A second, distinct board — the restaurant-wide ticket rail, not
-      // `kitchen_command_board`'s focus-policy board (different concern, different entity — see
-      // this story's own notes). A distinct steel-grey tone so the two boards read as different
-      // fixtures at a glance, not as one board re-skinned. The real content
-      // (`upsertQueueBoardDish`) is the actual AC2 content; this box is only the landmark it's
-      // anchored to, same simplicity as `kitchen_command_board`'s own case.
-      //
-      // STORY-057. Enlarged from 3.4x1.8x0.22 to 9x4.4x0.3 — "the entire back wall have 2d
-      // pictures ... largely": this scene has no literal wall geometry anywhere (an open
-      // floor-plan cutaway, no `buildWalls`-style mesh), so "the back wall" means THIS board's own
-      // mesh becoming a genuinely large flat panel, not attaching to pre-existing geometry. Only
-      // the MESH size changed here — the entity's own world `position` in
-      // `restaurant-layout.json` ([-3, 0, 10.8]) is untouched (this story moves
-      // `kitchen_command_board`, not this entity), so no interactionRadius/trigger-point math
-      // changes: a bigger board drawn around the same anchor point doesn't move where "near" is
-      // computed from. Checked for room: at x=-3 with a 9-wide panel (half-width 4.5), the panel
-      // spans world x -7.5..1.5 — comfortably inside `restaurant-layout.json`'s own bounds
-      // (minX=-9), a full 1.5-unit margin from the west wall. At z=10.8 with a 0.3-deep panel
-      // (half-depth 0.15), it spans z 10.65-10.95 — nowhere near `pantry`/`dishwashing`'s own
-      // boxes (z=9, half-depth 0.6, spanning z 8.4-9.6: a 1.05 gap) or the kitchen zone's own
-      // z=12 far boundary (a 1.05 gap the other direction), so the bigger panel introduces no new
-      // physical overlap regardless of its x-span overlapping pantry's x range, since their z
-      // spans never touch.
-      //
-      // CORRECTION (found by re-measuring in the browser after the first version of this story's
-      // own commit, via the same `Box3` probe `QUEUE_BOARD_ROW_Y`'s comment describes): a BARE
-      // `this.box(...)` mesh here would NOT sit on the floor. `box()` sets `mesh.position.y =
-      // height/2` internally, but `buildEntities` (the one caller of `buildEntity`) immediately
-      // overwrites the returned object's OWN `.position` with the entity's literal layout
-      // position (y always 0) — so a bare box mesh renders symmetric around y=0, i.e. HALF BELOW
-      // THE FLOOR. Every other `this.box(...)`-returning case in this file has this same quirk
-      // (harmless for them — short fixtures like `host_stand`/`upgrade_terminal` sinking ~0.5
-      // units into the floor is not visually obvious at this game's camera angle), but at THIS
-      // board's new 4.4 height it is not harmless: without a fix, the entire bottom half (world y
-      // -2.2..0) would be underground, and `QUEUE_BOARD_ROW_Y`'s bottom row would render UNDER
-      // THE FLOOR, invisible except that `createDishPictureSprite`'s `depthTest: false` was
-      // painting it over the floor anyway (confirmed: a screenshot showed the bottom row sitting
-      // on the WHITE FLOOR TILES near the stove, not on the dark panel). Fixed by wrapping the
-      // panel mesh in a `THREE.Group`: `buildEntities` overwrites the GROUP's position (to the
-      // entity's real x/0/z, i.e. ground level), but the CHILD mesh keeps its own local
-      // `position.y = height/2` untouched (nothing overwrites a child's position) — so the panel
-      // now genuinely spans world y 0..4.4, sitting on the floor like the "back wall" the report
-      // asked for actually should. `QUEUE_BOARD_ROW_Y`/`QUEUE_BOARD_LABEL_Y`/`QUEUE_BOARD_BADGE_Y`
-      // below are all written against this corrected 0..4.4 span, not the old (wrong) -2.2..2.2 —
-      // see those constants' own comments.
+      // Keep the panel child rooted above the floor: buildEntities positions the parent at y=0.
+      // The narrower panel fits between the pantry shelves and dishwashing furniture.
       case 'kitchen_order_queue_board': {
         const group = new THREE.Group();
-        group.add(this.box(9, 4.4, 0.3, 0x3a4652));
+        group.add(this.box(8, 4.4, QUEUE_BOARD_PANEL_DEPTH, 0x3a4652));
         return group;
       }
       case 'queue':
@@ -2152,30 +2011,13 @@ export class RestaurantScene {
   // --- STORY-043/STORY-057: kitchen order queue board dish PICTURES — spawn/despawn, reconciled
   // by EntityViewRegistry ('queueBoardDishes') -----------------------------------------------
 
-  /** Create or update one queue-board dish card. Unlike `upsertReadyDish`, geometry is not the
-   * only thing built once — POSITION is rebuilt every call too, at `state.rank`'s slot (Decision
-   * 71 in this story's own `design.md`): the whole point of this board is that a card visibly
-   * moves toward the front as its ticket's priority rises, so "only update on first sight" would
-   * be wrong here in a way it is correct for `readyDishes`.
-   *
-   * STORY-057. Was `buildDishProxy(state.dishId)` (a real-scale 3D dish model, the same one used
-   * at the pass/in carried hands) — now `createDishPictureSprite`, a big flat 2D card, per this
-   * story's own AC ("large, always-visible 2D pictures ... replacing ... the existing small 3D
-   * dish-proxy grid"). Still wrapped in a `THREE.Group` (unchanged `queueBoardDishes: Map<string,
-   * THREE.Group>` field type) purely so `removeQueueBoardDish`'s existing
-   * `disposeFoodObject(group)` call keeps working unmodified — that function only disposes
-   * `THREE.Mesh` geometry/materials via `traverse` (a bare `THREE.Sprite` is not a `Mesh`, so it's
-   * silently skipped, same as every other canvas-texture `Sprite` this file already builds and
-   * never explicitly disposes, e.g. `upsertReadyDish`'s own `createLabelSprite` chips above) —
-   * not a new leak this story introduces, the existing accepted pattern for every sprite in this
-   * file, and harmless besides: the SHARED texture this sprite's material points at is cached
-   * forever by design (`icon-sprites.ts`'s own header), so nothing expensive is actually lost. */
+  /** Reposition every update so server priority changes move cards immediately. */
   upsertQueueBoardDish(state: QueueBoardDishRenderState): void {
     let group = this.queueBoardDishes.get(state.ticketId);
     if (!group) {
       group = new THREE.Group();
       const name = DISH_NAMES.get(state.dishId) ?? state.dishId;
-      group.add(createDishPictureSprite(state.dishId, name, dishPictureAccent(state.dishId), QUEUE_BOARD_PICTURE_SCALE));
+      group.add(createDishPicturePanel(state.dishId, name, dishPictureAccent(state.dishId), QUEUE_BOARD_PICTURE_SCALE));
       group.name = `queue_board_dish_${state.ticketId}`;
       this.queueBoardDishes.set(state.ticketId, group);
       const board = this.scene.getObjectByName('kitchen_order_queue_board');
@@ -2193,12 +2035,7 @@ export class RestaurantScene {
     }
     group.visible = true;
     const { x, y } = queueBoardSlotPosition(state.rank);
-    // Local space, relative to `kitchen_order_queue_board`'s own box mesh (`buildEntity`'s case)
-    // — `QUEUE_BOARD_SLOT_Z` clears the board's own (now 0.3-deep) face. `x`/`y` are pre-sized by
-    // `queueBoardSlotPosition`/`QUEUE_BOARD_ROW_Y` for the real, MEASURED board extent (see that
-    // constant's own comment) — no additional per-instance scaling needed here, unlike the old 3D
-    // proxy path's `group.scale.setScalar(0.5)` (`createDishPictureSprite`'s own `scale` argument
-    // already sized the sprite correctly at construction).
+    // Mount the card on the kitchen-facing surface.
     group.position.set(x, y, QUEUE_BOARD_SLOT_Z);
   }
 
