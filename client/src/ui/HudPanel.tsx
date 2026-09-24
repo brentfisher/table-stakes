@@ -130,6 +130,33 @@ function alertClass(alert: CriticalAlert): string {
   return 'hud-alert-info'; // yellow/blue — event countdown, upgrade, suggestions
 }
 
+/** The service rail owns placement; snapshot priority still determines alert order. */
+export function HudAlerts({ status, advisory = false }: {
+  status: GameClientStatus;
+  advisory?: boolean;
+}): JSX.Element | null {
+  // Outside-event cards already carry the countdown, including dismissal for that event state.
+  const alerts = status.criticalAlerts.filter((alert) =>
+    alert.category !== 'event_countdown' && (advisory ? alert.priority > 4 : alert.priority <= 4));
+  if (!alerts.length) return null;
+  const rows = <div className="hud-alerts">{alerts.map((alert) => (
+    <div key={alert.key} className={`hud-alert ${alertClass(alert)}`}>
+      {alertText(alert, status)}
+    </div>
+  ))}</div>;
+  return advisory ? (
+    <details className="service-notification-tips">
+      <summary>Tips &amp; upgrades <span>{alerts.length}</span></summary>
+      {rows}
+    </details>
+  ) : (
+    <section className="service-notification-alerts" aria-label="Needs attention">
+      <h2>Needs attention <span>{alerts.length}</span></h2>
+      {rows}
+    </section>
+  );
+}
+
 export function HudPanel({
   status,
   onReady,
@@ -430,19 +457,6 @@ export function HudPanel({
             </div>
           ) : null}
         </details>
-      ) : null}
-
-      {/* PRD §18 "Critical alerts" — already ranked (§18 priority order) and capped
-          (`HUD_CRITICAL_ALERTS_MAX`) by `GameClient.ts`; this only renders the list it was
-          handed, in order, with no re-sorting or re-filtering here. */}
-      {inService && status && status.criticalAlerts.length > 0 ? (
-        <div className="hud-alerts">
-          {status.criticalAlerts.map((alert) => (
-            <div key={alert.key} className={`hud-alert ${alertClass(alert)}`}>
-              {alertText(alert, status)}
-            </div>
-          ))}
-        </div>
       ) : null}
 
       {/* PRD §14 "Floating cash/tip feedback only for major moments, not every transaction". */}

@@ -211,8 +211,9 @@ export function ArcadeToast({ status }: { status: GameClientStatus | null }): JS
   // `GameClient` already holds stable across empty snapshots (see `EMPTY_PRESENTATION_EVENTS`'s
   // own comment), so a snapshot with nothing new still doesn't re-run `usePresentationToastQueue`'s
   // effect below.
+  // EventBanner owns live/upcoming events; retain only the end-of-event toast here.
   const toastableEvents = useMemo(
-    () => (status?.presentationEvents ?? EMPTY_PRESENTATION_EVENTS).filter((e) => e.event.type !== 'ticket-ready'),
+    () => (status?.presentationEvents ?? EMPTY_PRESENTATION_EVENTS).filter((e) => !['ticket-ready', 'event-warning', 'event-active'].includes(e.event.type)),
     [status?.presentationEvents],
   );
   const current = usePresentationToastQueue(toastableEvents);

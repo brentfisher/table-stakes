@@ -2560,19 +2560,7 @@ button.service-card-action { cursor:pointer; }
 @media(max-height:650px) and (min-width:701px) { .command-scorecard { padding:15px; } .command-heading { margin-bottom:12px; } .command-metrics { padding:12px 0; } .command-objective { min-height:80px; padding:10px 15px; } .command-objective p { font-size:13px; } .outside-event-stack { bottom:160px; width:350px; } .outside-event-stack .event-banner { min-height:64px; padding:10px; } .event-banner-title { font-size:12px; } .event-banner small { font-size:11px; } .event-banner-icon { font-size:28px; width:29px; } }
 @media(prefers-reduced-motion:reduce) { .outside-event-stack .event-banner { animation:none; } .command-objective,.command-objective-arrow,.event-banner button { transition:none; } }
 
-/* Final command-center composition: one notification rail, with world space between HUDs. */
-.service-notifications { position:absolute; z-index:10; left:30px; bottom:38px; width:min(440px,calc(100vw - 60px)); display:flex; flex-direction:column; gap:9px; pointer-events:none; }
-.service-notifications:empty { display:none; }
-.service-notifications .outside-event-stack { position:static; width:100%; display:grid; }
-.service-notifications .arcade-toast { position:relative; inset:auto; width:100%; max-width:none; flex:none; }
-.app:has(.hud-alerts) .service-notifications { bottom:190px; }
-.service-notifications .event-banner { pointer-events:auto; display:grid; grid-template-columns:38px minmax(0,1fr) auto 22px; column-gap:12px; box-shadow:inset 0 1px 0 #ffffff12,0 6px 22px #0005; }
-.service-notifications .event-banner-copy { grid-column:2 / 4; grid-row:1; padding-right:4px; }
-.service-notifications .event-banner-title { padding-right:68px; }
-.service-notifications .event-banner-time { grid-column:3; grid-row:1; align-self:start; padding-top:1px; }
-.service-notifications .event-banner-icon { grid-column:1; grid-row:1; }
-.service-notifications .event-banner button { grid-column:4; grid-row:1; }
-.service-notifications .event-banner small { max-width:100%; }
+/* Final command-center composition. */
 .command-scorecard { background:linear-gradient(120deg,rgba(26,43,57,.84),rgba(10,23,36,.81)); backdrop-filter:blur(10px); }
 .command-heading small { display:flex; justify-content:flex-end; align-items:center; gap:5px; white-space:nowrap; }
 .command-heading small::before { content:''; width:5px; height:5px; border-radius:50%; background:#83e4b9; box-shadow:0 0 7px #83e4b966; }
@@ -2586,8 +2574,8 @@ button.service-card-action { cursor:pointer; }
 .command-controls[open] > summary::after { content:'−'; }
 .command-controls > summary span { margin-left:auto; float:none; }
 @media(min-width:1001px) { .command-heading h2 { font-size:clamp(20px,1.7vw,28px); } .command-objective p { font-size:clamp(13px,1.1vw,17px); } }
-@media(max-width:700px) { .service-notifications { left:12px; bottom:64px; width:calc(100vw - 24px); } .app:has(.hud-alerts) .service-notifications { bottom:190px; } .service-notifications .event-banner { grid-template-columns:28px minmax(0,1fr) auto 22px; column-gap:9px; } .command-controls > summary span { display:none; } }
-@media(max-height:650px) and (min-width:701px) { .service-notifications { width:350px; } .app:has(.hud-alerts) .service-notifications { bottom:170px; } }
+@media(max-width:700px) { .command-controls > summary span { display:none; } }
+
 @media(prefers-reduced-motion:reduce) { .command-metric progress::-webkit-progress-value { transition:none; } }
 
 /* STORY-059: `HudPanel.tsx`'s `.command-scorecard` and `TacticalOverviewPanel.tsx`'s
@@ -2699,4 +2687,64 @@ button.service-card-action { cursor:pointer; }
 .app:has(.tactical-overview) .outside-event-stack,
 .app:has(.tactical-overview) .service-notifications {
   display: none;
+}
+
+/* Service notifications share a bounded flow above the controls, including critical alerts.
+   No category reserves guessed pixel heights for another category. */
+.service-notifications {
+  position:absolute; z-index:10; left:30px; display:flex; flex-direction:column;
+  bottom:86px; width:min(390px,calc(100vw - 60px));
+  max-height:min(52vh,calc(100dvh - 310px)); overflow:auto;
+  padding:3px; box-sizing:border-box; gap:10px; pointer-events:auto;
+  scrollbar-width:thin; scrollbar-color:#708794 #15222e;
+  overscroll-behavior:contain;
+}
+.service-notifications:empty { display:none; }
+.service-notifications:focus-visible { outline:2px solid #8fc8e0; outline-offset:3px; border-radius:12px; }
+.service-notifications > * { flex:none; min-width:0; }
+.service-notifications .hud-alerts {
+  position:static; inset:auto; width:100%; max-width:none; display:grid; gap:6px;
+}
+.service-notifications .hud-alert {
+  padding:10px 12px; font-size:13px; line-height:1.45; background:#24242d;
+  border-left-width:4px; box-shadow:none; overflow-wrap:anywhere;
+}
+.service-notification-alerts, .service-notification-tips {
+  border:1px solid #526271; border-radius:12px; background:#17232e; padding:10px;
+}
+.service-notification-alerts h2 {
+  display:flex; justify-content:space-between; margin:0 0 8px; color:#ffba9f;
+  font-size:12px; font-weight:700; letter-spacing:.04em;
+}
+.service-notification-tips summary {
+  cursor:pointer; color:#d6e2ec; font-size:13px; line-height:1.5;
+}
+.service-notification-tips summary span { float:right; color:#a9c7da; }
+.service-notification-tips[open] summary { margin-bottom:8px; }
+.service-notifications .outside-event-stack { position:static; width:100%; display:grid; gap:8px; }
+.service-notifications .event-banner {
+  display:grid; grid-template-columns:28px minmax(0,1fr) 24px; grid-template-rows:auto auto;
+  min-height:0; padding:12px; column-gap:10px; row-gap:6px;
+  border-left-width:4px; background:#182d29; box-shadow:none; animation:none;
+}
+.service-notifications .event-banner--incoming { background:#30291f; }
+.service-notifications .event-banner--risk { background:#362422; }
+.service-notifications .event-banner-copy { grid-column:2; grid-row:1; padding:0; }
+.service-notifications .event-banner-title { padding:0; font-size:13px; line-height:1.35; }
+.service-notifications .event-banner small { margin-top:4px; font-size:12px; line-height:1.45; }
+.service-notifications .event-banner-time { grid-column:2; grid-row:2; padding:0; color:#c9d6de; font-size:12px; }
+.service-notifications .event-banner-icon { grid-column:1; grid-row:1 / 3; width:28px; font-size:26px; align-self:center; }
+.service-notifications .event-banner, .service-notifications .hud-alert, .service-notifications .arcade-toast { backdrop-filter:none; }
+.service-notifications .event-banner button { grid-column:3; grid-row:1; min-width:24px; min-height:24px; }
+.service-notifications .arcade-toast { position:relative; inset:auto; width:100%; max-width:none; background:#1b2c38; box-shadow:none; animation:none; }
+.service-notifications .arcade-toast__copy { min-width:0; overflow-wrap:anywhere; }
+.service-notifications .service-station-confirmation {
+  position:static; inset:auto; transform:none; border:1px solid #7ed9f5;
+  border-radius:10px; padding:12px; font-size:13px; line-height:1.4; letter-spacing:0; box-shadow:none;
+}
+@media(max-width:700px) {
+  .service-notifications { left:12px; bottom:110px; width:min(390px,calc(100vw - 24px)); max-height:min(48vh,calc(100dvh - 310px)); }
+}
+@media(max-height:500px) {
+  .service-notifications { max-height:calc(100dvh - 230px); bottom:76px; }
 }
