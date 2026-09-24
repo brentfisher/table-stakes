@@ -27,8 +27,16 @@ approach_summary: >
   STORY-057's own notes), checked on `GameClient#handleFrame` beside the existing camera
   retarget, and its precedence against `setPeeking` stated in a comment and made to hold in both
   orders. Files: `CameraController.ts`, `GameClient.ts`, `tuning.js`; verification by screenshots
-  from `restaurant-layout-harness.ts` and `kitchen-bottleneck-harness.ts`. No server, schema or
-  snapshot change — client presentation only, per the PRD's own Story 1 implementation note.
+  from `restaurant-layout-harness.ts` and `kitchen-bottleneck-harness.ts`. The camera half needs
+  no server, schema or snapshot change, per the PRD's own Story 1 implementation note. SECOND
+  HALF, added on request after the camera landed: the owner could walk through the pickup counter,
+  because `movement-system.js` only clamped to `RESTAURANT_BOUNDS` and this game has no obstacle
+  collision at all. The pass counter becomes solid with one opening at its left end (x -9..-8),
+  declared as a `barriers` array in `restaurant-layout.json`, validated in `loader.js`, and
+  enforced in `movement-system.js` as a line-crossing test inside a single `integrate` helper that
+  every movement path now shares. That half IS server-authoritative and has to be: movement here
+  is entirely server-driven with no client prediction, so a client-side barrier would be
+  unenforceable. Workers stay exempt — the server worker must cross the pass to carry plates.
 created: 2026-09-23
 updated: 2026-09-24
 ---
