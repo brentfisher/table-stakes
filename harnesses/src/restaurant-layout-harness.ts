@@ -12,6 +12,7 @@ import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-
 import type { SceneHarness } from './harness-shell';
 import { RestaurantScene, CameraController, DEFAULT_CAMERA, KITCHEN_CAMERA } from './shared/scene-primitives';
 import { KITCHEN_CAMERA_TARGET_Z } from '../../shared/constants/tuning';
+import layout from '../../shared/game-data/restaurant-layout.json';
 import { DevControls } from './shared/dev-controls';
 import { mockOwner, orbitOwner, mockShortageVsQueueDemo } from './shared/test-entities';
 
@@ -68,15 +69,45 @@ function createRestaurantLayoutHarness(): SceneHarness {
       scene.scene.add(staff);
 
       // Blocked-path probes (§15.1 "Test blocked path locations").
+      //
+      // STORY-067. These used to be three hand-placed red boxes at coordinates nothing enforced —
+      // a drawing of where blockage was imagined to be, at a time when `movement-system.js` had
+      // no collision at all and the owner walked through everything. They are now generated FROM
+      // `restaurant-layout.json`'s own `barriers`, the exact data the server reads, so this
+      // toggle shows the real thing: red where the owner is refused, green where they may pass.
+      // If the layout's opening moves, this moves with it; if it disagrees with the server, the
+      // bug is visible here rather than only discoverable by walking into a wall.
       blockers = new THREE.Group();
       blockers.visible = false;
-      for (const [x, z] of [[-4, 1.6], [4, 1.6], [0, -7]] as const) {
-        const probe = new THREE.Mesh(
-          new THREE.BoxGeometry(1.2, 2, 1.2),
-          new THREE.MeshStandardMaterial({ color: 0xc75f5f, transparent: true, opacity: 0.55 }),
-        );
-        probe.position.set(x, 1, z);
-        blockers.add(probe);
+      for (const barrier of layout.barriers ?? []) {
+        const [lo, hi] = barrier.axis === 'z'
+          ? [layout.bounds.minX, layout.bounds.maxX]
+          : [layout.bounds.minZ, layout.bounds.maxZ];
+        // Walk the barrier's full span, cutting at every opening edge, and mark each resulting
+        // run by whether its midpoint is inside an opening.
+        const edges = [lo, hi, ...barrier.openings.flatMap((o) => [o.min, o.max])]
+          .filter((v) => v >= lo && v <= hi)
+          .sort((a, b) => a - b);
+        for (let i = 0; i < edges.length - 1; i += 1) {
+          const [a, b] = [edges[i], edges[i + 1]];
+          if (b - a < 1e-6) continue;
+          const mid = (a + b) / 2;
+          const open = barrier.openings.some((o) => mid >= o.min && mid <= o.max);
+          const span = b - a;
+          const probe = new THREE.Mesh(
+            barrier.axis === 'z'
+              ? new THREE.BoxGeometry(span, 2, 0.15)
+              : new THREE.BoxGeometry(0.15, 2, span),
+            new THREE.MeshStandardMaterial({
+              color: open ? 0x5fc77f : 0xc75f5f,
+              transparent: true,
+              opacity: open ? 0.4 : 0.55,
+            }),
+          );
+          if (barrier.axis === 'z') probe.position.set(mid, 1, barrier.at);
+          else probe.position.set(barrier.at, 1, mid);
+          blockers.add(probe);
+        }
       }
       scene.scene.add(blockers);
 

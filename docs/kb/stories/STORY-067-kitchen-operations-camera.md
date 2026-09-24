@@ -30,7 +30,7 @@ approach_summary: >
   from `restaurant-layout-harness.ts` and `kitchen-bottleneck-harness.ts`. No server, schema or
   snapshot change — client presentation only, per the PRD's own Story 1 implementation note.
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # Kitchen operations camera state on entering the back of house
@@ -55,10 +55,19 @@ restaurant-layout.json` already defines named zones with z-extents (the `kitchen
 z 3-12; the `pass` zone z 1-3 — both quoted in STORY-057's own notes), so the trigger reads that
 existing layout data rather than inventing a second spatial concept.
 
-This story is **client presentation only**. It adds no server field, no snapshot change and no
-new authority concept: the PRD's own implementation note for Story 1 says so explicitly, and the
-co-op consequence follows from it — each client picks its own camera state from its own owner
-position, so one player entering the kitchen must not move the other player's camera. Scope
+The camera half of this story is **client presentation only**. It adds no server field, no
+snapshot change and no new authority concept: the PRD's own implementation note for Story 1 says
+so explicitly, and the co-op consequence follows from it — each client picks its own camera state
+from its own owner position, so one player entering the kitchen must not move the other player's
+camera.
+
+**Added after the camera landed, on request:** the owner could walk straight through the pickup
+counter into the kitchen, because `movement-system.js` only ever clamped to `RESTAURANT_BOUNDS`
+and this game has no obstacle collision anywhere. A closer kitchen camera makes that much more
+obvious, so the pass counter becomes solid with a single opening at its left end. That half IS a
+server-authoritative movement change — the only one this story carries — and it is server-side by
+necessity: movement here is entirely server-driven with no client prediction, so a client-side
+barrier would be both a lie and unenforceable. Scope
 deliberately excludes what the camera is meant to make readable: the queue-board card states are
 STORY-068 and the station indicator vocabulary is STORY-069. This story only has to prove the
 framing, and that nothing it does breaks an interaction.
@@ -93,6 +102,32 @@ framing, and that nothing it does breaks an interaction.
       writes), the profile change applies immediately instead of interpolating.
 - [ ] `GameClientStatus` gains no field that another system could mistake for authority; if the
       kitchen state is surfaced to React at all, its comment says it is presentation-only.
+
+**Pass-counter barrier (added on request)**
+
+- [ ] `shared/game-data/restaurant-layout.json` declares the barrier as data — the line it sits
+      on and the range(s) where crossing is allowed — rather than hardcoding coordinates in a
+      system.
+- [ ] `shared/game-data/loader.js` validates it at boot, so a malformed barrier is a startup
+      failure rather than one that silently fails open.
+- [ ] `server/src/game/systems/movement-system.js` refuses a crossing outside the opening. Every
+      movement path — walk, sprint and post-sprint slide — goes through one integrate helper, so
+      no path clamps but forgets to collide.
+- [ ] The test is a **line crossing**, not point-in-box, so it cannot be tunnelled by a fast tick
+      at some future speed or geometry.
+- [ ] A blocked move keeps its travel along the counter and loses only the component through it —
+      walking into it slides toward the opening rather than sticking.
+- [ ] The barrier blocks both directions: out of the kitchen as well as into it.
+- [ ] Workers are deliberately NOT subject to it (the server worker must cross the pass to carry
+      plates), and that cut is stated in a comment rather than left implicit.
+- [ ] The pre-existing `RESTAURANT_BOUNDS` clamp still holds — `scripts/smoke-milestone0.mjs`
+      depends on it.
+- [ ] `scripts/check-movement-barriers.mjs` asserts blocked crossings, the allowed crossing, the
+      slide, both sprint cases and the surviving clamp; it is registered in `npm run check`.
+- [ ] That check is falsified before it is trusted — break the crossing rejection, confirm it
+      fails, restore — and the PR says so.
+- [ ] `restaurant-layout-harness.ts`'s existing "Blocked path probes" toggle renders the real
+      barrier from the layout data instead of its three hand-placed boxes.
 
 **Verification**
 
