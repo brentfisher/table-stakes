@@ -391,8 +391,7 @@ const QUEUE_BOARD_PICTURE_SCALE = 1.7;
 const QUEUE_BOARD_PANEL_DEPTH = 0.3;
 // Cards share the panel's plane and sit just ahead of its kitchen-facing surface.
 const QUEUE_BOARD_SLOT_Z = -(QUEUE_BOARD_PANEL_DEPTH / 2 + 0.03);
-// Both wayfinding markers sit above the panel's 4.4-unit top edge.
-const QUEUE_BOARD_LABEL_Y = 4.95;
+// The interaction badge sits above the panel's 4.4-unit top edge.
 const QUEUE_BOARD_BADGE_Y = 6.0;
 
 function queueBoardSlotPosition(slot: number): { x: number; y: number } {
@@ -1064,53 +1063,22 @@ export class RestaurantScene {
 
   private buildWayfinding(): void {
     for (const entity of this.layout.entities) {
-      // STORY-056. Reported: "instead of listing the table numbers, only show them when you are
-      // delivering food" — this loop used to unconditionally attach a permanent `formatTableChip`
-      // placard ("T04") to EVERY table, for the life of the scene. That duplicated (and
-      // permanently pre-empted) `buildCarryTargetMarker`/`updateCarryTargets` below, which already
-      // shows the identical chip, plus a ring and arrow, ONLY while a player is actively carrying
-      // an order bound for that table — exactly "only show when delivering". Tables are the only
-      // entity type this affects: station/pass/other wayfinding labels below are unrelated to the
-      // complaint and stay exactly as they were. (Verified no HUD/alert code elsewhere assumes a
-      // table's number is permanently visible in the 3D scene — `hud-alerts.js` and
-      // `ArcadeToast.tsx` both carry `tableId` as structured data/HUD text, never as a lookup
-      // against an in-world placard, and no other code reaches into the scene by
-      // `label_${tableId}`.)
-      if (entity.type === 'table') continue;
-      const label = entity.type === 'station' ? entity.station!.toUpperCase()
-        : ({ service_pass: 'PICKUP', pantry: 'PANTRY', dishwashing: 'WASH',
-            upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
-            kitchen_command_board: 'RUSH THE PASS',
-            // STORY-043. "Expo rail" is the real-world name for the shelf a kitchen stages
-            // outstanding tickets on, in priority order, for whoever's free to grab the next one.
-            kitchen_order_queue_board: 'EXPO RAIL' } as Record<string, string>)[entity.id];
-      if (!label) continue;
-      // Bumped 1.6x from 0.42 — these wayfinding placards (station names, PICKUP/PANTRY/
-      // UPGRADES/etc.) were reported hard to read from the normal play camera.
-      const sprite = createLabelSprite(label, 0xd4e7dd, 0.68);
-      sprite.name = `label_${entity.id}`;
-      // STORY-057. `kitchen_order_queue_board` alone gets a lifted y — see
-      // `QUEUE_BOARD_LABEL_Y`'s own comment for why the shared 0.19 now collides with its
-      // enlarged picture grid.
-      sprite.position.set(
-        0,
-        entity.id === 'kitchen_order_queue_board' ? QUEUE_BOARD_LABEL_Y : 0.19,
-        entity.id === 'kitchen_order_queue_board' ? 0 : entity.type === 'station' ? -1.25 : -0.85,
-      );
-      this.scene.getObjectByName(entity.id)?.add(sprite);
+      // Kitchen equipment and the expo rail are recognizable without name placards.
+      // Delivery markers still identify tables, and interaction badges remain independent.
+      const label = ({ pantry: 'PANTRY', dishwashing: 'WASH',
+        upgrade_terminal: 'UPGRADES', host_stand: 'WELCOME', service_station: 'SERVICE',
+        kitchen_command_board: 'RUSH THE PASS' } as Record<string, string>)[entity.id];
+      if (label) {
+        const sprite = createLabelSprite(label, 0xd4e7dd, 0.68);
+        sprite.name = `label_${entity.id}`;
+        sprite.position.set(0, 0.19, -0.85);
+        this.scene.getObjectByName(entity.id)?.add(sprite);
+      }
 
-      // Reported: the command-post labels (UPGRADES/WELCOME/SERVICE/RUSH THE PASS) weren't
-      // "obvious enough to change the operation" even after the label-scale pass above. A text
-      // pill still reads as scenery from across the floor; a big "E" badge — the exact key the
-      // HUD's own `.interact-prompt` already shows once in range (`GameView.tsx`) — reads as an
-      // affordance at a glance, the same way a real venue's illuminated door/counter signage
-      // does. Scoped to just these four: tables/stations are READ (their badge/state is the
-      // point), not walked-up-to-and-pressed-E the way these command posts are.
       if (COMMAND_POST_IDS.has(entity.id)) {
         const badge = createGlyphSprite('E', 0xffd27a, 0.95);
         badge.name = `command_badge_${entity.id}`;
-        // STORY-057. Same lift as the label above, for the same reason — see
-        // `QUEUE_BOARD_BADGE_Y`'s own comment.
+        // Keep the queue board interaction badge above its picture grid.
         badge.position.set(
           0,
           entity.id === 'kitchen_order_queue_board' ? QUEUE_BOARD_BADGE_Y : 1.75,
@@ -1119,22 +1087,7 @@ export class RestaurantScene {
         this.scene.getObjectByName(entity.id)?.add(badge);
       }
     }
-    // Reported: "the expo rail has the icons overlap the board and you can't see them at times."
-    // Root cause — this sign and `kitchen_order_queue_board` (STORY-057's back-wall expo rail,
-    // its original position [-3, 0, 10.8]) occupied overlapping world space: the
-    // original board's card grid spanned world x -7..1, y 0..4.4 (`QUEUE_BOARD_ROW_Y`'s top row centers at
-    // y=3.25), plus its own "EXPO RAIL" label/badge up to y=6.0 (`QUEUE_BOARD_LABEL_Y`/
-    // `QUEUE_BOARD_BADGE_Y`) — this sign's OLD y=3.6 sat squarely inside that top row's band, at
-    // an x/z close enough to the board's face to land in the same screen region from the default
-    // camera angle. `createLabelSprite` renders with `depthTest: false` (a deliberate choice for
-    // small always-on-top badges — see that function's own header), so whenever the two
-    // overlapped on screen this sign always won, painting over whichever dish card sat behind it
-    // — "can't see them AT TIMES" because the collision is only visible once the board actually
-    // has cards queued there. Raised well clear of the board's tallest element (badge at y=6.0)
-    // rather than shifted in x/z, since re-deriving a camera-projection offset is more fragile
-    // than a comfortable, direct vertical margin. Re-verified in the browser
-    // (`?harness=kitchen-bottleneck`, "Spawn rush (8 tickets)"): no overlap with any card/badge
-    // at this height, at the width this board's grid actually uses.
+    // Keep the restaurant title clear of the queue cards and their interaction badge.
     const title = createLabelSprite('COPPER & THYME', 0xf0d7a0, 1.3);
     title.position.set(0, 7.2, 11.8);
     title.name = 'restaurant_identity';
