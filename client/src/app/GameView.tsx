@@ -27,8 +27,7 @@ import { UpgradeTerminal } from '../ui/UpgradeTerminal';
 import { ResultsPanel } from '../ui/ResultsPanel';
 import { RecapTeaser } from '../ui/recap/RecapTeaser';
 import { TacticalOverviewPanel } from '../ui/TacticalOverviewPanel';
-import { EventBanner } from '../ui/EventBanner';
-import { ArcadeToast } from '../ui/ArcadeToast';
+import { ServiceNotifications } from '../ui/ServiceNotifications';
 import { ReconnectOverlay } from '../ui/ReconnectOverlay';
 import { LobbyScreen } from '../ui/LobbyScreen';
 import { FrontDoorBoard } from '../ui/FrontDoorBoard';
@@ -161,12 +160,7 @@ export function GameView({ roomId, inviteToken, lobbyUi = false, invite = null }
     <div className="app">
       <div className="scene" ref={sceneRef} />
       <AudioPanel audio={audio} />
-      {/* A shared flow keeps simultaneous outside events and presentation toasts apart. */}
-      <div className="service-notifications" aria-label="Service notifications">
-        <EventBanner status={status} />
-        <ArcadeToast status={status} />
-      </div>
-      {status?.serviceStationNotice ? <div className="service-station-confirmation" role="status">{status.serviceStationNotice}</div> : null}
+      <ServiceNotifications status={status} />
       {/* See `SceneManager`'s own comment on `webglcontextlost` — not full-bleed like
           `ReconnectOverlay` below: the match/socket is unaffected, and the browser usually
           restores the context within a frame or two, so blocking the whole screen for what's
