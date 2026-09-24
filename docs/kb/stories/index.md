@@ -73,7 +73,7 @@ field, last refreshed against master `05aa5f5` on 2026-09-13 (through STORY-059)
 * [STORY-064: Put Monsieur the maître d' on the host worker](STORY-064-monsieur-host-worker-model.md) - pr-opened
 * [STORY-065: Put Vivienne the concierge on the server worker](STORY-065-vivienne-server-worker-model.md) - pr-opened
 * [STORY-066: Put Aurelia on seated customers](STORY-066-aurelia-seated-customer-model.md) - pr-opened
-* [STORY-067: Kitchen operations camera state on entering the back of house](STORY-067-kitchen-operations-camera.md) - pending
+* [STORY-067: Kitchen operations camera state on entering the back of house](STORY-067-kitchen-operations-camera.md) - pr-opened
 * [STORY-068: Queue-board cards carry priority tier, queue position and blocked-by-stock state in-world](STORY-068-queue-board-priority-and-blocked-cards.md) - pending
 * [STORY-069: Complete the station-state indicator vocabulary in the world](STORY-069-station-state-indicator-vocabulary.md) - pending
 * [STORY-070: Server-authoritative start_dish action, selecting which dish a station begins](STORY-070-start-dish-server-action.md) - pending

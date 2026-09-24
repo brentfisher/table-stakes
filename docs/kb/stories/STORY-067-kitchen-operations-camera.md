@@ -3,15 +3,15 @@ type: Story
 id: STORY-067
 title: Kitchen operations camera state on entering the back of house
 description: A third named CameraController profile that engages when the owner enters the kitchen zone, interpolated rather than snapped, with an instant non-disorienting swap under reduced motion.
-status: pending
+status: pr-opened
 # `status` here is flow's workflow vocabulary (pending/approved/in-progress/ready-for-pr/
 # pr-opened/merged/...), not OKF's draft/stable/deprecated lifecycle — kept as-is because
 # kickoff and open-prs read/write it directly across every repo using flow. Don't rename it.
 prd_source: /Users/brent/table-stakes/docs/cooking-prd-interactive.pdf
-branch: null
+branch: story/067-kitchen-operations-camera
 worktree_path: null
-base_branch: null
-pr_url: null
+base_branch: master
+pr_url: https://github.com/brentfisher/table-stakes/pull/97
 is_architectural: false
 approach_summary: >
   Add `KITCHEN_CAMERA` as a fourth named `CameraSettings` profile in
