@@ -3,7 +3,7 @@ type: Story
 id: STORY-067
 title: Kitchen operations camera state on entering the back of house
 description: A third named CameraController profile that engages when the owner enters the kitchen zone, interpolated rather than snapped, with an instant non-disorienting swap under reduced motion.
-status: pending
+status: ready-for-pr
 # `status` here is flow's workflow vocabulary (pending/approved/in-progress/ready-for-pr/
 # pr-opened/merged/...), not OKF's draft/stable/deprecated lifecycle — kept as-is because
 # kickoff and open-prs read/write it directly across every repo using flow. Don't rename it.

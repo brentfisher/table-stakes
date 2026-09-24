@@ -10,7 +10,8 @@
 import * as THREE from 'three';
 import { configureRestaurantRenderer } from '../../client/src/scenes/restaurant-rendering';
 import type { SceneHarness } from './harness-shell';
-import { RestaurantScene, CameraController, DEFAULT_CAMERA } from './shared/scene-primitives';
+import { RestaurantScene, CameraController, DEFAULT_CAMERA, KITCHEN_CAMERA } from './shared/scene-primitives';
+import { KITCHEN_CAMERA_TARGET_Z } from '../../shared/constants/tuning';
 import { DevControls } from './shared/dev-controls';
 import { mockOwner, orbitOwner, mockShortageVsQueueDemo } from './shared/test-entities';
 
@@ -123,7 +124,30 @@ function createRestaurantLayoutHarness(): SceneHarness {
         (v) => camera?.setSettings({ angle: v }));
       const setCameraFov = panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: DEFAULT_CAMERA.fov },
         (v) => camera?.setSettings({ fov: v }));
-      panel.addButton('Reset camera', () => camera?.setSettings({ ...DEFAULT_CAMERA }));
+      panel.addButton('Reset camera', () => {
+        camera?.setSettings({ ...DEFAULT_CAMERA });
+        kitchenView = false;
+        setCameraHeight(DEFAULT_CAMERA.height);
+        setCameraDistance(DEFAULT_CAMERA.distance);
+        setCameraAngle(DEFAULT_CAMERA.angle);
+        setCameraFov(DEFAULT_CAMERA.fov);
+      });
+
+      // STORY-067 PRD Story 1 (pp. 3-4) verification: same "one-click preset + slider readouts"
+      // shape as `Night view` below, for `KITCHEN_CAMERA`. Also flips the per-frame `setTarget`
+      // call in the render loop below to `KITCHEN_CAMERA_TARGET_Z` (own comment there) — a plain
+      // `setSettings` call alone would leave the look-at point wherever the owner-walk toggle last
+      // left it, since this harness has no owner-position-driven follow the way `GameClient`'s
+      // `handleFrame` does.
+      let kitchenView = false;
+      panel.addToggle('Kitchen view (STORY-067)', false, (v) => {
+        kitchenView = v;
+        camera?.setSettings(v ? KITCHEN_CAMERA : DEFAULT_CAMERA);
+        setCameraHeight((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).height);
+        setCameraDistance((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).distance);
+        setCameraAngle((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).angle);
+        setCameraFov((v ? KITCHEN_CAMERA : DEFAULT_CAMERA).fov);
+      });
 
       // Reported: "make a toggle for lighting and the night view of cameras" — one-click
       // combination of `setNight(true)` with a camera framing suited to showing it off, rather
@@ -178,6 +202,10 @@ function createRestaurantLayoutHarness(): SceneHarness {
           // Frame the restaurant, not the owner: this harness exists to judge the whole
           // footprint (§15.1). Follow the owner only while the walk toggle is on.
           if (orbiting) camera.setTarget(state.position.x, state.position.z);
+          // STORY-067. `KITCHEN_CAMERA_TARGET_Z` — same fixed-z-retarget role
+          // `GameClient#handleFrame`'s kitchen branch gives it, so this toggle previews the exact
+          // framing that branch produces in the real game, not an approximation of it.
+          else if (kitchenView) camera.setTarget(0, KITCHEN_CAMERA_TARGET_Z);
           else camera.setTarget(0, -1);
           camera.update(dt);
           renderer?.render(scene.scene, camera.camera);

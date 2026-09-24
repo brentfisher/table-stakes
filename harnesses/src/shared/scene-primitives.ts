@@ -13,5 +13,5 @@ export type {
   CarriedDishRenderState,
   QueueBoardDishRenderState,
 } from '../../../client/src/scenes/RestaurantScene';
-export { CameraController, DEFAULT_CAMERA } from '../../../client/src/game/CameraController';
+export { CameraController, DEFAULT_CAMERA, KITCHEN_CAMERA } from '../../../client/src/game/CameraController';
 export type { CameraSettings } from '../../../client/src/game/CameraController';

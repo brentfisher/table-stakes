@@ -45,6 +45,7 @@ import type { SceneHarness } from './harness-shell';
 import {
   RestaurantScene,
   CameraController,
+  KITCHEN_CAMERA,
   type OwnerRenderState,
   type WorkerRenderState,
   type ReadyDishRenderState,
@@ -52,6 +53,7 @@ import {
   type QueueBoardDishRenderState,
 } from './shared/scene-primitives';
 import { DevControls } from './shared/dev-controls';
+import { KITCHEN_CAMERA_TARGET_Z } from '../../shared/constants/tuning';
 import { STATE_COLORS } from '../../client/src/game/state-colors';
 import { createGlyphSprite } from '../../client/src/scenes/icon-sprites';
 import layout from '../../shared/game-data/restaurant-layout.json';
@@ -102,7 +104,13 @@ const COOK_IDLE_POS: Vec3 = { x: 0, y: 0, z: 6.4 };
 const SERVER_IDLE_POS: Vec3 = { x: -1.5, y: 0, z: 0.6 };
 const OWNER_IDLE_POS: Vec3 = { x: 4, y: 0, z: 0.5 };
 
-const KITCHEN_CAMERA = { height: 22, distance: 25, angle: Math.PI - 0.28, fov: 48 } as const;
+// STORY-067. Renamed from this harness's original `KITCHEN_CAMERA` — that name now belongs to
+// the REAL profile `CameraController.ts` exports (a closer/lower kitchen-oriented framing the
+// live game engages on zone entry). This one is this harness's own pre-existing wide overview,
+// unrelated to that story; keeping the old name would have meant two `KITCHEN_CAMERA`s with
+// opposite framings living one import apart. See the "Kitchen camera (STORY-067)" toggle below
+// for previewing the real profile against this harness's own fixtures.
+const HARNESS_OVERVIEW_CAMERA = { height: 22, distance: 25, angle: Math.PI - 0.28, fov: 48 } as const;
 
 // --- Dish/ingredient data ----------------------------------------------------------------------
 // Real `dishes.json` records, not invented numbers — see this file's own header on why that
@@ -857,7 +865,7 @@ function createKitchenBottleneckHarness(): SceneHarness {
       viewport.appendChild(renderer.domElement);
 
       camera = new CameraController(viewport.clientWidth / Math.max(1, viewport.clientHeight));
-      camera.setSettings(KITCHEN_CAMERA);
+      camera.setSettings(HARNESS_OVERVIEW_CAMERA);
       camera.setTarget(0, 3.5);
 
       // --- reset all mock state fresh on every mount --------------------------------------
@@ -1136,15 +1144,39 @@ function createKitchenBottleneckHarness(): SceneHarness {
 
       panel.addSeparator();
 
-      panel.addSlider('Camera height', { min: 10, max: 40, step: 0.5, value: KITCHEN_CAMERA.height },
+      const setCamHeight = panel.addSlider('Camera height', { min: 6, max: 40, step: 0.5, value: HARNESS_OVERVIEW_CAMERA.height },
         (v) => camera?.setSettings({ height: v }));
-      panel.addSlider('Camera distance', { min: 8, max: 42, step: 0.5, value: KITCHEN_CAMERA.distance },
+      const setCamDistance = panel.addSlider('Camera distance', { min: 8, max: 42, step: 0.5, value: HARNESS_OVERVIEW_CAMERA.distance },
         (v) => camera?.setSettings({ distance: v }));
-      panel.addSlider('Camera angle', { min: -Math.PI, max: Math.PI, step: 0.02, value: KITCHEN_CAMERA.angle },
+      const setCamAngle = panel.addSlider('Camera angle', { min: -Math.PI, max: Math.PI, step: 0.02, value: HARNESS_OVERVIEW_CAMERA.angle },
         (v) => camera?.setSettings({ angle: v }));
-      panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: KITCHEN_CAMERA.fov },
+      const setCamFov = panel.addSlider('Field of view', { min: 20, max: 80, step: 1, value: HARNESS_OVERVIEW_CAMERA.fov },
         (v) => camera?.setSettings({ fov: v }));
-      panel.addButton('Reset camera', () => camera?.setSettings({ ...KITCHEN_CAMERA }));
+      panel.addButton('Reset camera', () => {
+        camera?.setSettings({ ...HARNESS_OVERVIEW_CAMERA });
+        camera?.setTarget(0, 3.5);
+        setCamHeight(HARNESS_OVERVIEW_CAMERA.height);
+        setCamDistance(HARNESS_OVERVIEW_CAMERA.distance);
+        setCamAngle(HARNESS_OVERVIEW_CAMERA.angle);
+        setCamFov(HARNESS_OVERVIEW_CAMERA.fov);
+      });
+
+      // STORY-067 PRD Story 1 (pp. 3-4) verification AC: "station indicators remain legible at
+      // the kitchen framing, not only at DEFAULT_CAMERA" — this harness's own DEFAULT-ish
+      // `HARNESS_OVERVIEW_CAMERA` above is a wide overview unrelated to that ask, so this toggle
+      // swaps to the REAL `KITCHEN_CAMERA` profile (`CameraController.ts`) plus its
+      // `KITCHEN_CAMERA_TARGET_Z` look-at, the exact pairing `GameClient#handleFrame` applies on
+      // zone entry, so a screenshot taken with it on previews the actual in-game framing rather
+      // than an approximation of it.
+      panel.addToggle('Kitchen camera (STORY-067)', false, (v) => {
+        const preset = v ? KITCHEN_CAMERA : HARNESS_OVERVIEW_CAMERA;
+        camera?.setSettings({ ...preset });
+        camera?.setTarget(0, v ? KITCHEN_CAMERA_TARGET_Z : 3.5);
+        setCamHeight(preset.height);
+        setCamDistance(preset.distance);
+        setCamAngle(preset.angle);
+        setCamFov(preset.fov);
+      });
 
       const fpsReadout = panel.addReadout('FPS');
 

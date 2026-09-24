@@ -1343,3 +1343,40 @@ export const PEEK_CAMERA_DISTANCE = 20;
  * kitchen, and rival-only dressing get enough screen area to read as a second restaurant.
  */
 export const PEEK_CAMERA_TARGET_Z = -22;
+
+// ============================================================================================
+// STORY-067: kitchen operations camera state
+// ============================================================================================
+// PRD Story 1 (pp. 3-4): entering the kitchen zone should give "a closer, lower, or more
+// kitchen-oriented framing" so the back-wall queue board, the four stations and the pass all
+// read together. `CameraController.ts#KITCHEN_CAMERA` is the profile; these two constants are
+// this story's own tunables — see that constant's own comment for why `height`/`distance`/`fov`
+// stayed inline literals there instead (same shape `DEFAULT_CAMERA`/`WIDE_CAMERA` already use)
+// rather than a third family of numbers here.
+
+/**
+ * How long a `CameraController` profile change takes to interpolate, real milliseconds — the fix
+ * for `setSettings()` previously applying `height`/`distance`/`angle`/`fov` on the very next
+ * frame (a hard cut `PEEK_CAMERA`'s single modest `distance` change never exposed, but
+ * `KITCHEN_CAMERA`'s multi-field swap would). Deliberately a CameraController-wide constant, not
+ * a kitchen-only one — see `CameraController.ts#setSettings`'s own comment: the fix lives in the
+ * class, so every live profile swap (Peek included) gets the same smoothing, and no caller needed
+ * to change what it calls. 450ms is long enough that dropping `height` by 6 and `distance` by 6
+ * (`KITCHEN_CAMERA` vs `DEFAULT_CAMERA`) reads as a deliberate zoom rather than a snap, and short
+ * enough that walking in and immediately walking back out does not leave the camera visibly
+ * still catching up.
+ */
+export const CAMERA_PROFILE_TRANSITION_MS = 450;
+
+/**
+ * The kitchen camera's own look-at target while `KITCHEN_CAMERA` is engaged, world z
+ * (`GameClient#handleFrame`'s kitchen branch) — same role `PEEK_CAMERA_TARGET_Z` plays for Peek.
+ * The default owner-follow target clamps z within +-1.5 of centre regardless of how far into the
+ * kitchen (`restaurant-layout.json`'s `kitchen` zone, z 3-12) the owner actually walks, so
+ * `KITCHEN_CAMERA`'s closer/lower framing would center on the pass (z ~2), not the back wall,
+ * without an explicit retarget. 7 sits just under the kitchen zone's own midpoint (3-12 -> 7.5),
+ * a touch toward the pass side of that midpoint so the frame's near edge still comfortably
+ * clears the pass (`service_pass`, z=2) rather than centering the shot deep enough that it reads
+ * as cropped at the front.
+ */
+export const KITCHEN_CAMERA_TARGET_Z = 7;
